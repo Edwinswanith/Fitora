@@ -4,7 +4,13 @@ import { requireAuth } from "../middleware/auth";
 import { requireRole } from "../middleware/role";
 import { loadScope } from "../middleware/coachAthleteAccess";
 import { writeRateLimit } from "../middleware/rateLimit";
-import { AthleteProfile } from "../models/AthleteProfile";
+import {
+  AthleteProfile,
+  FITNESS_GOALS,
+  GOAL_INTENSITIES,
+  ACTIVITY_LEVELS,
+  BIOLOGICAL_SEXES,
+} from "../models/AthleteProfile";
 import { User } from "../models/User";
 import { Wellness } from "../models/Wellness";
 import { Attendance, ATTENDANCE_STATUS } from "../models/Attendance";
@@ -193,6 +199,34 @@ function optionalNumberUpdate(
   return v;
 }
 
+/**
+ * Validates an optional string array field (dietaryPreferences, allergies,
+ * cuisinePreferences): every entry must be a non-empty trimmed string within
+ * length, duplicates (case-insensitive) are rejected rather than silently
+ * deduped — a duplicate almost always means the client has a bug, and
+ * silently accepting it would hide that.
+ */
+function optionalStringArrayUpdate(
+  v: unknown,
+  maxItems: number,
+  maxLen: number
+): string[] | false {
+  if (v === undefined || v === null) return [];
+  if (!Array.isArray(v) || v.length > maxItems) return false;
+  const seen = new Set<string>();
+  const out: string[] = [];
+  for (const item of v) {
+    if (typeof item !== "string") return false;
+    const trimmed = item.trim();
+    if (!trimmed || trimmed.length > maxLen) return false;
+    const key = trimmed.toLowerCase();
+    if (seen.has(key)) return false;
+    seen.add(key);
+    out.push(trimmed);
+  }
+  return out;
+}
+
 function optionalStringField(v: unknown, max: number): string | undefined | false {
   if (v === undefined || v === null || v === "") return undefined;
   if (typeof v !== "string") return false;
@@ -218,6 +252,13 @@ function serializeSelfProfile(
     weightKg: profile.weightKg ?? null,
     timezone: profile.timezone ?? "UTC",
     hydrationGoalMl: profile.hydrationGoalMl ?? 3000,
+    fitnessGoal: profile.fitnessGoal ?? null,
+    goalIntensity: profile.goalIntensity ?? null,
+    activityLevel: profile.activityLevel ?? null,
+    biologicalSex: profile.biologicalSex ?? null,
+    dietaryPreferences: profile.dietaryPreferences ?? [],
+    allergies: profile.allergies ?? [],
+    cuisinePreferences: profile.cuisinePreferences ?? [],
     academyId: profile.academyId
       ? (profile.academyId as Types.ObjectId).toString()
       : null,
@@ -357,6 +398,77 @@ router.patch("/me", async (req: Request, res: Response) => {
       }
       profileSet.dob = dob;
     }
+  }
+
+  if (Object.prototype.hasOwnProperty.call(body, "fitnessGoal")) {
+    if (body.fitnessGoal === undefined || body.fitnessGoal === null || body.fitnessGoal === "") {
+      profileUnset.fitnessGoal = 1;
+    } else if (!FITNESS_GOALS.includes(body.fitnessGoal)) {
+      res.status(400).json({ error: "invalid_fitnessGoal" });
+      return;
+    } else {
+      profileSet.fitnessGoal = body.fitnessGoal;
+    }
+  }
+
+  if (Object.prototype.hasOwnProperty.call(body, "goalIntensity")) {
+    if (body.goalIntensity === undefined || body.goalIntensity === null || body.goalIntensity === "") {
+      profileUnset.goalIntensity = 1;
+    } else if (!GOAL_INTENSITIES.includes(body.goalIntensity)) {
+      res.status(400).json({ error: "invalid_goalIntensity" });
+      return;
+    } else {
+      profileSet.goalIntensity = body.goalIntensity;
+    }
+  }
+
+  if (Object.prototype.hasOwnProperty.call(body, "activityLevel")) {
+    if (body.activityLevel === undefined || body.activityLevel === null || body.activityLevel === "") {
+      profileUnset.activityLevel = 1;
+    } else if (!ACTIVITY_LEVELS.includes(body.activityLevel)) {
+      res.status(400).json({ error: "invalid_activityLevel" });
+      return;
+    } else {
+      profileSet.activityLevel = body.activityLevel;
+    }
+  }
+
+  if (Object.prototype.hasOwnProperty.call(body, "biologicalSex")) {
+    if (body.biologicalSex === undefined || body.biologicalSex === null || body.biologicalSex === "") {
+      profileUnset.biologicalSex = 1;
+    } else if (!BIOLOGICAL_SEXES.includes(body.biologicalSex)) {
+      res.status(400).json({ error: "invalid_biologicalSex" });
+      return;
+    } else {
+      profileSet.biologicalSex = body.biologicalSex;
+    }
+  }
+
+  if (Object.prototype.hasOwnProperty.call(body, "dietaryPreferences")) {
+    const dietaryPreferences = optionalStringArrayUpdate(body.dietaryPreferences, 20, 40);
+    if (dietaryPreferences === false) {
+      res.status(400).json({ error: "invalid_dietaryPreferences" });
+      return;
+    }
+    profileSet.dietaryPreferences = dietaryPreferences;
+  }
+
+  if (Object.prototype.hasOwnProperty.call(body, "allergies")) {
+    const allergies = optionalStringArrayUpdate(body.allergies, 30, 40);
+    if (allergies === false) {
+      res.status(400).json({ error: "invalid_allergies" });
+      return;
+    }
+    profileSet.allergies = allergies;
+  }
+
+  if (Object.prototype.hasOwnProperty.call(body, "cuisinePreferences")) {
+    const cuisinePreferences = optionalStringArrayUpdate(body.cuisinePreferences, 20, 40);
+    if (cuisinePreferences === false) {
+      res.status(400).json({ error: "invalid_cuisinePreferences" });
+      return;
+    }
+    profileSet.cuisinePreferences = cuisinePreferences;
   }
 
   const profileUpdate: Record<string, unknown> = {};

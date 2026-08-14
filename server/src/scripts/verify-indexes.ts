@@ -30,6 +30,13 @@ import "../models/WorkoutTemplate";
 import "../models/WorkoutAssignment";
 import "../models/ExerciseProgress";
 import "../models/ExerciseMedia";
+import "../models/NutritionTarget";
+import "../models/PlannedMeal";
+import "../models/Meal";
+import "../models/MealFood";
+import "../models/MealScan";
+import "../models/MealScanItem";
+import "../models/Routine";
 
 async function run() {
   await connectMongo();
