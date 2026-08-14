@@ -647,6 +647,67 @@ describe("protected routes", () => {
     expect(res.status).toBe(401);
     expect(res.body).toEqual({ error: "unauthenticated" });
   });
+
+  test("a token whose embedded role no longer matches the live DB role is rejected (401 role_mismatch), not silently trusted", async () => {
+    const coach = await makeCoach("pw");
+    const app = buildApp();
+    const login = await request(app)
+      .post("/api/auth/login")
+      .send({ email: "coach@test.io", password: "pw" });
+    const accessToken = login.body.accessToken as string;
+
+    // Someone else's action changes this user's role after the token was
+    // issued — requireAuth must re-derive truth from the DB, not the token.
+    await User.updateOne({ _id: coach._id }, { $set: { role: "athlete" } });
+
+    const res = await request(app)
+      .get("/api/coach/athletes")
+      .set("Authorization", `Bearer ${accessToken}`);
+    expect(res.status).toBe(401);
+    expect(res.body.error).toBe("role_mismatch");
+  });
+
+  test("a user disabled mid-session is rejected on their very next request, not just at next login", async () => {
+    const coach = await makeCoach("pw");
+    const app = buildApp();
+    const login = await request(app)
+      .post("/api/auth/login")
+      .send({ email: "coach@test.io", password: "pw" });
+    const accessToken = login.body.accessToken as string;
+
+    const before = await request(app)
+      .get("/api/auth/me")
+      .set("Authorization", `Bearer ${accessToken}`);
+    expect(before.status).toBe(200);
+
+    await User.updateOne({ _id: coach._id }, { $set: { isActive: false } });
+
+    const after = await request(app)
+      .get("/api/auth/me")
+      .set("Authorization", `Bearer ${accessToken}`);
+    expect(after.status).toBe(401);
+    expect(after.body.error).toBe("user_inactive");
+  });
+});
+
+describe("login rate limiting", () => {
+  test("6th login attempt within 60s from the same client → 429 too_many_login_attempts", async () => {
+    await makeCoach("pw");
+    const app = buildApp();
+
+    for (let i = 0; i < 5; i++) {
+      const res = await request(app)
+        .post("/api/auth/login")
+        .send({ email: "coach@test.io", password: "pw" });
+      expect(res.status).toBe(200);
+    }
+
+    const sixth = await request(app)
+      .post("/api/auth/login")
+      .send({ email: "coach@test.io", password: "pw" });
+    expect(sixth.status).toBe(429);
+    expect(sixth.body.error).toBe("too_many_login_attempts");
+  });
 });
 
 describe("POST /api/auth/refresh", () => {
@@ -692,6 +753,29 @@ describe("POST /api/auth/refresh", () => {
     expect(typeof refresh.body.accessToken).toBe("string");
     expect(typeof refresh.body.refreshToken).toBe("string");
     expect(refresh.body.refreshToken).not.toBe(login.body.refreshToken);
+  });
+
+  test("reusing the OLD refresh token after rotation is rejected — it's actually dead, not just superseded", async () => {
+    await makeCoach("pw");
+    const app = buildApp();
+    const login = await request(app)
+      .post("/api/auth/login")
+      .send({ email: "coach@test.io", password: "pw", client: "native" });
+    const oldRefreshToken = login.body.refreshToken as string;
+
+    const rotated = await request(app)
+      .post("/api/auth/refresh")
+      .send({ refreshToken: oldRefreshToken, client: "native" });
+    expect(rotated.status).toBe(200);
+
+    // The token that was valid a moment ago must now be rejected — only the
+    // single most-recently-issued refresh token is ever honored (the server
+    // stores exactly one refreshTokenHash per user, overwritten on rotation).
+    const reuse = await request(app)
+      .post("/api/auth/refresh")
+      .send({ refreshToken: oldRefreshToken, client: "native" });
+    expect(reuse.status).toBe(401);
+    expect(reuse.body.error).toBe("invalid_refresh_token");
   });
 
   test("refresh without cookie returns 401", async () => {

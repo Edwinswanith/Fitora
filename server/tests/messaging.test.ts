@@ -179,6 +179,28 @@ describe("Coach⇄athlete direct messaging", () => {
     expect(await Message.countDocuments()).toBe(0);
   });
 
+  test("scope: athlete cannot message a coach whose assignment has ENDED (distinct from never-assigned) → 403 coach_not_assigned", async () => {
+    const app = buildApp();
+    const { athleteUser, profile } = await seedPair();
+    const formerCoach = await User.create({ email: "former@m.io", passwordHash: "x", role: "coach", name: "Former" });
+    await CoachAthleteAssignment.create({
+      coachId: formerCoach._id,
+      athleteId: profile._id,
+      assignedBy: formerCoach._id,
+      endedAt: new Date(),
+      status: "ended",
+      endedReason: "coach_ended",
+    });
+
+    const res = await request(app)
+      .post(`/api/athlete/messages/${formerCoach._id}`)
+      .set("Authorization", `Bearer ${athleteToken(athleteUser._id)}`)
+      .send({ body: "are you still my coach?" });
+    expect(res.status).toBe(403);
+    expect(res.body.error).toBe("coach_not_assigned");
+    expect(await Message.countDocuments()).toBe(0);
+  });
+
   test("empty and over-long bodies are rejected with 400", async () => {
     const app = buildApp();
     const { coach, profile } = await seedPair();

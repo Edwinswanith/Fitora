@@ -3,9 +3,23 @@ import { env } from "../config/env";
 
 let retryTimer: NodeJS.Timeout | null = null;
 
+/**
+ * Mongoose builds each model's indexes in the background as soon as it's
+ * compiled — `mongoose.connect()` resolving does NOT mean every unique/
+ * partial index (e.g. the one-primary-coach-at-a-time constraint on
+ * CoachAthleteAssignment) actually exists yet. Awaiting `Model.init()` for
+ * every currently-registered model closes that startup race: the server
+ * never accepts a request before its indexes are real. Safe to call
+ * repeatedly — index creation is idempotent (a no-op once already built).
+ */
+async function ensureIndexesReady(): Promise<void> {
+  await Promise.all(Object.values(mongoose.models).map((model) => model.init()));
+}
+
 async function attemptConnect(): Promise<boolean> {
   try {
     await mongoose.connect(env.mongoUri, { dbName: env.mongoDb, serverSelectionTimeoutMS: 3000 });
+    await ensureIndexesReady();
     console.log(`[mongo] connected: ${env.mongoUri.replace(/\/\/[^@]+@/, "//***@")}`);
     return true;
   } catch (err) {

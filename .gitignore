@@ -1,5 +1,6 @@
 node_modules
 .next
+.claude/scheduled_tasks.lock
 dist
 build
 coverage

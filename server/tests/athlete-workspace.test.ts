@@ -256,6 +256,32 @@ describe("Athlete wellness validation", () => {
     expect(row?.mood).toBe(5);
     expect(row?.stress ?? null).toBeNull();
   });
+
+  test("submitting wellness twice the same day edits the single row, never duplicates it", async () => {
+    const { user, profile } = await makeAthlete("ath-wsame");
+    const app = buildApp();
+    const token = tokenFor(user._id, "athlete");
+
+    const first = await request(app)
+      .post("/api/athlete/wellness")
+      .set("Authorization", `Bearer ${token}`)
+      .send({ date: TODAY_STR, sleepQuality: 2, mood: 2, stress: 4 });
+    expect(first.status).toBe(200);
+
+    const second = await request(app)
+      .post("/api/athlete/wellness")
+      .set("Authorization", `Bearer ${token}`)
+      .send({ date: TODAY_STR, sleepQuality: 5, mood: 5 });
+    expect(second.status).toBe(200);
+
+    expect(await Wellness.countDocuments({ athleteId: profile._id, date: TODAY })).toBe(1);
+    const row = await Wellness.findOne({ athleteId: profile._id, date: TODAY }).lean();
+    // Edited fields reflect the second submission...
+    expect(row?.sleepQuality).toBe(5);
+    expect(row?.mood).toBe(5);
+    // ...and a field only sent the first time survives the second (partial) upsert.
+    expect(row?.stress).toBe(4);
+  });
 });
 
 describe("Athlete water and heart-rate tracking", () => {

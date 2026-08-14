@@ -35,6 +35,12 @@ function isAllowedCorsOrigin(origin: string, host: string | undefined, allowedCo
 
 export function createApp(): express.Express {
   const app = express();
+  // Both deploy targets (Cloud Run, Vercel) sit the app behind a single
+  // reverse-proxy hop. Without this, req.ip resolves to the proxy's address
+  // for every request — collapsing the per-IP login rate limiter into a
+  // single global bucket shared by every real client (a trivial DoS: one
+  // attacker's 5 failed logins locks out everyone else's ability to log in).
+  app.set("trust proxy", 1);
   const allowedCorsOrigins = new Set(env.corsOrigins);
 
   app.use(

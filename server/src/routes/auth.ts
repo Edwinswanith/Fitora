@@ -9,9 +9,12 @@ import {
   signAccessToken,
   signRefreshToken,
   verifyRefreshToken,
+  hashRefreshToken,
+  refreshTokenMatches,
 } from "../lib/tokens";
 import { env } from "../config/env";
 import { requireAuth } from "../middleware/auth";
+import { writeRateLimit } from "../middleware/rateLimit";
 import { avatarSummary } from "../services/avatar";
 import { permanentlyDeleteAccount } from "../services/accountDeletion";
 
@@ -178,7 +181,7 @@ async function issueTokensForUser(
     role: user.role,
   });
   const refreshToken = signRefreshToken({ sub: user._id.toString() });
-  const refreshTokenHash = await bcrypt.hash(refreshToken, 10);
+  const refreshTokenHash = hashRefreshToken(refreshToken);
   await User.updateOne({ _id: user._id }, { $set: { refreshTokenHash } });
   setAuthCookies(res, accessToken, refreshToken);
   return { accessToken, refreshToken };
@@ -657,7 +660,7 @@ router.post("/refresh", async (req: Request, res: Response) => {
     return;
   }
 
-  const match = await bcrypt.compare(token, user.refreshTokenHash);
+  const match = refreshTokenMatches(token, user.refreshTokenHash);
   if (!match) {
     clearAuthCookies(res);
     res.status(401).json({ error: "invalid_refresh_token" });
@@ -678,7 +681,13 @@ router.get("/me", requireAuth, async (req: Request, res: Response) => {
   res.json({ user: safeUser(user) });
 });
 
-router.post("/change-password", requireAuth, async (req: Request, res: Response) => {
+router.post(
+  "/change-password",
+  requireAuth,
+  // A holder of any valid (even short-lived) access token could otherwise
+  // brute-force currentPassword with unlimited attempts before it expires.
+  writeRateLimit({ windowMs: 60_000, max: 10 }),
+  async (req: Request, res: Response) => {
   const user = await User.findById(req.actor?.userId);
   if (!user || !user.isActive) {
     res.status(401).json({ error: "user_inactive" });

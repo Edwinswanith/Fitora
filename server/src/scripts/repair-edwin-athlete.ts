@@ -34,9 +34,13 @@ async function run() {
     { upsert: true, new: true, setDefaultsOnInsert: true }
   );
 
+  // status must stay in sync with endedAt (see CoachAthleteAssignment.ts) —
+  // the one-primary-coach unique index is keyed on status:"active", not
+  // endedAt, so setting endedAt alone leaves a phantom "active" row that
+  // permanently blocks the athlete from ever getting a new coach.
   const ended = await CoachAthleteAssignment.updateMany(
     { coachId: user._id, endedAt: null },
-    { $set: { endedAt: new Date() } }
+    { $set: { endedAt: new Date(), status: "ended", endedReason: "coach_ended" } }
   );
 
   console.log("[repair-edwin-athlete] updated", {
