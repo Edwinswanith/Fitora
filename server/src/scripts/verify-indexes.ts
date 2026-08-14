@@ -26,6 +26,10 @@ import "../models/WorkoutMedia";
 import "../models/VoicePendingState";
 import "../models/VoiceActionReceipt";
 import "../models/AuditLog";
+import "../models/WorkoutTemplate";
+import "../models/WorkoutAssignment";
+import "../models/ExerciseProgress";
+import "../models/ExerciseMedia";
 
 async function run() {
   await connectMongo();

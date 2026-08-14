@@ -74,6 +74,11 @@ const trainingSessionSchema = new Schema(
     effortRating: { type: Number, min: 1, max: 10 },
     notes: { type: String },
     photos: { type: [sessionPhotoSchema], default: [] },
+    // Populated when this slot's session was started FROM a WorkoutAssignment
+    // (the new unified workout system) rather than created directly by the
+    // old coach-sets-a-plan-text route. Null for every session created the
+    // pre-existing way — fully backward compatible, additive-only field.
+    workoutAssignmentId: { type: Schema.Types.ObjectId, ref: "WorkoutAssignment", default: null },
   },
   { timestamps: true }
 );

@@ -33,6 +33,7 @@ import {
   parseDateOrNull,
 } from "../lib/trainingCategories";
 import { buildDailyCardForAthlete, dayRange } from "../services/dashboard";
+import { buildWorkoutAssignmentsForDate } from "../services/workoutAssignment";
 import { buildTrendSeries, clampDays } from "../services/trends";
 import { buildActivityFeed, clampLimit } from "../services/activity";
 import {
@@ -398,7 +399,11 @@ router.get("/daily", async (req: Request, res: Response) => {
     res.status(404).json({ error: "athlete_not_found" });
     return;
   }
-  res.json({ date: date.toISOString().slice(0, 10), card });
+  // The unified workout system's assignments for this date ride along on the
+  // same response the client already polls for "today" — this is the single
+  // place "what's today's workout" is answered from, not a second endpoint.
+  const workoutAssignments = await buildWorkoutAssignmentsForDate(profileId, date);
+  res.json({ date: date.toISOString().slice(0, 10), card, workoutAssignments });
 });
 
 /**

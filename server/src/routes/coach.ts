@@ -34,6 +34,7 @@ import {
   buildDailyCardsForAthletes,
   dayRange,
 } from "../services/dashboard";
+import { buildWorkoutAssignmentsForDate } from "../services/workoutAssignment";
 import { evaluateAndDispatch } from "../services/notificationEligibility";
 import { getFcmConfigurationStatus } from "../services/fcmDelivery";
 import { resolveTimezoneForUser } from "../services/timezone";
@@ -793,7 +794,11 @@ router.get(
       res.status(404).json({ error: "athlete_not_found" });
       return;
     }
-    res.json({ card });
+    const workoutAssignments = await buildWorkoutAssignmentsForDate(
+      new Types.ObjectId(req.params.athleteId),
+      start
+    );
+    res.json({ card, workoutAssignments });
   }
 );
 
