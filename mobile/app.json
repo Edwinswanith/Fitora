@@ -1,0 +1,108 @@
+{
+  "expo": {
+    "name": "Apex",
+    "slug": "sports-coaching-platform",
+    "owner": "edwinswanith",
+    "version": "1.0.24",
+    "orientation": "portrait",
+    "icon": "./assets/images/icon.png",
+    "scheme": "apex",
+    "userInterfaceStyle": "automatic",
+    "ios": {
+      "icon": "./assets/images/icon.png",
+      "bundleIdentifier": "app.apex.coaching",
+      "buildNumber": "27",
+      "infoPlist": {
+        "ITSAppUsesNonExemptEncryption": false
+      },
+      "usesAppleSignIn": true,
+      "entitlements": {
+        "com.apple.developer.applesignin": [
+          "Default"
+        ]
+      }
+    },
+    "android": {
+      "adaptiveIcon": {
+        "backgroundColor": "#0f1410",
+        "foregroundImage": "./assets/images/adaptive-icon.png"
+      },
+      "package": "app.apex.coaching",
+      "versionCode": 27,
+      "predictiveBackGestureEnabled": false,
+      "googleServicesFile": "./google-services.json",
+      "permissions": [
+        "android.permission.POST_NOTIFICATIONS",
+        "android.permission.RECORD_AUDIO",
+        "android.permission.MODIFY_AUDIO_SETTINGS",
+        "android.permission.FOREGROUND_SERVICE"
+      ]
+    },
+    "web": {
+      "output": "static",
+      "favicon": "./assets/images/favicon.png"
+    },
+    "plugins": [
+      "./plugins/withModularHeaders",
+      "expo-router",
+      [
+        "expo-splash-screen",
+        {
+          "backgroundColor": "#0f1410",
+          "android": {
+            "image": "./assets/images/splash-icon.png",
+            "imageWidth": 160
+          }
+        }
+      ],
+      "expo-secure-store",
+      "expo-web-browser",
+      "expo-apple-authentication",
+      [
+        "@react-native-google-signin/google-signin",
+        {
+          "iosUrlScheme": "com.googleusercontent.apps.895210689446-k1mose4899m83kg5o5ghho4rnqhalajc"
+        }
+      ],
+      "expo-audio",
+      [
+        "expo-notifications",
+        {
+          "enableBackgroundRemoteNotifications": true
+        }
+      ],
+      [
+        "expo-video",
+        {
+          "supportsBackgroundPlayback": false,
+          "supportsPictureInPicture": false
+        }
+      ],
+      [
+        "expo-speech-recognition",
+        {
+          "microphonePermission": "Allow Apex to use the microphone for the Ask Agent voice assistant.",
+          "speechRecognitionPermission": "Allow Apex to use speech recognition for the Ask Agent voice assistant.",
+          "androidSpeechServicePackages": ["com.google.android.googlequicksearchbox"]
+        }
+      ],
+      [
+        "react-native-ble-plx",
+        {
+          "isBackgroundEnabled": false,
+          "modes": ["central"],
+          "bluetoothAlwaysPermission": "Allow Apex to connect to heart-rate and fitness sensors."
+        }
+      ]
+    ],
+    "experiments": {
+      "typedRoutes": true,
+      "reactCompiler": true
+    },
+    "extra": {
+      "eas": {
+        "projectId": "ab675667-d989-44d0-a0a1-003ca852cf4c"
+      }
+    }
+  }
+}

@@ -1,0 +1,35 @@
+{
+  "buildCommand": "npm run vercel-build",
+  "installCommand": "HUSKY=0 npm ci --include=dev",
+  "framework": "nextjs",
+  "crons": [
+    {
+      "path": "/api/cron/notifications-sweep",
+      "schedule": "30 1 * * *"
+    },
+    {
+      "path": "/api/cron/notifications-sweep",
+      "schedule": "30 2 * * *"
+    },
+    {
+      "path": "/api/cron/notifications-sweep",
+      "schedule": "30 3 * * *"
+    },
+    {
+      "path": "/api/cron/notifications-sweep",
+      "schedule": "30 6 * * *"
+    },
+    {
+      "path": "/api/cron/notifications-sweep",
+      "schedule": "30 8 * * *"
+    },
+    {
+      "path": "/api/cron/notifications-sweep",
+      "schedule": "30 10 * * *"
+    },
+    {
+      "path": "/api/cron/notifications-sweep",
+      "schedule": "30 14 * * *"
+    }
+  ]
+}

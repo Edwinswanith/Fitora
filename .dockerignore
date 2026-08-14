@@ -1,0 +1,29 @@
+# Keep build context small & deterministic (installs happen inside the image).
+**/node_modules
+**/.next
+**/dist
+**/.turbo
+**/coverage
+**/*.tsbuildinfo
+
+# Local env & secrets — never bake into an image
+.env
+.env.*
+**/.env
+**/.env.*
+
+# VCS / tooling / docs
+.git
+.gitignore
+.github
+.vscode
+.idea
+.playwright-mcp
+**/*.log
+npm-debug.log*
+
+# Docker meta (not needed inside the build)
+Dockerfile
+**/Dockerfile
+docker-compose*.yml
+.dockerignore

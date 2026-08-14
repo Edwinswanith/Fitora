@@ -1,0 +1,41 @@
+{
+  "name": "sports-coaching-platform",
+  "version": "0.1.0",
+  "private": true,
+  "workspaces": [
+    "mobile",
+    "server"
+  ],
+  "scripts": {
+    "dev:server": "npm run dev --workspace server",
+    "dev:mobile": "npm run start --workspace mobile",
+    "predev": "node scripts/dev-clean.mjs",
+    "dev": "npm-run-all --parallel dev:server dev:mobile",
+    "typecheck:server": "npm run typecheck --workspace server",
+    "typecheck:mobile": "npm run typecheck --workspace mobile",
+    "typecheck": "npm-run-all typecheck:server typecheck:mobile",
+    "test": "npm test --workspace server",
+    "build:server": "npm run build --workspace server",
+    "build": "npm-run-all build:server",
+    "vercel-build": "node scripts/vercel-build.mjs"
+  },
+  "devDependencies": {
+    "b4a": "1.8.1",
+    "npm-run-all": "^4.1.5",
+    "react": "19.2.3",
+    "react-dom": "19.2.3",
+    "react-native-gesture-handler": "2.31.2",
+    "react-native-reanimated": "4.3.1",
+    "react-native-safe-area-context": "5.7.0",
+    "react-native-worklets": "0.8.3"
+  },
+  "overrides": {
+    "react-native-gesture-handler": "2.31.2",
+    "react-native-reanimated": "4.3.1",
+    "react-native-safe-area-context": "5.7.0",
+    "react-native-worklets": "0.8.3"
+  },
+  "dependencies": {
+    "next": "^16.2.12"
+  }
+}

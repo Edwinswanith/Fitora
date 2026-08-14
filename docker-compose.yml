@@ -1,0 +1,44 @@
+# API stack: MongoDB + server. Run with:
+#   docker compose up --build
+# API at http://localhost:4000. Run the Expo app separately with npm run dev:mobile.
+#
+# Override secrets via a root .env file (JWT_ACCESS_SECRET, JWT_REFRESH_SECRET).
+
+services:
+  mongo:
+    image: mongo:7
+    restart: unless-stopped
+    volumes:
+      - mongo-data:/data/db
+    ports:
+      - "27017:27017" # host access for seeding / inspection (optional)
+    healthcheck:
+      test: ["CMD", "mongosh", "--quiet", "--eval", "db.adminCommand('ping')"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  server:
+    build:
+      context: .
+      dockerfile: server/Dockerfile
+    restart: unless-stopped
+    depends_on:
+      mongo:
+        condition: service_healthy
+    environment:
+      NODE_ENV: production
+      PORT: "4000"
+      MONGODB_URI: mongodb://mongo:27017/athletes
+      CORS_ORIGIN: http://localhost:8081
+      # mongo's hostname is non-localhost, so the server enforces strong secrets —
+      # these MUST NOT be the literal placeholders. Override in a root .env file!
+      JWT_ACCESS_SECRET: ${JWT_ACCESS_SECRET:-please_change_me_access_0123456789abcdef0123}
+      JWT_REFRESH_SECRET: ${JWT_REFRESH_SECRET:-please_change_me_refresh_0123456789abcdef0123}
+      JWT_ACCESS_TTL: 15m
+      JWT_REFRESH_TTL: 30d
+    ports:
+      - "4000:4000"
+
+volumes:
+  mongo-data:
