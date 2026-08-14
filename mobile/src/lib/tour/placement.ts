@@ -54,8 +54,8 @@ export function mascotOriginWithinGroup(placement: TourGroupPlacement): { x: num
 }
 
 /**
- * A step's target can legitimately never mount — e.g. the guardian athlete
- * switcher only renders when there are 2+ linked athletes — while the step
+ * A step's target can legitimately never mount — e.g. a switcher control that
+ * only renders when there are 2+ items to switch between — while the step
  * itself still reports "ready" (that mount-tracking is independent of
  * `SpotlightTarget`'s own rect measurement). Without a fallback, `TourOverlay`
  * would have nothing to anchor to and would render nothing at all: a silent

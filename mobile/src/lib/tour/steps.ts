@@ -151,38 +151,7 @@ export const COACH_TOUR_STEPS: MobileTourStep[] = [
   },
 ];
 
-export const GUARDIAN_TOUR_STEPS: MobileTourStep[] = [
-  {
-    id: "mobile-guardian-header",
-    title: "Athlete summary",
-    fallbackNote: "The header shows the selected athlete, date, notifications, and your account menu.",
-    mascotPose: "welcoming",
-  },
-  {
-    id: "mobile-guardian-switcher",
-    title: "Switch athlete",
-    fallbackNote: "If you have more than one linked athlete, switch between them here.",
-  },
-  {
-    id: "mobile-guardian-sleep",
-    title: "Sleep",
-    fallbackNote: "Sleep quality and hours show whether your athlete has checked in for the selected day.",
-  },
-  {
-    id: "mobile-guardian-water",
-    title: "Water intake",
-    fallbackNote: "Water intake compares logged hydration against the athlete's daily goal.",
-    mascotPose: "encouraging",
-  },
-  {
-    id: "mobile-guardian-attendance",
-    title: "Attendance",
-    fallbackNote: "Attendance shows whether training was logged as present, late, excused, rest, or missed.",
-  },
-];
-
 export const MOBILE_TOUR_STEPS: Record<Role, MobileTourStep[]> = {
   athlete: ATHLETE_TOUR_STEPS,
   coach: COACH_TOUR_STEPS,
-  guardian: GUARDIAN_TOUR_STEPS,
 };

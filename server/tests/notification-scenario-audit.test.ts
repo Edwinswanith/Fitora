@@ -8,7 +8,6 @@ import { signAccessToken } from "../src/lib/tokens";
 import { User, type UserRole } from "../src/models/User";
 import { AthleteProfile } from "../src/models/AthleteProfile";
 import { CoachAthleteAssignment } from "../src/models/CoachAthleteAssignment";
-import { GuardianAthleteLink } from "../src/models/GuardianAthleteLink";
 import { DeviceToken } from "../src/models/DeviceToken";
 import { NotificationPreference } from "../src/models/NotificationPreference";
 import { Notification } from "../src/models/Notification";
@@ -20,7 +19,6 @@ import { WaterIntake } from "../src/models/WaterIntake";
 import { Attendance } from "../src/models/Attendance";
 import { AthleteNote } from "../src/models/AthleteNote";
 import { sendMessage } from "../src/services/messaging";
-import { notifyGuardiansOfAthleteUpdate } from "../src/services/notifications";
 import { runSweep } from "../src/services/notificationSweep";
 import {
   setPushDeliveryAdapterForTests,
@@ -131,10 +129,6 @@ async function makeCoach(name: string): Promise<Actor> {
   return { user: await makeUser(name, "coach") };
 }
 
-async function makeGuardian(name: string): Promise<Actor> {
-  return { user: await makeUser(name, "guardian") };
-}
-
 async function allowPush(userId: Types.ObjectId, tokenName?: string): Promise<void> {
   await DeviceToken.create({
     userId,
@@ -151,10 +145,6 @@ async function allowPush(userId: Types.ObjectId, tokenName?: string): Promise<vo
 
 async function assign(coachId: Types.ObjectId, athleteId: Types.ObjectId): Promise<void> {
   await CoachAthleteAssignment.create({ coachId, athleteId, assignedBy: coachId });
-}
-
-async function linkGuardian(guardianId: Types.ObjectId, athleteId: Types.ObjectId): Promise<void> {
-  await GuardianAthleteLink.create({ guardianId, athleteId, relationship: "Parent" });
 }
 
 async function seedRpe(athleteId: Types.ObjectId, date: Date, sessionType: RpeSessionType): Promise<void> {
@@ -642,11 +632,8 @@ describe("notification scenario audit with dummy users", () => {
     await clearDb();
     const injuryCoach = await makeCoach("Injury Coach");
     const injuryAthlete = await makeAthlete("Injury Athlete");
-    const injuryGuardian = await makeGuardian("Injury Guardian");
     await allowPush(injuryCoach.user._id);
-    await allowPush(injuryGuardian.user._id);
     await assign(injuryCoach.user._id, injuryAthlete.profile!._id);
-    await linkGuardian(injuryGuardian.user._id, injuryAthlete.profile!._id);
     const injuryRes = await request(app)
       .post(`/api/coach/athletes/${injuryAthlete.profile!._id.toString()}/injuries`)
       .set("Authorization", bearer(injuryCoach.user))
@@ -661,54 +648,6 @@ describe("notification scenario audit with dummy users", () => {
       "POST /api/coach/athletes/:athleteId/injuries",
       "Severe injury bypasses quiet hours and caps."
     );
-    await capture(
-      "injury-alert-guardian",
-      injuryGuardian.user,
-      "Linked guardian receives the same severe injury alert.",
-      "GuardianAthleteLink active for the injured athlete.",
-      "injury_alert",
-      "POST /api/coach/athletes/:athleteId/injuries",
-      "Severe injury bypasses quiet hours and caps."
-    );
-
-    await clearDb();
-    const guardian = await makeGuardian("Update Guardian");
-    const updateAthlete = await makeAthlete("Update Athlete");
-    await linkGuardian(guardian.user._id, updateAthlete.profile!._id);
-    await notifyGuardiansOfAthleteUpdate(
-      updateAthlete.profile!._id,
-      "Update Athlete - Wellness",
-      "Update Athlete just logged wellness."
-    );
-    const notification = await Notification.findOne({ recipientUserId: guardian.user._id, type: "athlete_update" }).lean();
-    const inbox = await apiInbox(guardian.user, "athlete_update");
-    report.push({
-      id: "guardian-athlete-update",
-      dummyUser: guardian.user.name,
-      role: guardian.user.role,
-      scenario: "Linked athlete logs a guardian-visible data point.",
-      testData: "Called notifyGuardiansOfAthleteUpdate with Wellness copy.",
-      expectedType: "athlete_update",
-      trigger: "notifyGuardiansOfAthleteUpdate helper",
-      triggeredAt: (notification?.createdAt as Date | undefined)?.toISOString() ?? null,
-      exactNotificationMessage: notification ? `${notification.title}: ${notification.body ?? ""}` : null,
-      pass: Boolean(notification),
-      proof: {
-        notificationDb: notification
-          ? {
-              id: notification._id.toString(),
-              type: notification.type,
-              title: notification.title,
-              body: notification.body,
-              createdAt: (notification.createdAt as Date).toISOString(),
-            }
-          : null,
-        apiResponse: inbox,
-        pushLog: [],
-      },
-      notes: "Existing guardian update is in-app only; no NotificationDecision/push row is created.",
-    });
-    expect(notification).toBeTruthy();
   });
 
   test("requested notification types that are not implemented yet are reported as product gaps", () => {

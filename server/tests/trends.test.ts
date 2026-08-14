@@ -5,12 +5,10 @@ import request from "supertest";
 import { User } from "../src/models/User";
 import { AthleteProfile } from "../src/models/AthleteProfile";
 import { CoachAthleteAssignment } from "../src/models/CoachAthleteAssignment";
-import { GuardianAthleteLink } from "../src/models/GuardianAthleteLink";
 import { Wellness } from "../src/models/Wellness";
 import { RpeMonitoring } from "../src/models/RpeMonitoring";
 import athleteRouter from "../src/routes/athlete";
 import coachRouter from "../src/routes/coach";
-import guardianRouter from "../src/routes/guardian";
 import { buildTrendSeries } from "../src/services/trends";
 import { dayOfWeek } from "../src/lib/trainingCategories";
 import { signAccessToken } from "../src/lib/tokens";
@@ -22,11 +20,10 @@ function buildApp() {
   app.use(express.json());
   app.use("/api/athlete", athleteRouter);
   app.use("/api/coach", coachRouter);
-  app.use("/api/guardian", guardianRouter);
   return app;
 }
 
-async function makeUser(role: "coach" | "athlete" | "guardian", name: string) {
+async function makeUser(role: "coach" | "athlete", name: string) {
   return User.create({ email: `${name}@test.io`, passwordHash: "x", role, name });
 }
 async function makeAthlete(name: string) {
@@ -34,7 +31,7 @@ async function makeAthlete(name: string) {
   const profile = await AthleteProfile.create({ userId: user._id, sport: "athletics" });
   return { user, profile };
 }
-function tokenFor(userId: Types.ObjectId, role: "athlete" | "coach" | "guardian") {
+function tokenFor(userId: Types.ObjectId, role: "athlete" | "coach") {
   return signAccessToken({ sub: userId.toString(), role });
 }
 
@@ -159,18 +156,3 @@ describe("GET /api/coach/athletes/:id/trends (scoped)", () => {
   });
 });
 
-describe("GET /api/guardian/athletes/:id/trends (removed)", () => {
-  test("guardians have no trends access — endpoint doesn't exist", async () => {
-    // Guardians are scoped to Sleep quality / Water intake / Attendance only
-    // (see server/src/routes/guardian.ts); the trends endpoint was
-    // deliberately removed from the guardian router.
-    const guardian = await makeUser("guardian", "parent");
-    const { profile: child } = await makeAthlete("g-child");
-    await GuardianAthleteLink.create({ guardianId: guardian._id, athleteId: child._id });
-    const app = buildApp();
-    const t = tokenFor(guardian._id, "guardian");
-
-    const res = await request(app).get(`/api/guardian/athletes/${child._id}/trends`).set("Authorization", `Bearer ${t}`);
-    expect(res.status).toBe(404);
-  });
-});

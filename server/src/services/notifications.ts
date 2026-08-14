@@ -3,7 +3,6 @@ import {
   Notification,
   type NotificationPriority,
 } from "../models/Notification";
-import { GuardianAthleteLink } from "../models/GuardianAthleteLink";
 
 export type CreateNotificationInput = {
   recipientUserId: Types.ObjectId | string;
@@ -36,37 +35,6 @@ export async function createNotification(
     });
   } catch (err) {
     console.error("[notifications] failed to create:", (err as Error).message);
-  }
-}
-
-/**
- * Notify every guardian actively linked to an athlete that a new data point
- * (sleep/wellness check-in, water intake, attendance) was logged — the only
- * three things a guardian's dashboard shows, so this is what tells them to go
- * look. Best-effort, like createNotification: never throws.
- */
-export async function notifyGuardiansOfAthleteUpdate(
-  athleteId: Types.ObjectId,
-  title: string,
-  body: string
-): Promise<void> {
-  try {
-    const links = await GuardianAthleteLink.find({ athleteId, endedAt: null })
-      .select("guardianId")
-      .lean();
-    await Promise.all(
-      links.map((link) =>
-        createNotification({
-          recipientUserId: link.guardianId as Types.ObjectId,
-          type: "athlete_update",
-          title,
-          body,
-          link: "/guardian/dashboard",
-        })
-      )
-    );
-  } catch (err) {
-    console.error("[notifications] failed to notify guardians:", (err as Error).message);
   }
 }
 

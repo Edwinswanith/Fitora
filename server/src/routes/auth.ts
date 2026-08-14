@@ -547,10 +547,10 @@ router.post("/apple", async (req: Request, res: Response) => {
  * Self-service athlete sign-up: creates a User(role: athlete) + AthleteProfile
  * with NO coach assignment and NO academy, then signs the new athlete straight
  * in. This is the ONE self-signup path on the platform (by explicit request) so
- * athletes can log their own training/wellness without a coach — coaches and
- * guardians are still provisioned only. A self-registered athlete is simply
- * unassigned, so they remain invisible to every coach until/unless a coach later
- * adds them, which keeps the coach-scope invariant intact.
+ * athletes can log their own training/wellness without a coach — coaches are
+ * still provisioned only. A self-registered athlete is simply unassigned, so
+ * they remain invisible to every coach until/unless a coach later adds them,
+ * which keeps the coach-scope invariant intact.
  */
 const REG_EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 

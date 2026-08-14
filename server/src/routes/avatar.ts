@@ -13,8 +13,8 @@ import {
 
 /**
  * Self-service profile-avatar management — available to every role (coach,
- * athlete, guardian) identically, so it lives in its own router gated only by
- * `requireAuth` rather than being duplicated across the three role routers.
+ * athlete) identically, so it lives in its own router gated only by
+ * `requireAuth` rather than being duplicated across the role routers.
  */
 const router = Router();
 router.use(requireAuth);

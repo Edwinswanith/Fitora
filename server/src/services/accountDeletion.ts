@@ -8,7 +8,6 @@ import { AuditLog } from "../models/AuditLog";
 import { CoachAthleteAssignment } from "../models/CoachAthleteAssignment";
 import { CoachComment } from "../models/CoachComment";
 import { DeviceToken } from "../models/DeviceToken";
-import { GuardianAthleteLink } from "../models/GuardianAthleteLink";
 import { Injury } from "../models/Injury";
 import { Message } from "../models/Message";
 import { Notification } from "../models/Notification";
@@ -41,7 +40,6 @@ async function deleteAthleteData(athleteId: Types.ObjectId): Promise<void> {
     Attendance.deleteMany({ athleteId }),
     CoachAthleteAssignment.deleteMany({ athleteId }),
     CoachComment.deleteMany({ athleteId }),
-    GuardianAthleteLink.deleteMany({ athleteId }),
     Injury.deleteMany({ athleteId }),
     Message.deleteMany({ athleteId }),
     Performance.deleteMany({ athleteId }),
@@ -78,8 +76,6 @@ export async function permanentlyDeleteAccount(user: UserDoc): Promise<void> {
       RpeMonitoring.updateMany({ coachId: userId }, { $set: { coachId: null } }),
       TrainingSession.updateMany({ coachId: userId }, { $unset: { coachId: "" } }),
     ]);
-  } else {
-    await GuardianAthleteLink.deleteMany({ guardianId: userId });
   }
 
   await Promise.all([

@@ -21,11 +21,11 @@ function buildApp() {
   return app;
 }
 
-async function makeUser(role: "coach" | "athlete" | "guardian", name: string) {
+async function makeUser(role: "coach" | "athlete", name: string) {
   return User.create({ email: `${name}@test.io`, passwordHash: "x", role, name });
 }
 
-function tokenFor(userId: Types.ObjectId, role: "coach" | "athlete" | "guardian") {
+function tokenFor(userId: Types.ObjectId, role: "coach" | "athlete") {
   return signAccessToken({ sub: userId.toString(), role });
 }
 
@@ -53,7 +53,7 @@ beforeEach(async () => {
 });
 
 describe("Profile avatar — every role manages their own the same way", () => {
-  test.each(["coach", "athlete", "guardian"] as const)(
+  test.each(["coach", "athlete"] as const)(
     "%s can upload a photo, view it, then switch to a default badge",
     async (role) => {
       const user = await makeUser(role, `${role}-avatar`);
@@ -112,9 +112,9 @@ describe("Profile avatar — every role manages their own the same way", () => {
   });
 
   test("DELETE clears the avatar back to initials-fallback state", async () => {
-    const user = await makeUser("guardian", "guardian-clear");
+    const user = await makeUser("athlete", "athlete-clear");
     const app = buildApp();
-    const token = tokenFor(user._id, "guardian");
+    const token = tokenFor(user._id, "athlete");
     await request(app)
       .post("/api/me/avatar/default")
       .set("Authorization", `Bearer ${token}`)

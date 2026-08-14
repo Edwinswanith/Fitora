@@ -57,42 +57,15 @@ import {
 } from "../services/messaging";
 import { WorkoutMedia, type WorkoutMediaDoc } from "../models/WorkoutMedia";
 import { mediaUpload, mediaFilePath, serializeMedia } from "../services/media";
-import { notifyGuardiansOfAthleteUpdate } from "../services/notifications";
 import { enrichVoiceIntentResult, getVoiceIntentInterpreter, type VoicePendingIntent } from "../services/voiceIntentInterpreter";
 import { withIdempotency } from "../lib/voiceIdempotency";
 import { evaluateAndDispatch } from "../services/notificationEligibility";
 import { resolveTimezoneForUser } from "../services/timezone";
 import { buildReadinessRiskFlag } from "../services/notificationTemplates";
-import { notificationPreview } from "../services/notificationCopy";
 import multer from "multer";
 import fs from "fs";
 
 const router = Router();
-
-/**
- * Fire-and-forget: tell every guardian linked to this athlete that a new
- * Sleep/Water/Attendance data point was logged — the only things a guardian's
- * dashboard shows. Never awaited by callers so it can't slow down the
- * athlete's own response; failures are swallowed by notifyGuardiansOfAthleteUpdate.
- */
-function notifyGuardiansWithStandardCopy(
-  profileId: Types.ObjectId,
-  actorUserId: Types.ObjectId,
-  label: string
-) {
-  User.findById(actorUserId)
-    .select("name")
-    .lean()
-    .then((user) => {
-      const name = (user?.name as string | undefined) || "Your athlete";
-      return notifyGuardiansOfAthleteUpdate(
-        profileId,
-        notificationPreview(`${name} logged ${label}`),
-        `Open Apex to review the latest ${label.toLowerCase()} update.`
-      );
-    })
-    .catch((err) => console.error("[guardian-notify] failed:", (err as Error).message));
-}
 
 router.use(requireAuth, requireRole("athlete"), loadScope);
 
@@ -564,9 +537,6 @@ router.post("/wellness", async (req: Request, res: Response) => {
     { upsert: true, runValidators: true }
   );
   const saved = await Wellness.findOne({ athleteId: profileId, date }).lean();
-  if (fields.sleepQuality !== undefined && req.actor) {
-    notifyGuardiansWithStandardCopy(profileId, req.actor.userId, "Sleep check-in");
-  }
   res.json({ wellness: saved });
 });
 
@@ -678,7 +648,6 @@ router.post("/water", async (req: Request, res: Response) => {
 
   const perform = async () => {
     await WaterIntake.create({ athleteId: profileId, date, amountMl: amount, loggedAt: new Date() });
-    notifyGuardiansWithStandardCopy(profileId, req.actor!.userId, "Water intake");
     return waterDayResponse(profileId, date);
   };
 
@@ -755,7 +724,6 @@ router.post("/attendance", async (req: Request, res: Response) => {
     { upsert: true, runValidators: true }
   );
   const saved = await Attendance.findOne({ athleteId: profileId, date }).lean();
-  notifyGuardiansWithStandardCopy(profileId, req.actor.userId, "Attendance");
   res.json({ attendance: saved });
 });
 

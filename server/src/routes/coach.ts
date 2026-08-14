@@ -11,7 +11,6 @@ import {
 import { AthleteProfile } from "../models/AthleteProfile";
 import { User } from "../models/User";
 import { CoachAthleteAssignment } from "../models/CoachAthleteAssignment";
-import { GuardianAthleteLink } from "../models/GuardianAthleteLink";
 import { AuditLog } from "../models/AuditLog";
 import { CoachComment } from "../models/CoachComment";
 import { Announcement } from "../models/Announcement";
@@ -285,10 +284,9 @@ router.get(
 );
 
 // ── Coach-led onboarding ──────────────────────────────────────────────────
-// A coach provisions athletes/guardians in their own academy. Scoped & audited;
-// the coach can only ever create `athlete`/`guardian` roles (never coach/admin)
-// and only attach guardians to athletes assigned to them. Replaces the removed
-// admin provisioning surface — see CLAUDE.md "No admin".
+// A coach provisions athletes in their own academy. Scoped & audited; the
+// coach can only ever create `athlete` accounts (never coach/admin). Replaces
+// the removed admin provisioning surface — see CLAUDE.md "No admin".
 
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
@@ -458,6 +456,18 @@ router.post(
       return;
     }
 
+    // V1 product rule: one primary Coach at a time. A different coach already
+    // holding an active relationship with this athlete is a distinct, expected
+    // rejection — not the same case as "you already linked them" above.
+    const activeWithAnyCoach = await CoachAthleteAssignment.exists({
+      athleteId: profile._id,
+      status: "active",
+    });
+    if (activeWithAnyCoach) {
+      res.status(409).json({ error: "athlete_has_active_coach" });
+      return;
+    }
+
     const coachAcademyId = req.actor.academyId ?? undefined;
 
     try {
@@ -469,7 +479,10 @@ router.post(
       });
     } catch (err) {
       if ((err as { code?: number }).code === 11000) {
-        res.status(409).json({ error: "already_linked" });
+        // Either the already_linked pair-index or the one-active-coach index —
+        // the pre-checks above make this a defense-in-depth race case, not the
+        // common path, so a single generic conflict code is fine here.
+        res.status(409).json({ error: "athlete_has_active_coach" });
         return;
       }
       throw err;
@@ -496,93 +509,6 @@ router.post(
         position: profile.position ?? null,
       },
       linkedExisting: true,
-    });
-  }
-);
-
-/**
- * POST /api/coach/athletes/:athleteId/guardians
- * body: { name, email, relationship? }
- * Adds a guardian for an assigned athlete. Reuses an existing guardian account
- * if the email already belongs to one (e.g. a parent of two athletes).
- */
-router.post(
-  "/athletes/:athleteId/guardians",
-  writeRateLimit({ windowMs: 60_000, max: 40 }),
-  requireAthleteAccess("athleteId"),
-  async (req: Request, res: Response) => {
-    if (!req.actor) {
-      res.status(401).json({ error: "unauthenticated" });
-      return;
-    }
-    const name = reqStr(req.body?.name);
-    const email = reqStr(req.body?.email).toLowerCase();
-    const relationship = reqStr(req.body?.relationship) || undefined;
-    if (!name) return void res.status(400).json({ error: "invalid_name" });
-    if (!EMAIL_RE.test(email)) return void res.status(400).json({ error: "invalid_email" });
-
-    const athleteId = new Types.ObjectId(req.params.athleteId);
-    const academyId = req.actor.academyId ?? undefined;
-
-    const existing = await User.findOne({ email }).select("_id role name").lean();
-    if (existing && existing.role !== "guardian") {
-      res.status(409).json({ error: "email_already_exists" });
-      return;
-    }
-
-    let tempPassword: string | undefined;
-    let guardian: { _id: Types.ObjectId; name: string };
-
-    if (existing) {
-      guardian = { _id: existing._id, name: existing.name };
-      const active = await GuardianAthleteLink.exists({
-        guardianId: existing._id,
-        athleteId,
-        endedAt: null,
-      });
-      if (active) {
-        res.status(409).json({ error: "already_linked" });
-        return;
-      }
-    } else {
-      tempPassword = generateTempPassword();
-      const passwordHash = await bcrypt.hash(tempPassword, 10);
-      const user = await User.create({
-        email,
-        passwordHash,
-        role: "guardian",
-        name,
-        academyId,
-        isActive: true,
-        mustChangePassword: true,
-      });
-      guardian = { _id: user._id, name: user.name };
-    }
-
-    try {
-      await GuardianAthleteLink.create({
-        guardianId: guardian._id,
-        athleteId,
-        relationship,
-        endedAt: null,
-      });
-    } catch (err) {
-      // Roll back a brand-new guardian if the link can't be created.
-      if (!existing) await User.deleteOne({ _id: guardian._id }).catch(() => undefined);
-      if ((err as { code?: number }).code === 11000) {
-        res.status(409).json({ error: "already_linked" });
-        return;
-      }
-      throw err;
-    }
-
-    await auditAllow(req, "guardian", guardian._id, "guardian_linked");
-
-    res.status(201).json({
-      guardian: { userId: guardian._id.toString(), name: guardian.name, email },
-      relationship: relationship ?? null,
-      linkedExisting: Boolean(existing),
-      ...(tempPassword ? { tempPassword } : {}),
     });
   }
 );
@@ -944,8 +870,8 @@ router.post(
 /**
  * POST /api/coach/athletes/:athleteId/injuries
  * body: { bodyPart, description?, severity, restriction? }
- * Coach logs an injury for an assigned athlete and notifies assigned coaches
- * plus linked guardians. Severe injuries bypass quiet-hours/cap throttles.
+ * Coach logs an injury for an assigned athlete and notifies every assigned
+ * coach. Severe injuries bypass quiet-hours/cap throttles.
  */
 router.post(
   "/athletes/:athleteId/injuries",
@@ -971,10 +897,9 @@ router.post(
       restriction,
     });
 
-    const [profile, assignedCoaches, guardians] = await Promise.all([
+    const [profile, assignedCoaches] = await Promise.all([
       AthleteProfile.findById(athleteId).select("userId academyId").lean(),
       CoachAthleteAssignment.find({ athleteId, endedAt: null }).select("coachId").lean(),
-      GuardianAthleteLink.find({ athleteId, endedAt: null }).select("guardianId").lean(),
     ]);
     const athleteUser = profile?.userId
       ? await User.findById(profile.userId).select("name").lean()
@@ -1016,43 +941,6 @@ router.post(
             title,
             body: alertBody,
             link: coachLink,
-            academyId,
-            entityRef: { collection: "Injury", id: created._id as Types.ObjectId },
-            timezone,
-            override: isSevere,
-          },
-          { createInAppNotification: false }
-        );
-      })
-    );
-
-    await Promise.all(
-      guardians.map(async (g) => {
-        const guardianUserId = g.guardianId as Types.ObjectId;
-        await createNotification({
-          recipientUserId: guardianUserId,
-          type: "injury_alert",
-          title,
-          body: alertBody,
-          priority: isSevere ? "high" : "medium",
-          link: "/guardian/dashboard",
-          academyId,
-        });
-        const timezone = await resolveTimezoneForUser({
-          userId: guardianUserId,
-          role: "guardian",
-          academyId,
-        });
-        await evaluateAndDispatch(
-          {
-            userId: guardianUserId,
-            type: "injury_alert",
-            category: "alerts",
-            priorityTier: isSevere ? 1 : 2,
-            dedupKey: `injury_alert:${created._id.toString()}:${guardianUserId.toString()}`,
-            title,
-            body: alertBody,
-            link: "/guardian/dashboard",
             academyId,
             entityRef: { collection: "Injury", id: created._id as Types.ObjectId },
             timezone,

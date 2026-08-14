@@ -16,11 +16,11 @@ function buildApp() {
   return app;
 }
 
-async function makeUser(role: "coach" | "athlete" | "guardian", name: string) {
+async function makeUser(role: "coach" | "athlete", name: string) {
   return User.create({ email: `${name}@test.io`, passwordHash: "x", role, name });
 }
 
-function tokenFor(userId: Types.ObjectId, role: "coach" | "athlete" | "guardian") {
+function tokenFor(userId: Types.ObjectId, role: "coach" | "athlete") {
   return signAccessToken({ sub: userId.toString(), role });
 }
 
@@ -52,7 +52,7 @@ describe("POST /api/tour/narrate — access", () => {
     expect(res.status).toBe(401);
   });
 
-  test.each(["coach", "athlete", "guardian"] as const)("allows a %s to call it (no requireRole gate)", async (role) => {
+  test.each(["coach", "athlete"] as const)("allows a %s to call it (no requireRole gate)", async (role) => {
     const app = buildApp();
     const user = await makeUser(role, `${role}-user`);
     const token = tokenFor(user._id as Types.ObjectId, role);

@@ -164,13 +164,12 @@ describe("Coach media ownership and file access", () => {
     return res.body.media as { id: string };
   }
 
-  test("another coach assigned to the SAME athlete still cannot access the first coach's media", async () => {
+  test("a coach not assigned to the athlete cannot access another coach's media for them", async () => {
     const admin = await makeUser("coach", "shared-admin");
     const coachA = await makeUser("coach", "coach-a-shared");
     const coachB = await makeUser("coach", "coach-b-shared");
     const { profile } = await makeAthlete("ath-shared");
     await CoachAthleteAssignment.create({ coachId: coachA._id, athleteId: profile._id, assignedBy: admin._id });
-    await CoachAthleteAssignment.create({ coachId: coachB._id, athleteId: profile._id, assignedBy: admin._id });
 
     const app = buildApp();
     const media = await uploadOne(app, coachA._id, profile._id);

@@ -14,7 +14,7 @@ import { generateTempPassword } from "../lib/tempPassword";
  * the owner exists, everything else cascades in-app:
  *
  *   owner → creates coaches (POST /api/coach/coaches)
- *   coach → creates athletes + guardians (POST /api/coach/athletes …)
+ *   coach → creates athletes (POST /api/coach/athletes …)
  *
  * Usage (from repo root):
  *   npm run create-owner --workspace server -- \

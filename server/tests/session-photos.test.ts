@@ -176,30 +176,24 @@ describe("Session-photo visibility — no send gate, unlike WorkoutMedia", () =>
     expect(res.status).toBe(404);
   });
 
-  test("a different coach (even if assigned to the athlete) cannot view another coach's upload", async () => {
-    const admin = await makeUser("coach", "shared-admin2");
-    const coachA = await makeUser("coach", "coach-a2");
-    const coachB = await makeUser("coach", "coach-b2");
-    const { profile } = await makeAthlete("ath-shared2");
-    await CoachAthleteAssignment.create({ coachId: coachA._id, athleteId: profile._id, assignedBy: admin._id });
-    await CoachAthleteAssignment.create({ coachId: coachB._id, athleteId: profile._id, assignedBy: admin._id });
+  test("a coach not assigned to the athlete at all cannot view the session photo (requireAthleteAccess gate)", async () => {
+    const { coach, profile } = await makeCoachWithAthlete("coach-a2", "ath-shared2");
+    const outsider = await makeUser("coach", "coach-b2");
     const app = buildApp();
 
     const upload = await request(app)
       .post(`/api/coach/athletes/${profile._id.toString()}/training/AM/photos`)
-      .set("Authorization", `Bearer ${tokenFor(coachA._id, "coach")}`)
+      .set("Authorization", `Bearer ${tokenFor(coach._id, "coach")}`)
       .field("date", TODAY_STR)
       .attach("file", PNG_BYTES, { filename: "a.png", contentType: "image/png" });
     expect(upload.status).toBe(201);
 
-    // Coach B is assigned to the same athlete, so requireAthleteAccess passes —
-    // but the photo route itself has no additional coach-ownership gate (unlike
-    // WorkoutMedia), matching the shared/no-gate nature of session notes.
     const photoId = upload.body.photo.id;
     const res = await request(app)
       .get(`/api/coach/athletes/${profile._id.toString()}/training/AM/photos/${photoId}/file`)
-      .set("Authorization", `Bearer ${tokenFor(coachB._id, "coach")}`);
-    expect(res.status).toBe(200);
+      .set("Authorization", `Bearer ${tokenFor(outsider._id, "coach")}`);
+    expect(res.status).toBe(403);
+    expect(res.body.error).toBe("not_in_assignments");
   });
 });
 

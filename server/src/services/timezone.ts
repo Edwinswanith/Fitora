@@ -30,9 +30,9 @@ export function safeTimezone(tz: string | null | undefined): string {
 
 /**
  * Resolves the timezone to evaluate quiet-hours/reminder-times in for a given
- * user: athletes have their own `AthleteProfile.timezone`; coaches/guardians
- * have no per-user timezone field, so we use their academy's; everyone else
- * (no academy) falls back to UTC.
+ * user: athletes have their own `AthleteProfile.timezone`; coaches have no
+ * per-user timezone field, so we use their academy's; everyone else (no
+ * academy) falls back to UTC.
  */
 export async function resolveTimezoneForUser(params: {
   userId: Types.ObjectId;

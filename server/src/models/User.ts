@@ -1,6 +1,6 @@
 import { Schema, model, Types, type InferSchemaType, type Model } from "mongoose";
 
-export const USER_ROLES = ["coach", "athlete", "guardian"] as const;
+export const USER_ROLES = ["coach", "athlete"] as const;
 export type UserRole = (typeof USER_ROLES)[number];
 
 // Profile-photo alternative: a small catalog of bundled badge icons the client

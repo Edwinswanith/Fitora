@@ -26,7 +26,7 @@ SplashScreen.preventAutoHideAsync().catch(() => undefined);
 const KNOWN_PUSH_ROUTES = [
   "/athlete/dashboard", "/athlete/check-in", "/athlete/rpe", "/athlete/water", "/athlete/trends",
   "/coach/dashboard", "/coach/athletes", "/coach/messages", "/coach/announcements", "/coach/coaches",
-  "/guardian/dashboard", "/guardian/athletes", "/account", "/notifications",
+  "/account", "/notifications",
 ];
 
 function Gate() {

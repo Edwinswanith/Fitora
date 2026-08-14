@@ -18,7 +18,7 @@ import { fireMascotReaction } from "../lib/tour/reactions";
 const KNOWN_MOBILE_ROUTES = [
   "/athlete/dashboard", "/athlete/check-in", "/athlete/rpe", "/athlete/water", "/athlete/trends",
   "/coach/dashboard", "/coach/athletes", "/coach/messages", "/coach/announcements", "/coach/coaches",
-  "/guardian/dashboard", "/guardian/athletes", "/account", "/notifications",
+  "/account", "/notifications",
 ];
 
 function parseQuery(q: string): Record<string, string> {

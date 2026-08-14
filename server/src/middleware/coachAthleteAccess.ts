@@ -2,22 +2,11 @@ import type { Request, Response, NextFunction } from "express";
 import { Types } from "mongoose";
 import { CoachAthleteAssignment } from "../models/CoachAthleteAssignment";
 import { AthleteProfile, type AthleteProfileDoc } from "../models/AthleteProfile";
-import { GuardianAthleteLink } from "../models/GuardianAthleteLink";
 import { AuditLog } from "../models/AuditLog";
 
 async function loadAssignedAthleteIds(coachUserId: Types.ObjectId): Promise<Types.ObjectId[]> {
   const rows = await CoachAthleteAssignment.find({
     coachId: coachUserId,
-    endedAt: null,
-  })
-    .select("athleteId")
-    .lean();
-  return rows.map((r) => r.athleteId as Types.ObjectId);
-}
-
-async function loadLinkedAthleteIds(guardianUserId: Types.ObjectId): Promise<Types.ObjectId[]> {
-  const rows = await GuardianAthleteLink.find({
-    guardianId: guardianUserId,
     endedAt: null,
   })
     .select("athleteId")
@@ -36,8 +25,6 @@ export async function loadScope(
   // read). Here we only load the role-specific athlete-scope sets.
   if (req.actor.role === "coach") {
     req.actor.assignedAthleteIds = await loadAssignedAthleteIds(req.actor.userId);
-  } else if (req.actor.role === "guardian") {
-    req.actor.linkedAthleteIds = await loadLinkedAthleteIds(req.actor.userId);
   } else if (req.actor.role === "athlete") {
     const profile = await AthleteProfile.findOne({ userId: req.actor.userId })
       .select("_id")
@@ -84,7 +71,7 @@ async function auditAthleteDeny(
 
 /**
  * Sync check that an actor may access a given athlete. Enforces the
- * coach (assigned-only) / guardian (linked-only) / athlete (self-only) scopes.
+ * coach (assigned-only) / athlete (self-only) scopes.
  */
 export function assertCanAccessAthlete(
   actor: NonNullable<Request["actor"]>,
@@ -95,12 +82,6 @@ export function assertCanAccessAthlete(
   if (actor.role === "coach") {
     const assigned = actor.assignedAthleteIds ?? [];
     if (!assigned.some((id) => id.equals(targetId))) forbid("not_in_assignments");
-    return;
-  }
-
-  if (actor.role === "guardian") {
-    const linked = actor.linkedAthleteIds ?? [];
-    if (!linked.some((id) => id.equals(targetId))) forbid("not_linked_guardian");
     return;
   }
 

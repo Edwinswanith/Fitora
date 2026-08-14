@@ -10,7 +10,6 @@ declare global {
         academyId?: Types.ObjectId | null;
         isAcademyOwner?: boolean;
         assignedAthleteIds?: Types.ObjectId[];
-        linkedAthleteIds?: Types.ObjectId[];
         athleteProfileId?: Types.ObjectId;
       };
     }

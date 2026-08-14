@@ -5,7 +5,6 @@ import request from "supertest";
 import { User } from "../src/models/User";
 import { AthleteProfile } from "../src/models/AthleteProfile";
 import { CoachAthleteAssignment } from "../src/models/CoachAthleteAssignment";
-import { GuardianAthleteLink } from "../src/models/GuardianAthleteLink";
 import { Injury } from "../src/models/Injury";
 import { Notification } from "../src/models/Notification";
 import { DeviceToken } from "../src/models/DeviceToken";
@@ -24,7 +23,7 @@ function buildApp() {
   return app;
 }
 
-async function makeUser(role: "coach" | "athlete" | "guardian", name: string) {
+async function makeUser(role: "coach" | "athlete", name: string) {
   return User.create({ email: `${name}@test.io`, passwordHash: "x", role, name });
 }
 
@@ -58,21 +57,17 @@ async function seedScenario() {
   const athleteUser = await makeUser("athlete", "arjun");
   const profile = await AthleteProfile.create({ userId: athleteUser._id, sport: "athletics" });
   await CoachAthleteAssignment.create({ coachId: coach._id, athleteId: profile._id, assignedBy: admin._id });
-  const guardianUser = await makeUser("guardian", "rao");
-  await GuardianAthleteLink.create({ guardianId: guardianUser._id, athleteId: profile._id });
   // Give every recipient a device token so the push path actually runs, and
   // disable quiet hours so these tests don't depend on the real wall-clock
   // time the suite happens to run at (default quiet hours are enabled).
   await DeviceToken.create({ userId: coach._id, platform: "android", token: `tok-${coach._id}` });
-  await DeviceToken.create({ userId: guardianUser._id, platform: "android", token: `tok-${guardianUser._id}` });
   await NotificationPreference.create({ userId: coach._id, quietHours: { enabled: false } });
-  await NotificationPreference.create({ userId: guardianUser._id, quietHours: { enabled: false } });
-  return { coach, athleteUser, profile, guardianUser };
+  return { coach, athleteUser, profile };
 }
 
 describe("POST /api/coach/athletes/:athleteId/injuries", () => {
-  test("creates the injury and fans out to every assigned coach + linked guardian", async () => {
-    const { coach, profile, guardianUser } = await seedScenario();
+  test("creates the injury and fans out to every assigned coach", async () => {
+    const { coach, profile } = await seedScenario();
     const res = await request(buildApp())
       .post(`/api/coach/athletes/${profile._id}/injuries`)
       .set("Authorization", `Bearer ${tokenFor(coach._id, "coach")}`)
@@ -83,10 +78,9 @@ describe("POST /api/coach/athletes/:athleteId/injuries", () => {
     expect(await Injury.countDocuments({ athleteId: profile._id })).toBe(1);
 
     expect(await Notification.countDocuments({ recipientUserId: coach._id, type: "injury_alert" })).toBe(1);
-    expect(await Notification.countDocuments({ recipientUserId: guardianUser._id, type: "injury_alert" })).toBe(1);
 
     const decisions = await NotificationDecision.find({ type: "injury_alert" }).lean();
-    expect(decisions).toHaveLength(2);
+    expect(decisions).toHaveLength(1);
     expect(decisions.every((d) => d.status === "sent")).toBe(true);
   });
 

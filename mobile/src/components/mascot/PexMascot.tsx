@@ -69,8 +69,6 @@ function resolveColor(token: ColorToken, tone: PexTone): string {
       return ROLE_THEMES.coach.accent;
     case "athlete":
       return ROLE_THEMES.athlete.accent;
-    case "guardian":
-      return ROLE_THEMES.guardian.accent;
     default:
       return colors.ink;
   }

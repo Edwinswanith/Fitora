@@ -5,11 +5,9 @@ import request from "supertest";
 import { User } from "../src/models/User";
 import { AthleteProfile } from "../src/models/AthleteProfile";
 import { CoachAthleteAssignment } from "../src/models/CoachAthleteAssignment";
-import { GuardianAthleteLink } from "../src/models/GuardianAthleteLink";
 import authRouter, { __resetLoginRateLimit } from "../src/routes/auth";
 import coachRouter from "../src/routes/coach";
 import athleteRouter from "../src/routes/athlete";
-import guardianRouter from "../src/routes/guardian";
 import { signAccessToken } from "../src/lib/tokens";
 
 let mongo: MongoMemoryServer;
@@ -20,7 +18,6 @@ function buildApp() {
   app.use("/api/auth", authRouter);
   app.use("/api/coach", coachRouter);
   app.use("/api/athlete", athleteRouter);
-  app.use("/api/guardian", guardianRouter);
   return app;
 }
 
@@ -266,17 +263,17 @@ describe("Coach links an existing (self-registered) athlete", () => {
     const coach = await makeCoach("kumar");
     const app = buildApp();
     const token = coachToken(coach._id);
-    await User.create({ email: "aguardian@test.io", passwordHash: "x", role: "guardian", name: "G" });
+    await User.create({ email: "another.coach@test.io", passwordHash: "x", role: "coach", name: "C" });
 
     const unknown = await request(app).post("/api/coach/athletes/link").set("Authorization", `Bearer ${token}`).send({ email: "nobody@solo.io" });
     expect(unknown.status).toBe(404);
     expect(unknown.body.error).toBe("athlete_not_found");
 
-    const nonAthlete = await request(app).post("/api/coach/athletes/link").set("Authorization", `Bearer ${token}`).send({ email: "aguardian@test.io" });
+    const nonAthlete = await request(app).post("/api/coach/athletes/link").set("Authorization", `Bearer ${token}`).send({ email: "another.coach@test.io" });
     expect(nonAthlete.status).toBe(404);
   });
 
-  test("two coaches can both link the same athlete (shared squad member)", async () => {
+  test("one primary coach at a time: a second coach cannot link an athlete who already has an active coach", async () => {
     const coachA = await makeCoach("a");
     const coachB = await makeCoach("b");
     const app = buildApp();
@@ -285,9 +282,10 @@ describe("Coach links an existing (self-registered) athlete", () => {
     const ra = await request(app).post("/api/coach/athletes/link").set("Authorization", `Bearer ${coachToken(coachA._id)}`).send({ email: "shared@solo.io" });
     const rb = await request(app).post("/api/coach/athletes/link").set("Authorization", `Bearer ${coachToken(coachB._id)}`).send({ email: "shared@solo.io" });
     expect(ra.status).toBe(201);
-    expect(rb.status).toBe(201);
+    expect(rb.status).toBe(409);
+    expect(rb.body.error).toBe("athlete_has_active_coach");
     const profile = await AthleteProfile.findOne({}).lean();
-    expect(await CoachAthleteAssignment.countDocuments({ athleteId: profile!._id, endedAt: null })).toBe(2);
+    expect(await CoachAthleteAssignment.countDocuments({ athleteId: profile!._id, endedAt: null })).toBe(1);
   });
 });
 
@@ -375,92 +373,3 @@ describe("Academy owner manages coaches", () => {
   });
 });
 
-describe("Coach-led guardian onboarding", () => {
-  async function coachWithAthlete(coachName: string) {
-    const coach = await makeCoach(coachName);
-    const app = buildApp();
-    const token = coachToken(coach._id);
-    const created = await request(app)
-      .post("/api/coach/athletes")
-      .set("Authorization", `Bearer ${token}`)
-      .send({ name: "Athlete", email: `${coachName}-ath@acme.test`, sport: "football" });
-    return { coach, token, app, athleteId: created.body.athlete.athleteId as string };
-  }
-
-  test("adds a guardian who can log in and see the linked athlete", async () => {
-    const { token, app, athleteId } = await coachWithAthlete("kumar");
-
-    const res = await request(app)
-      .post(`/api/coach/athletes/${athleteId}/guardians`)
-      .set("Authorization", `Bearer ${token}`)
-      .send({ name: "Parent", email: "parent@acme.test", relationship: "father" });
-
-    expect(res.status).toBe(201);
-    expect(res.body.linkedExisting).toBe(false);
-    expect(typeof res.body.tempPassword).toBe("string");
-
-    const login = await request(app)
-      .post("/api/auth/login")
-      .send({ email: "parent@acme.test", password: res.body.tempPassword });
-    expect(login.status).toBe(200);
-    expect(login.body.user.role).toBe("guardian");
-
-    const linked = await request(app)
-      .get("/api/guardian/athletes")
-      .set("Authorization", `Bearer ${login.body.accessToken}`);
-    expect(linked.status).toBe(200);
-    expect(linked.body.athletes.map((a: { athleteId: string }) => a.athleteId)).toContain(athleteId);
-  });
-
-  test("reuses an existing guardian account (parent of two athletes) — no new user, no temp password", async () => {
-    const { token, app, athleteId } = await coachWithAthlete("kumar");
-    // second athlete for the same coach
-    const second = await request(app)
-      .post("/api/coach/athletes")
-      .set("Authorization", `Bearer ${token}`)
-      .send({ name: "Sibling", email: "sibling@acme.test", sport: "football" });
-    const athleteId2 = second.body.athlete.athleteId as string;
-
-    const first = await request(app)
-      .post(`/api/coach/athletes/${athleteId}/guardians`)
-      .set("Authorization", `Bearer ${token}`)
-      .send({ name: "Parent", email: "parent@acme.test", relationship: "mother" });
-    expect(first.status).toBe(201);
-
-    const reuse = await request(app)
-      .post(`/api/coach/athletes/${athleteId2}/guardians`)
-      .set("Authorization", `Bearer ${token}`)
-      .send({ name: "Parent", email: "parent@acme.test", relationship: "mother" });
-    expect(reuse.status).toBe(201);
-    expect(reuse.body.linkedExisting).toBe(true);
-    expect(reuse.body.tempPassword).toBeUndefined();
-
-    // exactly one guardian User, two links
-    expect(await User.countDocuments({ role: "guardian" })).toBe(1);
-    const guardian = await User.findOne({ role: "guardian" }).lean();
-    expect(await GuardianAthleteLink.countDocuments({ guardianId: guardian!._id, endedAt: null })).toBe(2);
-  });
-
-  test("duplicate active guardian link → 409 already_linked", async () => {
-    const { token, app, athleteId } = await coachWithAthlete("kumar");
-    const body = { name: "Parent", email: "parent@acme.test", relationship: "father" };
-    await request(app).post(`/api/coach/athletes/${athleteId}/guardians`).set("Authorization", `Bearer ${token}`).send(body);
-    const dup = await request(app).post(`/api/coach/athletes/${athleteId}/guardians`).set("Authorization", `Bearer ${token}`).send(body);
-    expect(dup.status).toBe(409);
-    expect(dup.body.error).toBe("already_linked");
-  });
-
-  test("coach A cannot add a guardian to coach B's athlete → 403", async () => {
-    const { athleteId } = await coachWithAthlete("kumar"); // coach A's athlete
-    const coachB = await makeCoach("singh");
-    const app = buildApp();
-    const tokenB = coachToken(coachB._id);
-
-    const res = await request(app)
-      .post(`/api/coach/athletes/${athleteId}/guardians`)
-      .set("Authorization", `Bearer ${tokenB}`)
-      .send({ name: "Parent", email: "intruder@acme.test", relationship: "father" });
-    expect(res.status).toBe(403);
-    expect(res.body.error).toBe("not_in_assignments");
-  });
-});

@@ -6,7 +6,6 @@ import { User } from "../src/models/User";
 import { Academy } from "../src/models/Academy";
 import { AthleteProfile } from "../src/models/AthleteProfile";
 import { CoachAthleteAssignment } from "../src/models/CoachAthleteAssignment";
-import { GuardianAthleteLink } from "../src/models/GuardianAthleteLink";
 import { Wellness } from "../src/models/Wellness";
 import { Attendance } from "../src/models/Attendance";
 import { TrainingSession } from "../src/models/TrainingSession";
@@ -16,7 +15,6 @@ import { AthleteNote } from "../src/models/AthleteNote";
 import { CoachComment } from "../src/models/CoachComment";
 import athleteRouter from "../src/routes/athlete";
 import coachRouter from "../src/routes/coach";
-import guardianRouter from "../src/routes/guardian";
 import {
   buildWellnessSeries,
   buildSessionSeries,
@@ -35,7 +33,6 @@ function buildApp() {
   app.use(express.json());
   app.use("/api/athlete", athleteRouter);
   app.use("/api/coach", coachRouter);
-  app.use("/api/guardian", guardianRouter);
   return app;
 }
 
@@ -202,22 +199,6 @@ describe("coach analytics (scoped)", () => {
     const today = res.body.series.at(-1);
     expect(today.athleteCount).toBe(1);
     expect(today.avgLoad).toBe(400); // only `mine`, not 540
-  });
-});
-
-describe("guardian analytics (removed)", () => {
-  test("guardians have no analytics access — endpoint doesn't exist", async () => {
-    // Guardians are scoped to Sleep quality / Water intake / Attendance only
-    // (see server/src/routes/guardian.ts); analytics/chart endpoints were
-    // deliberately removed from the guardian router.
-    const guardian = await makeUser("guardian", "parent");
-    const child = await makeAthlete("child");
-    await GuardianAthleteLink.create({ guardianId: guardian._id, athleteId: child.profile._id });
-    const app = buildApp();
-    const t = tokenFor(guardian._id, "guardian");
-
-    const res = await request(app).get(`/api/guardian/athletes/${child.profile._id}/analytics/wellness`).set("Authorization", `Bearer ${t}`);
-    expect(res.status).toBe(404);
   });
 });
 

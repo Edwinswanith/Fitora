@@ -2,7 +2,7 @@ import { Schema, model, Types, type InferSchemaType, type Model } from "mongoose
 
 /**
  * A coach broadcast: one message posted once and shown to all of that coach's
- * currently-assigned athletes (and their guardians). Distinct from CoachComment,
+ * currently-assigned athletes. Distinct from CoachComment,
  * which is a private one-to-one note on a single athlete. Visibility is resolved
  * at read time from CoachAthleteAssignment (by coachId), so it always reflects
  * the coach's current squad without snapshotting a recipient list.

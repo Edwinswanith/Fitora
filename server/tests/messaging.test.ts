@@ -196,9 +196,17 @@ describe("Coach⇄athlete direct messaging", () => {
   test("GET /api/athlete/coaches lists active coaches only (for starting a chat)", async () => {
     const app = buildApp();
     const { coach, athleteUser, profile } = await seedPair();
-    // A second coach assigned to the same athlete, plus an unrelated coach.
-    const coach2 = await User.create({ email: "c2@m.io", passwordHash: "x", role: "coach", name: "Coach Zed" });
-    await CoachAthleteAssignment.create({ coachId: coach2._id, athleteId: profile._id, assignedBy: coach2._id, endedAt: null });
+    // A coach whose relationship with this athlete already ended, plus an
+    // unrelated coach who was never assigned — neither should show up
+    // (one primary active coach at a time — see CoachAthleteAssignment).
+    const formerCoach = await User.create({ email: "c2@m.io", passwordHash: "x", role: "coach", name: "Coach Zed" });
+    await CoachAthleteAssignment.create({
+      coachId: formerCoach._id,
+      athleteId: profile._id,
+      assignedBy: formerCoach._id,
+      endedAt: new Date(),
+      status: "ended",
+    });
     await User.create({ email: "c3@m.io", passwordHash: "x", role: "coach", name: "Unrelated" });
 
     const res = await request(app)
@@ -206,7 +214,7 @@ describe("Coach⇄athlete direct messaging", () => {
       .set("Authorization", `Bearer ${athleteToken(athleteUser._id)}`);
     expect(res.status).toBe(200);
     const names = res.body.coaches.map((c: { name: string }) => c.name).sort();
-    expect(names).toEqual(["Coach Ada", "Coach Zed"]);
+    expect(names).toEqual(["Coach Ada"]);
     expect(res.body.coaches.map((c: { coachId: string }) => c.coachId)).toContain(coach._id.toString());
   });
 

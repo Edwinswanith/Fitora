@@ -65,10 +65,10 @@ export function TourOverlay() {
     ? { x: rect.x - padding.left, y: rect.y - padding.top, width: rect.width + padding.left + padding.right, height: rect.height + padding.top + padding.bottom }
     : null;
 
-  // A step's target can legitimately never mount (e.g. the guardian athlete
-  // switcher only renders with 2+ linked athletes) while the step itself
-  // still reports ready — without this fallback the overlay would render
-  // nothing at all: a silent stall with no dim, no mascot, and no bubble.
+  // A step's target can legitimately never mount (e.g. a switcher control
+  // that only renders with 2+ items) while the step itself still reports
+  // ready — without this fallback the overlay would render nothing at all:
+  // a silent stall with no dim, no mascot, and no bubble.
   const placement =
     !state.landing && paddedRect
       ? computeTourGroupPlacement(paddedRect, { width, height }, insets)

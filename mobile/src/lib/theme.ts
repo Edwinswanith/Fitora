@@ -58,24 +58,11 @@ export const ROLE_THEMES: Record<Role, RoleTheme> = {
     accentSoft: "rgba(239,169,78,0.18)",
     icon: "flash",
   },
-  guardian: {
-    role: "guardian",
-    label: "Guardian",
-    heading: "Stay in the loop.",
-    subcopy: "Follow your athlete's readiness, sessions and coach feedback.",
-    tagline: "Follow your athlete",
-    accent: "#0b6e7c",
-    accentStrong: "#0a5e6a",
-    accentInk: "#ffffff",
-    accentSoft: "rgba(11,110,124,0.16)",
-    icon: "heart",
-  },
 };
 
 export const ROLE_THEME_LIST: RoleTheme[] = [
   ROLE_THEMES.athlete,
   ROLE_THEMES.coach,
-  ROLE_THEMES.guardian,
 ];
 
 export const radius = { sm: 8, md: 10, lg: 13, pill: 999 } as const;

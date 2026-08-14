@@ -41,7 +41,7 @@ export async function requireAuth(
       return;
     }
     // Also pull the two scope fields here so loadScope doesn't need a second
-    // User read on every coach/athlete/guardian request (one round-trip, not two).
+    // User read on every coach/athlete request (one round-trip, not two).
     const user = await User.findById(sub)
       .select("_id role isActive academyId isAcademyOwner")
       .lean();

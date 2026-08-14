@@ -6,7 +6,6 @@ import { User } from "../src/models/User";
 import { Academy } from "../src/models/Academy";
 import { AthleteProfile } from "../src/models/AthleteProfile";
 import { CoachAthleteAssignment } from "../src/models/CoachAthleteAssignment";
-import { GuardianAthleteLink } from "../src/models/GuardianAthleteLink";
 import { AuditLog } from "../src/models/AuditLog";
 import {
   assertCanAccessAthlete,
@@ -24,7 +23,7 @@ async function makeAcademy(slug: string) {
   return Academy.create({ name: slug, slug });
 }
 
-async function makeUser(role: "coach" | "athlete" | "guardian", opts: {
+async function makeUser(role: "coach" | "athlete", opts: {
   name: string;
   academyId?: Types.ObjectId;
 }) {
@@ -59,21 +58,6 @@ async function coachActor(coachUserId: Types.ObjectId, academyId?: Types.ObjectI
     role: "coach" as const,
     academyId: academyId ?? null,
     assignedAthleteIds: rows.map((r) => r.athleteId as Types.ObjectId),
-  };
-}
-
-async function guardianActor(guardianUserId: Types.ObjectId) {
-  const rows = await GuardianAthleteLink.find({
-    guardianId: guardianUserId,
-    endedAt: null,
-  })
-    .select("athleteId")
-    .lean();
-  return {
-    userId: guardianUserId,
-    role: "guardian" as const,
-    academyId: null,
-    linkedAthleteIds: rows.map((r) => r.athleteId as Types.ObjectId),
   };
 }
 
@@ -172,43 +156,6 @@ describe("RBAC: athlete scope", () => {
     };
     expect(() => assertCanAccessAthlete(actor, meProfile._id)).not.toThrow();
     expect(() => assertCanAccessAthlete(actor, otherProfile._id)).toThrow("not_self");
-  });
-});
-
-describe("RBAC: guardian scope", () => {
-  test("5. Guardian can see only their linked athlete", async () => {
-    const guardian = await makeUser("guardian", { name: "parent-1" });
-    const { profile: child } = await makeAthleteWithProfile("child");
-    const { profile: notMyChild } = await makeAthleteWithProfile("not-my-child");
-
-    await GuardianAthleteLink.create({
-      guardianId: guardian._id,
-      athleteId: child._id,
-      relationship: "parent",
-    });
-
-    const actor = await guardianActor(guardian._id);
-    expect(actor.linkedAthleteIds.map(String)).toEqual([child._id.toString()]);
-    expect(() => assertCanAccessAthlete(actor, child._id)).not.toThrow();
-    expect(() => assertCanAccessAthlete(actor, notMyChild._id)).toThrow(
-      "not_linked_guardian"
-    );
-  });
-
-  test("5b. Ended guardian link removes access", async () => {
-    const guardian = await makeUser("guardian", { name: "parent-end" });
-    const { profile: child } = await makeAthleteWithProfile("former-child");
-
-    await GuardianAthleteLink.create({
-      guardianId: guardian._id,
-      athleteId: child._id,
-      endedAt: new Date(),
-    });
-
-    const actor = await guardianActor(guardian._id);
-    expect(() => assertCanAccessAthlete(actor, child._id)).toThrow(
-      "not_linked_guardian"
-    );
   });
 });
 

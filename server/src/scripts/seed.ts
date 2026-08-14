@@ -5,7 +5,6 @@ import { Academy } from "../models/Academy";
 import { User } from "../models/User";
 import { AthleteProfile } from "../models/AthleteProfile";
 import { CoachAthleteAssignment } from "../models/CoachAthleteAssignment";
-import { GuardianAthleteLink } from "../models/GuardianAthleteLink";
 import { Attendance } from "../models/Attendance";
 import { TrainingSession } from "../models/TrainingSession";
 import { Wellness } from "../models/Wellness";
@@ -29,7 +28,7 @@ function utcDay(daysAgo = 0): Date {
 
 async function upsertUser(args: {
   email: string;
-  role: "coach" | "athlete" | "guardian";
+  role: "coach" | "athlete";
   name: string;
   password: string;
   academyId?: mongoose.Types.ObjectId;
@@ -89,14 +88,6 @@ async function run() {
     role: "coach",
     name: "Coach Singh",
     password: "Coach@123",
-    academyId: academy._id,
-  });
-
-  const guardianUser = await upsertUser({
-    email: "parent.rao@acme.test",
-    role: "guardian",
-    name: "Mr. Rao",
-    password: "Guardian@123",
     academyId: academy._id,
   });
 
@@ -169,20 +160,7 @@ async function run() {
     );
   }
 
-  // Guardian → links to Arjun
   const arjun = athletes[0];
-  await GuardianAthleteLink.updateOne(
-    { guardianId: guardianUser._id, athleteId: arjun.profile._id, endedAt: null },
-    {
-      $setOnInsert: {
-        guardianId: guardianUser._id,
-        athleteId: arjun.profile._id,
-        relationship: "father",
-        endedAt: null,
-      },
-    },
-    { upsert: true }
-  );
 
   // ── Backfill ~30 days of realistic daily history per athlete ──────────────
   // Deterministic (no Math.random) so re-seeds reproduce the same charts. Each
@@ -407,7 +385,7 @@ async function run() {
   ]);
 
   // ── Sample in-app notifications, per role (idempotent: clear + reinsert) ──
-  const notifyRecipients = [coach._id, arjun.user._id, guardianUser._id];
+  const notifyRecipients = [coach._id, arjun.user._id];
   await Notification.deleteMany({ recipientUserId: { $in: notifyRecipients } });
   const minsAgo = (m: number) => new Date(Date.now() - m * 60_000);
   await Notification.insertMany([
@@ -431,13 +409,6 @@ async function run() {
     { recipientUserId: arjun.user._id, academyId: academy._id, type: "streak_milestone", priority: "low",
       title: "7-day check-in streak", body: "Nice consistency — keep the daily logging going.",
       link: "/athlete/dashboard", readAt: minsAgo(120), createdAt: minsAgo(1440), updatedAt: minsAgo(1440) },
-    // Guardian Rao
-    { recipientUserId: guardianUser._id, academyId: academy._id, type: "coach_feedback", priority: "medium",
-      title: "Coach feedback for Arjun", body: "Strong session — keep sleep above 7h this week.",
-      link: "/guardian/dashboard", readAt: null, createdAt: minsAgo(200), updatedAt: minsAgo(200) },
-    { recipientUserId: guardianUser._id, academyId: academy._id, type: "weekly_summary", priority: "low",
-      title: "Arjun's weekly summary", body: "Readiness trending up · 5 sessions completed this week.",
-      link: "/guardian/dashboard", readAt: minsAgo(60), createdAt: minsAgo(2880), updatedAt: minsAgo(2880) },
   ]);
 
   // ── Sample coach broadcasts (Coach Kumar → his 3 assigned athletes) ──
@@ -468,7 +439,6 @@ async function run() {
     users: User,
     athletes: AthleteProfile,
     coach_assignments: CoachAthleteAssignment,
-    guardian_links: GuardianAthleteLink,
     attendance: Attendance,
     training_sessions: TrainingSession,
     wellness: Wellness,

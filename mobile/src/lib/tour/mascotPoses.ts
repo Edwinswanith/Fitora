@@ -38,8 +38,7 @@ export type ColorToken =
   | "caution"
   | "alert"
   | "coach"
-  | "athlete"
-  | "guardian";
+  | "athlete";
 
 export type PexShape =
   | {
@@ -119,7 +118,7 @@ export const PEX_POSES: Record<PexPose, PexPoseSpec> = {
       { kind: "path", d: "M36 100 Q22 84 30 62", stroke: "tone", strokeWidth: 4, linecap: "round" },
       { kind: "path", d: "M164 100 Q178 84 170 62", stroke: "tone", strokeWidth: 4, linecap: "round" },
       { kind: "circle", cx: 66, cy: 50, r: 2.6, fill: "athlete" },
-      { kind: "circle", cx: 134, cy: 46, r: 2.6, fill: "guardian" },
+      { kind: "circle", cx: 134, cy: 46, r: 2.6, fill: "ready" },
       { kind: "circle", cx: 100, cy: 34, r: 2.6, fill: "coach" },
     ],
   },

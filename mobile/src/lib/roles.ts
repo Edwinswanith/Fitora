@@ -1,14 +1,13 @@
 // Role to route mapping. Existing accounts always route by the role returned
 // from the server. First-time Google sign-ups use the selected role page.
 
-export type Role = "coach" | "athlete" | "guardian";
+export type Role = "coach" | "athlete";
 
-export const ROLES: Role[] = ["coach", "athlete", "guardian"];
+export const ROLES: Role[] = ["coach", "athlete"];
 
 export const ROLE_DASHBOARDS: Record<Role, string> = {
   coach: "/coach/dashboard",
   athlete: "/athlete/dashboard",
-  guardian: "/guardian/dashboard",
 };
 
 export function dashboardPathForRole(role: string): string | null {
