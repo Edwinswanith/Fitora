@@ -112,6 +112,10 @@ export const env = {
   upload: {
     dir: path.resolve(/* turbopackIgnore: true */ process.cwd(), process.env.UPLOAD_DIR ?? defaultUploadDir),
     maxSizeBytes: Number(process.env.MAX_UPLOAD_SIZE_MB ?? 8) * 1024 * 1024,
+    // Coach content-library videos (Phase 9) are full-length recordings, not
+    // short exercise demo clips — a much higher cap than the shared 8MB
+    // default, same disk/dir as everything else.
+    coachVideoMaxSizeBytes: Number(process.env.MAX_COACH_VIDEO_SIZE_MB ?? 250) * 1024 * 1024,
   },
   // Vision engine for turning a coach's workout image into a structured table.
   // When GEMINI_API_KEY is set, the real Gemini converter reads the actual image

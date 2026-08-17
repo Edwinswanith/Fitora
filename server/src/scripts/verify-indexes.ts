@@ -48,6 +48,8 @@ import "../models/CoachAvailability";
 import "../models/CoachAvailabilityException";
 import "../models/CoachSession";
 import "../models/CoachSessionSlotLock";
+import "../models/CoachVideo";
+import "../models/CoachVideoProgress";
 
 async function run() {
   await connectMongo();

@@ -26,6 +26,8 @@ import paymentWebhookRouter from "./routes/paymentWebhook";
 import coachAvailabilityRouter from "./routes/coachAvailability";
 import coachSessionsRouter from "./routes/coachSessions";
 import athleteSessionsRouter from "./routes/athleteSessions";
+import coachVideosRouter from "./routes/coachVideos";
+import athleteCoachVideosRouter from "./routes/athleteCoachVideos";
 import { errorHandler } from "./middleware/errorHandler";
 
 function isSameHostOrigin(origin: string, host: string | undefined): boolean {
@@ -120,6 +122,8 @@ export function createApp(): express.Express {
   app.use("/api/coach", coachAvailabilityRouter);
   app.use("/api/coach", coachSessionsRouter);
   app.use("/api/athlete", athleteSessionsRouter);
+  app.use("/api/coach", coachVideosRouter);
+  app.use("/api/athlete", athleteCoachVideosRouter);
 
   // Same router mounted under /api for Vercel's catch-all API proxy and outside
   // /api for standalone Express deployments.
