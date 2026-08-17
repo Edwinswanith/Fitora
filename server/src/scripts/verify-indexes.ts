@@ -50,6 +50,7 @@ import "../models/CoachSession";
 import "../models/CoachSessionSlotLock";
 import "../models/CoachVideo";
 import "../models/CoachVideoProgress";
+import "../models/CoachReview";
 
 async function run() {
   await connectMongo();

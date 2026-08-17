@@ -4,8 +4,10 @@ import { requireAuth } from "../middleware/auth";
 import { User } from "../models/User";
 import { CoachProfile } from "../models/CoachProfile";
 import { CoachPricingPlan } from "../models/CoachPricingPlan";
+import { CoachReview } from "../models/CoachReview";
 import { listMarketplaceCoaches, serializePublicCoachProfile } from "../services/coachProfile";
 import { avatarFilePath } from "../services/avatar";
+import { serializeReview } from "../services/coachReview";
 
 /**
  * Coach discovery — available to ANY authenticated User regardless of role
@@ -62,6 +64,24 @@ router.get("/coaches/:coachId", async (req: Request, res: Response) => {
 
   const pricingPlans = await CoachPricingPlan.find({ coachId, active: true }).sort({ priority: 1 }).lean();
   res.json({ profile: serializePublicCoachProfile(new Types.ObjectId(coachId), profile as never, user, pricingPlans as never) });
+});
+
+/** GET /marketplace/coaches/:coachId/reviews?page=&limit= — public, paginated, newest first. */
+router.get("/coaches/:coachId/reviews", async (req: Request, res: Response) => {
+  const coachId = req.params.coachId;
+  if (!Types.ObjectId.isValid(coachId)) return void res.status(400).json({ error: "invalid_coach_id" });
+
+  const page = clampInt(req.query.page, 1, 10_000, 1);
+  const limit = clampInt(req.query.limit, 1, 50, 20);
+  const [reviews, total] = await Promise.all([
+    CoachReview.find({ coachId })
+      .sort({ createdAt: -1 })
+      .skip((page - 1) * limit)
+      .limit(limit)
+      .lean(),
+    CoachReview.countDocuments({ coachId }),
+  ]);
+  res.json({ reviews: reviews.map((r) => serializeReview(r as never)), page, limit, total });
 });
 
 /** GET /marketplace/coaches/:coachId/avatar/file — only for marketplace-visible coaches. */

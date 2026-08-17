@@ -5,6 +5,7 @@ export type CoachRelationshipStatus = (typeof COACH_RELATIONSHIP_STATUSES)[numbe
 
 export const COACH_RELATIONSHIP_ENDED_REASONS = [
   "user_switched",
+  "athlete_left",
   "coach_ended",
   "subscription_cancelled",
   "subscription_expired",

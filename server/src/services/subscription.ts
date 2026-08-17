@@ -263,6 +263,34 @@ export async function cancelSubscription(
   return subscription;
 }
 
+/**
+ * Hard/immediate cancel — used when the underlying relationship is ending
+ * right now (Phase 10: coach removes an athlete, athlete leaves, or
+ * switches coaches), unlike the athlete's own self-serve cancelSubscription
+ * above (cancelAtPeriodEnd, access continues until the period ends).
+ * Provider-side cancel is called with atCycleEnd=false so billing actually
+ * stops immediately, matching "no relationship = no ongoing charge."
+ */
+export async function terminateSubscriptionForEndedRelationship(
+  subscription: HydratedDocument<AthleteCoachSubscriptionDoc>
+): Promise<void> {
+  if (!NON_TERMINAL_STATUSES.includes(subscription.status as (typeof NON_TERMINAL_STATUSES)[number])) return;
+
+  if (subscription.providerSubscriptionId) {
+    const provider = getPaymentProvider();
+    await provider.cancelSubscription(subscription.providerSubscriptionId, false).catch((err) => {
+      console.warn("[subscription] provider cancel failed during relationship end (non-fatal)", {
+        subscriptionId: subscription._id.toString(),
+        error: (err as Error).message,
+      });
+    });
+  }
+
+  subscription.status = "cancelled";
+  subscription.cancelledAt = new Date();
+  await subscription.save();
+}
+
 export function isExpiringSoon(
   subscription: HydratedDocument<AthleteCoachSubscriptionDoc>,
   thresholdDays = EXPIRING_SOON_THRESHOLD_DAYS
