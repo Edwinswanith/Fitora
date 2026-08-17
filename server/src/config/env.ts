@@ -127,6 +127,15 @@ export const env = {
     projectId: process.env.FCM_PROJECT_ID ?? "",
     serviceAccountJson: process.env.FCM_SERVICE_ACCOUNT_JSON ?? "",
   },
+  // Payment provider (Razorpay). Empty values keep services/paymentProvider.ts
+  // in mock mode — the full subscription lifecycle (checkout, webhook,
+  // activation, cancellation) is still exercisable and tested against the
+  // mock adapter with no live merchant account configured.
+  razorpay: {
+    keyId: process.env.RAZORPAY_KEY_ID ?? "",
+    keySecret: process.env.RAZORPAY_KEY_SECRET ?? "",
+    webhookSecret: process.env.RAZORPAY_WEBHOOK_SECRET ?? "",
+  },
   internalNotifications: {
     sweepSecret: requiredSecretFrom(["INTERNAL_SWEEP_SECRET", "CRON_SECRET"], "change_me_sweep_secret"),
   },

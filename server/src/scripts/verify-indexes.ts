@@ -41,6 +41,9 @@ import "../models/MealPlan";
 import "../models/MealPlanAssignment";
 import "../models/CoachProfile";
 import "../models/CoachPricingPlan";
+import "../models/AthleteCoachSubscription";
+import "../models/Payment";
+import "../models/PaymentWebhookEvent";
 
 async function run() {
   await connectMongo();

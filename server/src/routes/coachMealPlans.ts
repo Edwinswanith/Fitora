@@ -15,6 +15,7 @@ import {
   serializeMealPlanAssignment,
   MealPlanAssignmentError,
 } from "../services/mealPlanAssignment";
+import { checkFeatureEntitlement } from "../services/subscription";
 
 const router = Router();
 router.use(requireAuth, requireRole("coach"), loadScope);
@@ -219,6 +220,14 @@ router.post(
   requireAthleteAccess("athleteId"),
   async (req: Request, res: Response) => {
     if (!req.actor) return void res.status(401).json({ error: "unauthenticated" });
+
+    const entitlement = await checkFeatureEntitlement(
+      new Types.ObjectId(req.params.athleteId),
+      req.actor.userId,
+      "nutritionIncluded"
+    );
+    if (!entitlement.allowed) return void res.status(403).json({ error: entitlement.reason });
+
     const mealPlanId = reqStr(req.body?.mealPlanId);
     if (!Types.ObjectId.isValid(mealPlanId)) return void res.status(400).json({ error: "invalid_meal_plan_id" });
     const plan = await MealPlan.findById(mealPlanId);

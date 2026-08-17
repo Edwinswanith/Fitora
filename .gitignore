@@ -39,5 +39,10 @@ all_env.txt
 # Coach-uploaded media (local disk storage) — never committed, never publicly served
 /server/uploads/
 .vercel
+# Blanket safety net for any stray .env* file — but templates ending in
+# .example are meant to be committed (env setup instructions in CLAUDE.md
+# point new devs at them), so explicitly un-ignore those.
 .env*
+!.env.example
+!**/.env.example
 *.local

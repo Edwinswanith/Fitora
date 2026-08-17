@@ -24,6 +24,7 @@ import {
   kindForMime,
   deleteExerciseMediaFile,
 } from "../services/exerciseMedia";
+import { checkFeatureEntitlement } from "../services/subscription";
 
 const router = Router();
 router.use(requireAuth, requireRole("coach"), loadScope);
@@ -45,6 +46,14 @@ router.post(
   requireAthleteAccess("athleteId"),
   async (req: Request, res: Response) => {
     if (!req.actor) return void res.status(401).json({ error: "unauthenticated" });
+
+    const entitlement = await checkFeatureEntitlement(
+      new Types.ObjectId(req.params.athleteId),
+      req.actor.userId,
+      "workoutPlanningIncluded"
+    );
+    if (!entitlement.allowed) return void res.status(403).json({ error: entitlement.reason });
+
     const templateId = typeof req.body?.templateId === "string" ? req.body.templateId : "";
     const template = await loadTemplateOwnedBy(templateId, req.actor.userId);
     if (!template) return void res.status(404).json({ error: "template_not_found" });
@@ -112,6 +121,15 @@ router.post(
       const athleteId = typeof raw === "string" ? raw : "";
       if (!Types.ObjectId.isValid(athleteId) || !assignedSet.has(athleteId)) {
         results.push({ athleteId, ok: false, error: "not_in_assignments" });
+        continue;
+      }
+      const entitlement = await checkFeatureEntitlement(
+        new Types.ObjectId(athleteId),
+        req.actor.userId,
+        "workoutPlanningIncluded"
+      );
+      if (!entitlement.allowed) {
+        results.push({ athleteId, ok: false, error: entitlement.reason });
         continue;
       }
       try {

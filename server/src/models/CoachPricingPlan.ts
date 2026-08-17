@@ -27,6 +27,12 @@ const coachPricingPlanSchema = new Schema(
     priority: { type: Number, default: 0 },
     active: { type: Boolean, default: true },
     version: { type: Number, default: 1, min: 1 },
+    // Cached provider-side plan id (Razorpay "Plan"), created lazily on first
+    // subscription against this pricing plan — see services/paymentProvider.ts.
+    // Null until then; a later price/currency edit does not update the cached
+    // provider plan (the pricingPlanSnapshot copy is what governs an existing
+    // subscriber's terms either way), so no invalidation logic is needed here.
+    razorpayPlanId: { type: String, default: null },
   },
   { timestamps: true }
 );

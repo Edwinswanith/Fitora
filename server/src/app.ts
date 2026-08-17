@@ -21,6 +21,8 @@ import nutritionRouter from "./routes/nutrition";
 import coachMealPlansRouter from "./routes/coachMealPlans";
 import coachProfileRouter from "./routes/coachProfile";
 import marketplaceRouter from "./routes/marketplace";
+import subscriptionsRouter from "./routes/subscriptions";
+import paymentWebhookRouter from "./routes/paymentWebhook";
 import { errorHandler } from "./middleware/errorHandler";
 
 function isSameHostOrigin(origin: string, host: string | undefined): boolean {
@@ -75,6 +77,13 @@ export function createApp(): express.Express {
     res.setHeader("Permissions-Policy", "camera=(), microphone=(), geolocation=()");
     next();
   });
+  // Mounted BEFORE express.json(): the webhook signature is computed over the
+  // exact raw bytes Razorpay sent, which JSON body-parsing (parse then
+  // re-serialize) would not reproduce byte-for-byte. Every other route
+  // relies on express.json() below and is unaffected.
+  app.use("/api/internal/payments/webhook", paymentWebhookRouter);
+  app.use("/internal/payments/webhook", paymentWebhookRouter);
+
   app.use(express.json());
 
   app.get("/api/health", (_req, res) => {
@@ -104,6 +113,7 @@ export function createApp(): express.Express {
   app.use("/api/coach", coachMealPlansRouter);
   app.use("/api/coach", coachProfileRouter);
   app.use("/api/marketplace", marketplaceRouter);
+  app.use("/api/athlete", subscriptionsRouter);
 
   // Same router mounted under /api for Vercel's catch-all API proxy and outside
   // /api for standalone Express deployments.
