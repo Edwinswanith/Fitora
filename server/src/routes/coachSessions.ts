@@ -5,7 +5,17 @@ import { requireRole } from "../middleware/role";
 import { writeRateLimit } from "../middleware/rateLimit";
 import { loadScope } from "../middleware/coachAthleteAccess";
 import { CoachSession } from "../models/CoachSession";
-import { confirmSession, rescheduleSession, cancelSession, completeSession, serializeSession, CoachSessionError, parseDateTimeOrNull } from "../services/coachSession";
+import { User } from "../models/User";
+import {
+  confirmSession,
+  rescheduleSession,
+  cancelSession,
+  completeSession,
+  issueJoinToken,
+  serializeSession,
+  CoachSessionError,
+  parseDateTimeOrNull,
+} from "../services/coachSession";
 
 const router = Router();
 router.use(requireAuth, requireRole("coach"), loadScope);
@@ -84,6 +94,20 @@ router.post("/sessions/:sessionId/complete", writeRateLimit({ windowMs: 60_000, 
   try {
     const updated = await completeSession(session, req.actor!.userId, summary, coachNotes);
     res.json({ session: serializeSession(updated, "coach") });
+  } catch (err) {
+    if (err instanceof CoachSessionError) return void res.status(err.status).json({ error: err.message });
+    throw err;
+  }
+});
+
+/** POST /sessions/:id/join-token — issues a live-video token, only within the join window on a confirmed session. */
+router.post("/sessions/:sessionId/join-token", writeRateLimit({ windowMs: 60_000, max: 20 }), async (req: Request, res: Response) => {
+  const session = await loadOwnSession(req, res);
+  if (!session) return;
+  const coach = await User.findById(req.actor!.userId).select("name").lean();
+  try {
+    const issued = await issueJoinToken(session, "coach", req.actor!.userId, coach?.name ?? "Coach");
+    res.json({ video: issued });
   } catch (err) {
     if (err instanceof CoachSessionError) return void res.status(err.status).json({ error: err.message });
     throw err;

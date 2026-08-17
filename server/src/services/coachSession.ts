@@ -8,6 +8,7 @@ import {
   closeSessionAndReleaseLocks,
   BookingConflictError,
 } from "./bookingConcurrency";
+import { getVideoProvider, roomNameForSession, type ParticipantRole, type IssuedToken } from "./videoProvider";
 
 /**
  * Full date+time parser for booking timestamps — deliberately distinct from
@@ -96,13 +97,21 @@ export async function rescheduleSession(
 
 const CANCELLABLE_STATUSES: CoachSessionDoc["status"][] = ["requested", "confirmed", "rescheduled"];
 
+/** Best-effort — cleanup must never block or fail the caller's actual state transition. */
+async function terminateVideoRoomIfAny(session: HydratedDocument<CoachSessionDoc>): Promise<void> {
+  if (!session.videoRoomRef) return;
+  await getVideoProvider().terminateRoom(session.videoRoomRef).catch(() => undefined);
+}
+
 export async function cancelSession(
   session: HydratedDocument<CoachSessionDoc>,
   actorId: Types.ObjectId,
   note: string | undefined
 ): Promise<HydratedDocument<CoachSessionDoc>> {
   if (!CANCELLABLE_STATUSES.includes(session.status)) throw new CoachSessionError(409, "invalid_transition");
-  return closeSessionAndReleaseLocks(session, "cancelled", "cancelled", actorId, note);
+  const updated = await closeSessionAndReleaseLocks(session, "cancelled", "cancelled", actorId, note);
+  await terminateVideoRoomIfAny(updated);
+  return updated;
 }
 
 const COMPLETABLE_STATUSES: CoachSessionDoc["status"][] = ["confirmed", "rescheduled"];
@@ -116,7 +125,45 @@ export async function completeSession(
   if (!COMPLETABLE_STATUSES.includes(session.status)) throw new CoachSessionError(409, "invalid_transition");
   if (summary !== undefined) session.summary = summary;
   if (coachNotes !== undefined) session.coachNotes = coachNotes;
-  return closeSessionAndReleaseLocks(session, "completed", "completed", actorId);
+  const updated = await closeSessionAndReleaseLocks(session, "completed", "completed", actorId);
+  await terminateVideoRoomIfAny(updated);
+  return updated;
+}
+
+// Join tokens are only issuable for a confirmed booking, within a window
+// around the scheduled time — not the instant it's requested (unconfirmed),
+// and not indefinitely after it ends.
+const JOINABLE_STATUSES: CoachSessionDoc["status"][] = ["confirmed", "rescheduled"];
+const JOIN_WINDOW_BEFORE_MIN = 10;
+const JOIN_WINDOW_AFTER_MIN = 15;
+const JOIN_TOKEN_TTL_SEC = 3 * 60 * 60;
+
+/**
+ * Issues a live-video join token for one of the session's two participants.
+ * The video room itself is created lazily here (first join-token request),
+ * not at booking time — see CoachSession.videoRoomRef.
+ */
+export async function issueJoinToken(
+  session: HydratedDocument<CoachSessionDoc>,
+  role: ParticipantRole,
+  participantUserId: Types.ObjectId,
+  participantName: string
+): Promise<IssuedToken> {
+  if (!JOINABLE_STATUSES.includes(session.status)) throw new CoachSessionError(409, "session_not_joinable");
+
+  const now = Date.now();
+  const windowStartMs = session.scheduledStart.getTime() - JOIN_WINDOW_BEFORE_MIN * 60_000;
+  const windowEndMs = session.scheduledEnd.getTime() + JOIN_WINDOW_AFTER_MIN * 60_000;
+  if (now < windowStartMs || now > windowEndMs) throw new CoachSessionError(403, "outside_join_window");
+
+  const provider = getVideoProvider();
+  if (!session.videoRoomRef) {
+    const { roomRef } = await provider.createRoom(roomNameForSession(session._id.toString()));
+    session.videoRoomRef = roomRef;
+    await session.save();
+  }
+
+  return provider.issueParticipantToken(session.videoRoomRef, `${role}:${participantUserId.toString()}`, participantName, JOIN_TOKEN_TTL_SEC);
 }
 
 export function serializeSession(session: HydratedDocument<CoachSessionDoc>, viewerRole: "coach" | "athlete") {

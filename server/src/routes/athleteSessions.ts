@@ -6,8 +6,9 @@ import { writeRateLimit } from "../middleware/rateLimit";
 import { loadScope } from "../middleware/coachAthleteAccess";
 import { CoachSession, COACH_SESSION_TYPES } from "../models/CoachSession";
 import { CoachAthleteAssignment } from "../models/CoachAthleteAssignment";
+import { User } from "../models/User";
 import { resolveAvailableSlots } from "../services/coachAvailability";
-import { requestSession, cancelSession, serializeSession, CoachSessionError, parseDateTimeOrNull } from "../services/coachSession";
+import { requestSession, cancelSession, issueJoinToken, serializeSession, CoachSessionError, parseDateTimeOrNull } from "../services/coachSession";
 import { parseDateOrNull } from "../lib/trainingCategories";
 import { dayRange } from "../services/dashboard";
 
@@ -91,6 +92,26 @@ router.post("/sessions/:sessionId/cancel", writeRateLimit({ windowMs: 60_000, ma
   try {
     const updated = await cancelSession(session, req.actor!.userId, note);
     res.json({ session: serializeSession(updated, "athlete") });
+  } catch (err) {
+    if (err instanceof CoachSessionError) return void res.status(err.status).json({ error: err.message });
+    throw err;
+  }
+});
+
+/** POST /sessions/:id/join-token — issues a live-video token, only within the join window on a confirmed session. */
+router.post("/sessions/:sessionId/join-token", writeRateLimit({ windowMs: 60_000, max: 20 }), async (req: Request, res: Response) => {
+  const athleteId = selfAthleteId(req);
+  if (!athleteId) return void res.status(404).json({ error: "athlete_profile_not_found" });
+
+  const id = req.params.sessionId;
+  if (!Types.ObjectId.isValid(id)) return void res.status(400).json({ error: "invalid_session_id" });
+  const session = await CoachSession.findOne({ _id: id, athleteId });
+  if (!session) return void res.status(404).json({ error: "session_not_found" });
+
+  const athlete = await User.findById(req.actor!.userId).select("name").lean();
+  try {
+    const issued = await issueJoinToken(session, "athlete", req.actor!.userId, athlete?.name ?? "Athlete");
+    res.json({ video: issued });
   } catch (err) {
     if (err instanceof CoachSessionError) return void res.status(err.status).json({ error: err.message });
     throw err;

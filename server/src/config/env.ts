@@ -136,6 +136,16 @@ export const env = {
     keySecret: process.env.RAZORPAY_KEY_SECRET ?? "",
     webhookSecret: process.env.RAZORPAY_WEBHOOK_SECRET ?? "",
   },
+  // Live video provider (LiveKit). Empty values keep services/videoProvider.ts
+  // in mock mode — join-token issuance and the room lifecycle are still
+  // exercisable/tested with no live LiveKit project configured. `url` is the
+  // project's WebSocket URL (e.g. wss://your-project.livekit.cloud) as shown
+  // on the LiveKit Cloud dashboard; the server-API host is derived from it.
+  livekit: {
+    apiKey: process.env.LIVEKIT_API_KEY ?? "",
+    apiSecret: process.env.LIVEKIT_API_SECRET ?? "",
+    url: process.env.LIVEKIT_URL ?? "",
+  },
   internalNotifications: {
     sweepSecret: requiredSecretFrom(["INTERNAL_SWEEP_SECRET", "CRON_SECRET"], "change_me_sweep_secret"),
   },

@@ -74,6 +74,10 @@ const coachSessionSchema = new Schema(
     events: { type: [coachSessionEventSchema], default: [] },
     coachNotes: { type: String, trim: true, maxlength: 2000 },
     summary: { type: String, trim: true, maxlength: 2000 },
+    // Provider room identifier (Phase 8) — created lazily on the first
+    // join-token request, not at booking time, so a session cancelled
+    // before ever being joined never provisions a video room at all.
+    videoRoomRef: { type: String, default: null },
   },
   { timestamps: true }
 );
