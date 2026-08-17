@@ -39,6 +39,8 @@ import "../models/MealScanItem";
 import "../models/Routine";
 import "../models/MealPlan";
 import "../models/MealPlanAssignment";
+import "../models/CoachProfile";
+import "../models/CoachPricingPlan";
 
 async function run() {
   await connectMongo();
