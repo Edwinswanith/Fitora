@@ -5,6 +5,8 @@ description: Blueprint, verify, and build a production-grade sports coaching and
 
 # Sports Coaching Platform Builder
 
+> **⚠️ Partially stale — predates the Fitora pivot.** The **Guardian role, the "Roles" section's `guardian` entry, and the Guardian subsection** below describe a role that has been fully removed from the real codebase (Phase 1 of the Fitora pivot) — do not treat any of that as current. This file also predates all 10 subsequent Fitora phases (unified workouts, nutrition, coach meal plans, marketplace, subscriptions/payments, availability/booking, live video, content library, coach switching/reviews), none of which are described anywhere below. The **RPE monitoring requirement, RPE risk logic, and readiness-score sections are still verified accurate** against the real `server/src/lib/trainingCategories.ts`, as is the general shape of the coach-scope invariant (minus its guardian references) — those specific sections remain safe to trust. For the current, real architecture, consult [`CLAUDE.md`](../../CLAUDE.md) at the repo root first.
+
 This skill designs, audits, verifies, and implements a sports coaching and athlete management web application.
 
 It must not behave like a generic CRUD app builder. This platform is a sports performance operating system for academies, coaches, athletes, guardians, and support staff.

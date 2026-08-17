@@ -1,5 +1,7 @@
 # Product Architecture
 
+> **⚠️ STALE — pre-Fitora-pivot design doc.** This document predates the Fitora pivot (Guardian removal + 10 subsequent phases: unified workouts, nutrition, coach meal plans, marketplace, subscriptions/payments, availability/booking, live video, content library, coach switching/reviews) and describes an architecture (Next.js Route Handlers, an httpOnly-cookie-only auth model) that the real codebase never used, even at the original baseline — the real stack is Express + Mongoose with Bearer-token mobile auth. **Do not treat this file as current.** Consult [`CLAUDE.md`](../../CLAUDE.md) at the repo root and the real code under `server/src/` instead. Left in place for historical reference only.
+
 ## 1. System overview
 
 A multi-tenant-style web app with three roles (coach, athlete, guardian) backed by a single MongoDB instance. Next.js serves both the UI (App Router, server components where possible) and the API (Route Handlers under `app/api/*`). Auth is JWT-based using an httpOnly access-token cookie and a rotating refresh token.

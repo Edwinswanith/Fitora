@@ -1,5 +1,7 @@
 # RBAC / Access-Control Plan
 
+> **⚠️ STALE — pre-Fitora-pivot design doc.** This document's core JWT → scope-guard → route-guard concept is still directionally correct, but its guardian role/`GuardianAthleteLink`/`linkedAthleteIds` content is gone entirely (Guardian was removed), it references Next.js edge `middleware.ts` gating that was never real, doesn't mention `isAcademyOwner`, and says nothing about the 10 phases of new resource types (workouts, nutrition, marketplace, subscriptions, booking, video, reviews) each with their own scope rules. **Do not treat this file as current.** Consult [`CLAUDE.md`](../../CLAUDE.md) at the repo root — specifically its "Non-negotiable invariant: coach scope" section — and the real code under `server/src/middleware/` instead.
+
 ## Principles
 
 1. **Role-based gate first** — which role(s) can hit the endpoint at all.

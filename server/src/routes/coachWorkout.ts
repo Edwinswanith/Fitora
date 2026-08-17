@@ -152,18 +152,18 @@ router.post(
   }
 );
 
-/** GET /athletes/:athleteId/workout-assignments?date= */
+/** GET /athletes/:athleteId/workout-assignments?date= — this coach's OWN assignments for this athlete only (see buildWorkoutAssignmentsForDate's doc comment). */
 router.get(
   "/athletes/:athleteId/workout-assignments",
   requireAthleteAccess("athleteId"),
   async (req: Request, res: Response) => {
     const date = parseDateOrNull(req.query.date) ?? new Date();
-    const summaries = await buildWorkoutAssignmentsForDate(new Types.ObjectId(req.params.athleteId), date);
+    const summaries = await buildWorkoutAssignmentsForDate(new Types.ObjectId(req.params.athleteId), date, req.actor!.userId);
     res.json({ assignments: summaries });
   }
 );
 
-/** GET /workout-assignments/:assignmentId — coach view of one assignment. */
+/** GET /workout-assignments/:assignmentId — coach view of one assignment. Requires BOTH that the athlete is currently assigned to this coach AND that this coach is the one who created the assignment — otherwise a coach who inherited an athlete from a prior relationship could read a previous coach's programmed workout. */
 router.get("/workout-assignments/:assignmentId", async (req: Request, res: Response) => {
   if (!req.actor) return void res.status(401).json({ error: "unauthenticated" });
   const id = req.params.assignmentId;
@@ -171,7 +171,9 @@ router.get("/workout-assignments/:assignmentId", async (req: Request, res: Respo
   const assignment = await WorkoutAssignment.findById(id);
   if (!assignment) return void res.status(404).json({ error: "assignment_not_found" });
   const assigned = req.actor.assignedAthleteIds ?? [];
-  if (!assigned.some((aid) => aid.equals(assignment.assignedTo as Types.ObjectId))) {
+  const isAssignedAthlete = assigned.some((aid) => aid.equals(assignment.assignedTo as Types.ObjectId));
+  const isOwnAssignment = (assignment.assignedBy as Types.ObjectId).equals(req.actor.userId);
+  if (!isAssignedAthlete || !isOwnAssignment) {
     return void res.status(403).json({ error: "not_in_assignments" });
   }
   res.json({ assignment: serializeAssignment(assignment) });

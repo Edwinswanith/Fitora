@@ -1,5 +1,6 @@
 import { Types, type HydratedDocument } from "mongoose";
 import { CoachSession, type CoachSessionDoc, type CoachSessionType } from "../models/CoachSession";
+import { CoachAthleteAssignment } from "../models/CoachAthleteAssignment";
 import { findMatchingWindow } from "./coachAvailability";
 import { checkSessionBookingEntitlement } from "./subscription";
 import {
@@ -64,11 +65,29 @@ export async function requestSession(params: RequestSessionParams): Promise<Hydr
   }
 }
 
+/**
+ * Once a coach/athlete relationship ends (coach removes the athlete, athlete
+ * leaves, or either switches), neither party should still be able to
+ * manage or join a straggler booking together — that would mean live
+ * interaction (including video) between two people no longer in an active
+ * coaching relationship. Checked before every action that grants NEW
+ * capability (confirm, reschedule, complete, join-token); deliberately NOT
+ * checked before cancel, which must always stay available to clean up a
+ * stale booking regardless of relationship state.
+ */
+async function assertRelationshipStillActive(session: HydratedDocument<CoachSessionDoc>): Promise<void> {
+  const relationship = await CoachAthleteAssignment.findById(session.relationshipId).select("status").lean();
+  if (!relationship || relationship.status !== "active") {
+    throw new CoachSessionError(409, "relationship_ended");
+  }
+}
+
 export async function confirmSession(
   session: HydratedDocument<CoachSessionDoc>,
   actorId: Types.ObjectId
 ): Promise<HydratedDocument<CoachSessionDoc>> {
   if (session.status !== "requested") throw new CoachSessionError(409, "invalid_transition");
+  await assertRelationshipStillActive(session);
   session.status = "confirmed";
   session.events.push({ at: new Date(), type: "confirmed", actorId });
   await session.save();
@@ -83,6 +102,7 @@ export async function rescheduleSession(
   note: string | undefined
 ): Promise<HydratedDocument<CoachSessionDoc>> {
   if (session.status !== "confirmed") throw new CoachSessionError(409, "invalid_transition");
+  await assertRelationshipStillActive(session);
 
   const window = await findMatchingWindow(session.coachId as Types.ObjectId, newStart);
   if (!window) throw new CoachSessionError(422, "outside_availability");
@@ -123,6 +143,7 @@ export async function completeSession(
   coachNotes: string | undefined
 ): Promise<HydratedDocument<CoachSessionDoc>> {
   if (!COMPLETABLE_STATUSES.includes(session.status)) throw new CoachSessionError(409, "invalid_transition");
+  await assertRelationshipStillActive(session);
   if (summary !== undefined) session.summary = summary;
   if (coachNotes !== undefined) session.coachNotes = coachNotes;
   const updated = await closeSessionAndReleaseLocks(session, "completed", "completed", actorId);
@@ -150,6 +171,7 @@ export async function issueJoinToken(
   participantName: string
 ): Promise<IssuedToken> {
   if (!JOINABLE_STATUSES.includes(session.status)) throw new CoachSessionError(409, "session_not_joinable");
+  await assertRelationshipStillActive(session);
 
   const now = Date.now();
   const windowStartMs = session.scheduledStart.getTime() - JOIN_WINDOW_BEFORE_MIN * 60_000;

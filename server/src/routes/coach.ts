@@ -796,7 +796,8 @@ router.get(
     }
     const workoutAssignments = await buildWorkoutAssignmentsForDate(
       new Types.ObjectId(req.params.athleteId),
-      start
+      start,
+      req.actor!.userId
     );
     res.json({ card, workoutAssignments });
   }

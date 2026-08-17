@@ -261,7 +261,12 @@ router.get(
   "/athletes/:athleteId/meal-plan-assignments",
   requireAthleteAccess("athleteId"),
   async (req: Request, res: Response) => {
-    const rows = await MealPlanAssignment.find({ assignedTo: req.params.athleteId }).sort({ createdAt: -1 }).lean();
+    if (!req.actor) return void res.status(401).json({ error: "unauthenticated" });
+    // requireAthleteAccess only confirms the athlete is CURRENTLY assigned to
+    // this coach — it says nothing about who created a given assignment. Scope
+    // by assignedBy too, or a coach who inherited an athlete from a prior
+    // relationship sees every previous coach's meal plans for that athlete.
+    const rows = await MealPlanAssignment.find({ assignedTo: req.params.athleteId, assignedBy: req.actor.userId }).sort({ createdAt: -1 }).lean();
     res.json({ assignments: rows.map((r) => serializeMealPlanAssignment(r as never)) });
   }
 );

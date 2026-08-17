@@ -1,5 +1,7 @@
 # Step-by-Step Implementation Checklist
 
+> **⚠️ STALE — pre-Fitora-pivot design doc, already fully executed and superseded.** This checklist describes building the original pre-pivot baseline app. That app was built, then evolved through the Fitora pivot (Guardian removal + 10 phases: workouts, nutrition, coach meal plans, marketplace, subscriptions/payments, availability/booking, live video, content library, coach switching/reviews), none of which is reflected here. **Do not treat this file as a current or future task list.** Consult [`CLAUDE.md`](../../CLAUDE.md) at the repo root for the real current architecture and `git log` for the actual phase-by-phase build history.
+
 Follow in order. Do not skip steps — each one is a prerequisite for the next. Check items off as you complete them.
 
 ## Phase 0 — Project setup

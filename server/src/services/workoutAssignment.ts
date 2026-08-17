@@ -214,19 +214,24 @@ export type WorkoutAssignmentSummary = {
 
 /**
  * The single source of "what workouts are scheduled for this User on this
- * date" — used by both the athlete's own /workout/assignments listing and
- * (merged in at the route level) the existing daily-card endpoints, so there
- * is exactly one place that answers "today's workout" rather than two
- * competing aggregations.
+ * date" — used by both the athlete's own /workout/assignments listing
+ * (assignedBy omitted — an athlete sees all of their own workouts,
+ * regardless of which coach assigned them) and the coach-side listing route,
+ * which MUST pass its own userId as assignedBy: requireAthleteAccess only
+ * confirms the athlete is CURRENTLY assigned to the requesting coach, not
+ * that this coach created a given assignment — omitting the filter there
+ * would leak a previous coach's programmed workouts to the athlete's new one.
  */
 export async function buildWorkoutAssignmentsForDate(
   athleteId: Types.ObjectId,
-  date: Date
+  date: Date,
+  assignedBy?: Types.ObjectId
 ): Promise<WorkoutAssignmentSummary[]> {
   const { start, end } = dayRange(date);
   const assignments = await WorkoutAssignment.find({
     assignedTo: athleteId,
     scheduledDate: { $gte: start, $lt: end },
+    ...(assignedBy ? { assignedBy } : {}),
   })
     .sort({ createdAt: 1 })
     .lean();

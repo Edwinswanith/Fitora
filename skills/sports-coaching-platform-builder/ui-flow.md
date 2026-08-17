@@ -1,5 +1,7 @@
 # UI Page Flow
 
+> **⚠️ STALE — pre-Fitora-pivot design doc.** Describes a Next.js route-group UI (`(coach)`/`(athlete)`/`(guardian)`) that was never the real structure — the real mobile app is Expo/expo-router under `mobile/src/app/{athlete,coach,login}` (no guardian shell; Guardian was removed) with 10 phases of new screens (workouts, nutrition, marketplace, subscriptions, booking, live video, content library, reviews) not described here. **Do not treat this file as current.** Consult [`CLAUDE.md`](../../CLAUDE.md) at the repo root and the real screens under `mobile/src/app/` instead.
+
 Three role-scoped UI shells under route groups: `(coach)`, `(athlete)`, `(guardian)`. After login, the user is redirected based on their `role`.
 
 ## Shared shell

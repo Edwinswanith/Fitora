@@ -1,5 +1,7 @@
 # MongoDB Schema Plan
 
+> **⚠️ STALE — pre-Fitora-pivot design doc.** This document lists 11 collections; the real codebase has ~49, spanning the original baseline (`Academy`, `Injury`, `RpeMonitoring`, `WorkoutMedia`, `Message`, etc. — never documented here) plus all 10 Fitora phases (`WorkoutTemplate`/`WorkoutAssignment`, `NutritionTarget`/`Meal`/`MealScan`, `MealPlan`/`MealPlanAssignment`, `CoachProfile`/`CoachPricingPlan`, `AthleteCoachSubscription`/`Payment`/`PaymentWebhookEvent`, `CoachAvailability`/`CoachSession`/`CoachSessionSlotLock`, `CoachVideo`/`CoachVideoProgress`, `CoachReview` — none listed here). Even the few collections it does describe (`users`, `athletes`, `coach_assignments`) have significant field drift from the real `User`/`AthleteProfile`/`CoachAthleteAssignment` models. There is no `coaches` collection or `daily_stats` rollup in the real schema. **Do not treat this file as current.** Consult [`CLAUDE.md`](../../CLAUDE.md) at the repo root and the real model files under `server/src/models/` instead.
+
 All collections use Mongoose. Timestamps (`createdAt`, `updatedAt`) are added via `{ timestamps: true }` and omitted from the field lists below for brevity.
 
 ## Collections

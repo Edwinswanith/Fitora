@@ -1,5 +1,7 @@
 # API Contract
 
+> **⚠️ STALE — pre-Fitora-pivot design doc.** The envelope shape below is wrong: real routes return flat, resource-keyed JSON (`{ subscription: {...} }`, `{ sessions: [...] }`) with **string** error codes (`{ error: "invalid_coach_id" }`), never a `{data}`/`{error:{code,message}}` wrapper. Every endpoint listed here is a Next.js-route-handler path (`app/api/*`) that doesn't exist — the real API is 29 Express routers under `server/src/routes/`, covering (in addition to what's listed here) workouts, nutrition, marketplace, subscriptions/payments, availability/booking, live video, content library, and reviews. Guardian endpoints (`/api/guardian/*`) don't exist; Guardian was removed. **Do not treat this file as current.** Consult [`CLAUDE.md`](../../CLAUDE.md) at the repo root and the real route files under `server/src/routes/` instead.
+
 All endpoints are Next.js route handlers under `app/api/*`. JSON in, JSON out. Auth via httpOnly `accessToken` cookie.
 
 Error shape: `{ "error": { "code": "FORBIDDEN", "message": "..." } }`.
