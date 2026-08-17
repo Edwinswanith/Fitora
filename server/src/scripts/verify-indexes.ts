@@ -44,6 +44,10 @@ import "../models/CoachPricingPlan";
 import "../models/AthleteCoachSubscription";
 import "../models/Payment";
 import "../models/PaymentWebhookEvent";
+import "../models/CoachAvailability";
+import "../models/CoachAvailabilityException";
+import "../models/CoachSession";
+import "../models/CoachSessionSlotLock";
 
 async function run() {
   await connectMongo();

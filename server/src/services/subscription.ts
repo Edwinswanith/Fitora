@@ -282,19 +282,34 @@ export function isExpiringSoon(
  * the explicit backward-compatibility requirement: this must never break a
  * coach/athlete pair that never subscribed to anything.
  */
-export async function checkFeatureEntitlement(
+type EntitlementResult = { allowed: true } | { allowed: false; reason: string };
+
+/**
+ * Shared lookup: resolves the linked subscription (if any) for an active
+ * relationship. Returns `null` when there is no linked subscription at all
+ * — the caller's signal to treat the relationship as unpaywalled.
+ */
+async function loadLinkedSubscription(
   athleteId: Types.ObjectId,
-  coachId: Types.ObjectId,
-  feature: "workoutPlanningIncluded" | "nutritionIncluded"
-): Promise<{ allowed: true } | { allowed: false; reason: string }> {
+  coachId: Types.ObjectId
+): Promise<Pick<AthleteCoachSubscriptionDoc, "status" | "pricingPlanSnapshot"> | null> {
   const relationship = await CoachAthleteAssignment.findOne({ athleteId, coachId, status: "active" })
     .select("subscriptionId")
     .lean();
-  if (!relationship?.subscriptionId) return { allowed: true };
+  if (!relationship?.subscriptionId) return null;
 
   const subscription = await AthleteCoachSubscription.findById(relationship.subscriptionId)
     .select("status pricingPlanSnapshot")
     .lean();
+  return subscription;
+}
+
+export async function checkFeatureEntitlement(
+  athleteId: Types.ObjectId,
+  coachId: Types.ObjectId,
+  feature: "workoutPlanningIncluded" | "nutritionIncluded"
+): Promise<EntitlementResult> {
+  const subscription = await loadLinkedSubscription(athleteId, coachId);
   if (!subscription) return { allowed: true };
 
   if (!["active", "payment_due"].includes(subscription.status)) {
@@ -302,6 +317,32 @@ export async function checkFeatureEntitlement(
   }
   if (!subscription.pricingPlanSnapshot?.[feature]) {
     return { allowed: false, reason: "feature_not_included_in_plan" };
+  }
+  return { allowed: true };
+}
+
+/**
+ * Same shape as checkFeatureEntitlement, for live-session booking (Phase 7)
+ * — gated on `pricingPlanSnapshot.liveSessionsPerCycle > 0` rather than a
+ * boolean flag, since that field is numeric. Does NOT meter/cap the actual
+ * count of sessions booked within a billing cycle against that number — this
+ * only gates "does this plan include live sessions at all," matching the
+ * same binary in/out shape as the workout/nutrition gates. Usage metering
+ * against liveSessionsPerCycle is a real gap, flagged as a known limitation
+ * rather than silently pretended-away.
+ */
+export async function checkSessionBookingEntitlement(
+  athleteId: Types.ObjectId,
+  coachId: Types.ObjectId
+): Promise<EntitlementResult> {
+  const subscription = await loadLinkedSubscription(athleteId, coachId);
+  if (!subscription) return { allowed: true };
+
+  if (!["active", "payment_due"].includes(subscription.status)) {
+    return { allowed: false, reason: "subscription_not_active" };
+  }
+  if (!subscription.pricingPlanSnapshot?.liveSessionsPerCycle) {
+    return { allowed: false, reason: "live_sessions_not_included_in_plan" };
   }
   return { allowed: true };
 }

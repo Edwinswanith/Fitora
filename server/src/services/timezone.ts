@@ -81,3 +81,30 @@ export function minuteOfDayInZone(date: Date, timeZone: string): number {
   const { h, mi } = partsInZone(date, timeZone);
   return Number(h) * 60 + Number(mi);
 }
+
+/**
+ * Inverse of minuteOfDayInZone: the UTC instant at which `timeZone`'s wall
+ * clock reads `dateString` (YYYY-MM-DD) + `minuteOfDay` (0–1439). Used by
+ * coach-availability booking (Phase 7) to turn a coach's own-timezone
+ * recurring rule ("Mon 09:00 Asia/Kolkata") into an actual UTC instant to
+ * store/compare against.
+ *
+ * No external tz library — same "format a UTC guess, measure the drift,
+ * correct" trick as date-fns-tz's zonedTimeToUtc, converged over a couple of
+ * iterations (one is exact for any zone with a constant offset across the
+ * guess window; a second guards against landing near a DST transition).
+ */
+export function zonedMinuteToUtc(dateString: string, minuteOfDay: number, timeZone: string): Date {
+  const [y, mo, d] = dateString.split("-").map(Number);
+  const hour = Math.floor(minuteOfDay / 60);
+  const minute = minuteOfDay % 60;
+  let guessMs = Date.UTC(y, mo - 1, d, hour, minute, 0, 0);
+  for (let i = 0; i < 2; i++) {
+    const seen = partsInZone(new Date(guessMs), timeZone);
+    const seenAsUtcMs = Date.UTC(Number(seen.y), Number(seen.mo) - 1, Number(seen.d), Number(seen.h), Number(seen.mi), 0, 0);
+    const drift = seenAsUtcMs - guessMs;
+    if (drift === 0) break;
+    guessMs -= drift;
+  }
+  return new Date(guessMs);
+}
