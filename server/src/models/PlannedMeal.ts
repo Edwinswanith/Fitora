@@ -6,7 +6,7 @@ export type MealType = (typeof MEAL_TYPES)[number];
 export const PLANNED_MEAL_SOURCES = ["deterministic", "ai_generated", "coach_assigned"] as const;
 export type PlannedMealSource = (typeof PLANNED_MEAL_SOURCES)[number];
 
-const plannedFoodSchema = new Schema(
+export const plannedFoodSchema = new Schema(
   {
     name: { type: String, required: true, trim: true, maxlength: 160 },
     quantity: { type: Number, required: true, min: 0 },
@@ -16,6 +16,12 @@ const plannedFoodSchema = new Schema(
     carbsG: { type: Number, required: true, min: 0, max: 800 },
     fatG: { type: Number, required: true, min: 0, max: 400 },
     fiberG: { type: Number, min: 0, max: 200 },
+    // Optional — set by a coach authoring a MealPlan food, or carried over
+    // from the deterministic library. Free-text coach food entries have no
+    // reliable automatic allergen signal, so this is only ever populated
+    // when a human (coach) explicitly tags it — see
+    // services/mealPlanAssignment.ts for how this gates assignment.
+    allergenTags: { type: [String], default: [] },
   },
   { _id: false }
 );
@@ -36,6 +42,7 @@ const plannedMealSchema = new Schema(
     name: { type: String, trim: true, maxlength: 160 },
     foods: { type: [plannedFoodSchema], default: [] },
     routineId: { type: Schema.Types.ObjectId, ref: "Routine", default: null },
+    mealPlanAssignmentId: { type: Schema.Types.ObjectId, ref: "MealPlanAssignment", default: null },
   },
   { timestamps: true }
 );

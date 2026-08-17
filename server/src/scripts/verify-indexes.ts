@@ -37,6 +37,8 @@ import "../models/MealFood";
 import "../models/MealScan";
 import "../models/MealScanItem";
 import "../models/Routine";
+import "../models/MealPlan";
+import "../models/MealPlanAssignment";
 
 async function run() {
   await connectMongo();

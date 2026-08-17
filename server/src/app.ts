@@ -18,6 +18,7 @@ import workoutTemplatesRouter from "./routes/workoutTemplates";
 import coachWorkoutRouter from "./routes/coachWorkout";
 import athleteWorkoutRouter from "./routes/athleteWorkout";
 import nutritionRouter from "./routes/nutrition";
+import coachMealPlansRouter from "./routes/coachMealPlans";
 import { errorHandler } from "./middleware/errorHandler";
 
 function isSameHostOrigin(origin: string, host: string | undefined): boolean {
@@ -98,6 +99,7 @@ export function createApp(): express.Express {
   app.use("/api/coach", coachWorkoutRouter);
   app.use("/api/athlete", athleteWorkoutRouter);
   app.use("/api/athlete/nutrition", nutritionRouter);
+  app.use("/api/coach", coachMealPlansRouter);
 
   // Same router mounted under /api for Vercel's catch-all API proxy and outside
   // /api for standalone Express deployments.
