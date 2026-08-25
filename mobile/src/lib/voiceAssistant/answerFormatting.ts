@@ -58,6 +58,60 @@ export function formatHydrationAnswer(totalMl: number, goalMl: number): string {
   return `You've had ${totalMl} millilitres, ${remaining} millilitres left to reach your goal.`;
 }
 
+export type NutritionTargetForAnswers = {
+  calories: number;
+  proteinG: number;
+  carbsG: number;
+  fatG: number;
+} | null;
+
+export type NutritionTotalsForAnswers = {
+  calories: number;
+  proteinG: number;
+  carbsG: number;
+  fatG: number;
+};
+
+function gramsLine(label: string, consumed: number, target: number): string {
+  return `${label} ${Math.max(0, Math.round(target - consumed))} grams left`;
+}
+
+export function formatNutritionAnswer(target: NutritionTargetForAnswers, totals: NutritionTotalsForAnswers): string {
+  if (!target) return "No nutrition target is set for today yet.";
+  const caloriesLeft = Math.max(0, Math.round(target.calories - totals.calories));
+  return [
+    `You've logged ${Math.round(totals.calories)} calories today, with ${caloriesLeft} calories remaining.`,
+    gramsLine("Protein", totals.proteinG, target.proteinG),
+    gramsLine("carbs", totals.carbsG, target.carbsG),
+    gramsLine("fat", totals.fatG, target.fatG),
+  ].join(" ");
+}
+
+export type CoachSessionForAnswers = {
+  status: string;
+  type: string;
+  scheduledStart: string;
+  scheduledEnd: string;
+  coachName?: string | null;
+};
+
+export function formatUpcomingSessionAnswer(sessions: CoachSessionForAnswers[], nowMs = Date.now()): string {
+  const next = sessions
+    .filter((session) => {
+      const start = new Date(session.scheduledStart).getTime();
+      return Number.isFinite(start) && start >= nowMs && !["cancelled", "completed", "missed"].includes(session.status);
+    })
+    .sort((a, b) => new Date(a.scheduledStart).getTime() - new Date(b.scheduledStart).getTime())[0];
+  if (!next) return "You do not have an upcoming coach session scheduled.";
+  const start = new Date(next.scheduledStart);
+  const end = new Date(next.scheduledEnd);
+  const durationMin = Math.max(0, Math.round((end.getTime() - start.getTime()) / 60000));
+  const when = start.toLocaleString(undefined, { weekday: "long", hour: "numeric", minute: "2-digit" });
+  const coach = next.coachName ? ` with Coach ${next.coachName}` : "";
+  const sessionType = next.type.replace(/[_-]+/g, " ");
+  return `Your next session is ${sessionType}${coach} on ${when}${durationMin ? ` for ${durationMin} minutes` : ""}.`;
+}
+
 const CHECKLIST_LABELS: Record<string, string> = {
   wellness: "your wellness check-in",
   session: "a training session",

@@ -186,4 +186,96 @@ describe("GET /athlete/coaches/:coachId/available-slots", () => {
     expect(res.status).toBe(403);
     expect(res.body.error).toBe("not_your_coach");
   });
+
+  test("Phase 12: a coach with TWO recurring windows on the same day offers slots from BOTH (morning + evening block)", async () => {
+    const coach = await makeCoach("multiwindow-coach");
+    const { user, profile } = await makeAthlete("multiwindow-athlete");
+    await CoachAthleteAssignment.create({ coachId: coach._id, athleteId: profile._id, assignedBy: coach._id, status: "active" });
+    await CoachAvailability.create({ coachId: coach._id, dayOfWeek: 1, startMinute: 540, endMinute: 780, timezone: "UTC", sessionDurationMin: 30, bufferMin: 0 }); // 09:00-13:00
+    await CoachAvailability.create({ coachId: coach._id, dayOfWeek: 1, startMinute: 960, endMinute: 1200, timezone: "UTC", sessionDurationMin: 30, bufferMin: 0 }); // 16:00-20:00
+
+    const res = await request(buildApp())
+      .get(`/api/athlete/coaches/${coach._id.toString()}/available-slots?date=${MONDAY}`)
+      .set("Authorization", `Bearer ${tokenFor(user._id, "athlete")}`);
+    expect(res.status).toBe(200);
+    // 4 hours / 30min = 8 slots per window, two windows = 16 total.
+    expect(res.body.slots).toHaveLength(16);
+    const starts = res.body.slots.map((s: { start: string }) => s.start);
+    expect(starts).toContain("2026-01-05T09:00:00.000Z"); // morning block
+    expect(starts).toContain("2026-01-05T16:00:00.000Z"); // evening block
+  });
+});
+
+describe("Phase 12: maxSessionsPerDay", () => {
+  async function setupCapped(cap: number) {
+    const coach = await makeCoach(`cap-coach-${cap}-${Date.now()}`);
+    const { user, profile } = await makeAthlete(`cap-athlete-${cap}-${Date.now()}`);
+    await CoachAthleteAssignment.create({ coachId: coach._id, athleteId: profile._id, assignedBy: coach._id, status: "active" });
+    await CoachAvailability.create({
+      coachId: coach._id, dayOfWeek: 1, startMinute: 480, endMinute: 720, timezone: "UTC",
+      sessionDurationMin: 30, bufferMin: 0, maxSessionsPerDay: cap,
+    });
+    return { coach, user, profile };
+  }
+
+  test("resolveAvailableSlots trims the offered slot list to the remaining daily allowance", async () => {
+    const { coach, user, profile } = await setupCapped(2);
+    await CoachSession.create({
+      coachId: coach._id, athleteId: profile._id, relationshipId: new Types.ObjectId(), type: "general",
+      scheduledStart: new Date("2026-01-05T08:00:00Z"), scheduledEnd: new Date("2026-01-05T08:30:00Z"),
+      bufferMin: 0, status: "confirmed", events: [],
+    });
+
+    const res = await request(buildApp())
+      .get(`/api/athlete/coaches/${coach._id.toString()}/available-slots?date=${MONDAY}`)
+      .set("Authorization", `Bearer ${tokenFor(user._id, "athlete")}`);
+    expect(res.status).toBe(200);
+    // 8 raw half-hour slots in the window minus the 08:00 booking = 7
+    // available, but the cap (2 total/day, 1 already booked) limits to 1.
+    expect(res.body.slots).toHaveLength(1);
+  });
+
+  test("booking is rejected with max_sessions_per_day_reached once the cap is hit", async () => {
+    const athleteSessionsRouter2 = (await import("../src/routes/athleteSessions")).default;
+    const app = express();
+    app.use(express.json());
+    app.use("/api/athlete", athleteSessionsRouter2);
+
+    const { coach, user, profile } = await setupCapped(1);
+    await CoachSession.create({
+      coachId: coach._id, athleteId: profile._id, relationshipId: new Types.ObjectId(), type: "general",
+      scheduledStart: new Date("2026-01-05T08:00:00Z"), scheduledEnd: new Date("2026-01-05T08:30:00Z"),
+      bufferMin: 0, status: "confirmed", events: [],
+    });
+
+    const res = await request(app)
+      .post(`/api/athlete/coaches/${coach._id.toString()}/sessions`)
+      .set("Authorization", `Bearer ${tokenFor(user._id, "athlete")}`)
+      .send({ type: "general", scheduledStart: "2026-01-05T09:00:00.000Z" });
+    expect(res.status).toBe(422);
+    expect(res.body.error).toBe("max_sessions_per_day_reached");
+  });
+
+  test("without maxSessionsPerDay set, booking is unaffected (no accidental cap introduced)", async () => {
+    const athleteSessionsRouter2 = (await import("../src/routes/athleteSessions")).default;
+    const app = express();
+    app.use(express.json());
+    app.use("/api/athlete", athleteSessionsRouter2);
+
+    const coach = await makeCoach("uncapped-coach");
+    const { user, profile } = await makeAthlete("uncapped-athlete");
+    await CoachAthleteAssignment.create({ coachId: coach._id, athleteId: profile._id, assignedBy: coach._id, status: "active" });
+    await CoachAvailability.create({ coachId: coach._id, dayOfWeek: 1, startMinute: 480, endMinute: 720, timezone: "UTC", sessionDurationMin: 30, bufferMin: 0 });
+    await CoachSession.create({
+      coachId: coach._id, athleteId: profile._id, relationshipId: new Types.ObjectId(), type: "general",
+      scheduledStart: new Date("2026-01-05T08:00:00Z"), scheduledEnd: new Date("2026-01-05T08:30:00Z"),
+      bufferMin: 0, status: "confirmed", events: [],
+    });
+
+    const res = await request(app)
+      .post(`/api/athlete/coaches/${coach._id.toString()}/sessions`)
+      .set("Authorization", `Bearer ${tokenFor(user._id, "athlete")}`)
+      .send({ type: "general", scheduledStart: "2026-01-05T09:00:00.000Z" });
+    expect(res.status).toBe(201);
+  });
 });

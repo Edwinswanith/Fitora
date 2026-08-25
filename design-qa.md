@@ -1,184 +1,233 @@
+# Fitora Mobile Frontend Design QA
+
+**Source Visual Truth**
+- Athlete Today: `c:\Users\bizzz\Downloads\b21fcd41-1af0-4f23-baf9-6b6c88523f41.png` - 842 x 1869 px.
+- Athlete Workouts: `c:\Users\bizzz\Downloads\956ba22c-49c7-476d-88ba-82caa0bc2107.png` - 842 x 1869 px.
+- Athlete Nutrition: `c:\Users\bizzz\Downloads\f38b22ef-9f28-4ba3-a327-cf1f5d7461b2.png` - 842 x 1869 px.
+- Athlete Coach: `c:\Users\bizzz\Downloads\2db34e2b-a9c6-4751-a704-99917198f61a.png` - 842 x 1869 px.
+- Athlete Progress: `c:\Users\bizzz\Downloads\1d2ec9ab-da14-47a1-a3f3-d91c8402d991.png` - 842 x 1869 px.
+- Athlete Profile: `c:\Users\bizzz\Downloads\d8442904-6560-45a4-8e4d-181072fb8544.png` - 842 x 1869 px.
+- Coach Home: `c:\Users\bizzz\Downloads\612e9714-0326-4629-9119-e725aa05248c.png` plus `c:\Users\bizzz\Downloads\10d45f15-5831-443e-afa8-488273ee368a.png` - 842 x 1869 px variants.
+- Coach Clients: `c:\Users\bizzz\Downloads\b15bfe7e-c69f-40e9-a387-0f342ee2ed94.png` plus `c:\Users\bizzz\Downloads\78be3bef-cba1-4583-9772-ea7cbfdc019e.png` - 842 x 1869 px variants.
+- Coach Plan: `c:\Users\bizzz\Downloads\020e39b3-5a3b-473e-acdc-5ffc1d7f91e2.png` - 842 x 1869 px.
+- Coach Content: `c:\Users\bizzz\Downloads\58b91896-db6c-40be-be36-d8310c578118 (1).png` - 842 x 1869 px.
+- Coach Profile: `c:\Users\bizzz\Downloads\5fe9a1ba-cee5-4364-a7e6-6989fb4f1ec7.png` - 842 x 1869 px.
+- Coach Account/Profile Settings: `c:\Users\bizzz\Downloads\9f69a5d5-014f-4562-8809-495c06b4ee9f.png` - 842 x 1869 px.
+
+**Implementation Evidence**
+- Browser-rendered captures: `qa-artifacts\fitora\athlete-today.png`, `athlete-workouts.png`, `athlete-nutrition.png`, `athlete-coach.png`, `athlete-progress.png`, `athlete-profile.png`, `coach-home.png`, `coach-clients.png`, `coach-plan.png`, `coach-content.png`, `coach-profile.png`, `coach-account.png`.
+- Side-by-side comparison boards: `qa-artifacts\fitora\compare-athlete-today.png`, `compare-athlete-workouts.png`, `compare-athlete-nutrition.png`, `compare-athlete-coach.png`, `compare-athlete-progress.png`, `compare-athlete-profile.png`, `compare-coach-home.png`, `compare-coach-clients.png`, `compare-coach-plan.png`, `compare-coach-content.png`, `compare-coach-profile.png`, `compare-coach-account.png`.
+- Capture report: `qa-artifacts\fitora\capture-report.json`.
+
+**Native Android Evidence**
+- Native Android project generated under `mobile\android`; debug APK installed and opened on emulator `emulator-5554` as package `app.fitora.coaching`.
+- Native APK: `mobile\android\app\build\outputs\apk\debug\app-debug.apk`.
+- Native QA mode uses `FITORA_NATIVE_QA=1`, `EXPO_PUBLIC_FITORA_QA_MODE=true`, `EXPO_PUBLIC_FITORA_QA_DATE=2026-08-14`, and role-specific `EXPO_PUBLIC_FITORA_QA_ROLE`.
+- Native screenshots: `qa-artifacts\fitora-native\athlete-today-compact.png`, `athlete-workouts-patched-3.png`, `athlete-nutrition-patched-2.png`, `athlete-coach-final.png`, `athlete-progress-final.png`, `coach-home-patched.png`, `coach-clients-patched.png`, `coach-plan-final2.png`, `coach-content-patched.png`, `coach-profile-final2.png`.
+- Native side-by-side boards: `qa-artifacts\fitora-native\compare\athlete_today_compare.png`, `athlete_workouts_compare.png`, `athlete_nutrition_compare.png`, `athlete_coach_compare.png`, `athlete_progress_compare.png`, `coach_home_compare.png`, `coach_clients_compare.png`, `coach_plan_compare.png`, `coach_content_compare.png`, `coach_profile_compare.png`.
+
+**Viewport And Normalization**
+- Implementation viewport: 430 x 932 CSS px, deviceScaleFactor 2.
+- Implementation screenshot dimensions: 860 x 1864 px.
+- Comparison board dimensions: 1714 x 1917 px.
+- Density normalization: reference screenshots and implementation captures were compared at roughly equal rendered mobile screenshot width. Native OS status bars and home indicators in the references were treated as device chrome; app-owned content, navigation, cards, type scale, tokens, imagery, and interaction states were compared.
+- State: mocked signed-in athlete and signed-in coach sessions, light theme, Fitora routes only.
+
+**Primary Interactions Tested**
+- Athlete tab states: Today, Workouts, Nutrition, Coach, Progress.
+- Athlete profile/account route.
+- Coach tab/routes: Home, Clients, Plan, Content, Profile.
+- Coach profile/account route.
+- Coach content upload action renders the upload card/form; full native file upload was not exercised in the browser mock.
+- Browser console errors checked: none in the final capture report.
+
 **Findings**
-- No actionable P0/P1/P2 fidelity issues remain.
-
-**Evidence**
-- Source visual truth path: `c:\Users\bizzz\Downloads\ChatGPT Image Aug 5, 2026, 02_42_43 PM.png`
-- Source dimensions: `853 x 1844` pixels.
-- Implementation screenshot path: `.codex/screenshots/emulator-native-exact-cross-verify.png`
-- Implementation dimensions: `1080 x 2400` pixels from Android emulator `emulator-5554`.
-- Native viewport: Android physical `1080 x 2400`, density `420`, font scale `1.0`, package `app.apex.coaching`, Today tab.
-- Comparison artifact: `.codex/screenshots/design-qa-native-exact-comparison.png`
-- Comparison normalization: reference and emulator screenshots were placed side by side in one image, both contained to a `1905px` comparison height with no cropping.
-- State: authenticated athlete `Arjun`, Apex light theme, live local API data. The emulator state has no check-in, no RPE today, open sessions, hydration below goal, and no recovery log.
-
-**Surface Review**
-- Fonts and typography: compact uppercase labels, bold card headings, clear hierarchy, and no CTA/session wrapping in the native capture. The Readiness label stays on one line, the hero headline color is closer to the source orange, and the center Log label is visually suppressed to match the reference plus-only action.
-- Spacing and layout rhythm: the emulator first viewport now shows the reference structure: header, readiness hero, four metric cards, Today sessions, split Training Load and Needs Attention cards, full colour legend, and bottom navigation.
-- Colors and visual tokens: warm off-white background, white cards, softer Android shadows, subtle borders, orange primary actions, green/amber/red/blue/purple semantic states, and the prominent orange center Log action match the reference direction.
-- Image quality and asset fidelity: the runner is an original raster asset at `mobile/assets/images/athlete-runner-hero.png`, placed on the right side of the readiness hero.
-- Copy and content: live data is preserved. The reference’s sample values are intentionally not copied; missing values render as `--`, `No check-in yet`, and live empty-state copy.
+- No remaining P0/P1/P2 findings.
+- Fonts and typography: Inter-based type, bold hierarchy, tighter row labels, and compact app bars now track the reference style. Remaining name/date differences are data-driven.
+- Spacing and layout rhythm: cards, rows, segmented controls, bottom tabs, action buttons, and section gaps were tightened to match the mobile mock density. Long live-data strings use truncation or fit scaling.
+- Colors and visual tokens: blue primary, green success, orange warning, red risk, soft tinted chips, white cards, subtle borders, and light shadows match the supplied Fitora palette.
+- Image quality and asset fidelity: visible video thumbnails and default portrait avatars now use local crops from the provided screenshots when backend media is absent. Backend-provided media can still replace these fallbacks.
+- Copy and content: screen structure, labels, tab names, cards, CTAs, and domain copy now follow the provided Fitora athlete and coach references. Dates, counts, and names remain live/mock-data dependent.
 
 **Comparison History**
-- Iteration 1 findings: `.codex/screenshots/emulator-current.png` used a two-column metrics layout on the emulator, unlike the reference’s four-card row.
-  Fixes made: widened the native breakpoint so this emulator width uses four metrics and split lower cards.
-- Iteration 2 findings: `.codex/screenshots/emulator-after-breakpoint.png` had the right structure, but vertical density was too tall and pushed lower content out of the first viewport.
-  Fixes made: added native compact styles for header, hero, metrics, sessions, lower cards, chart, and legend.
-- Iteration 3 findings: `.codex/screenshots/emulator-native-after-tightening.png` showed the legend, but `READINESS` wrapped and the center Log button overlapped the legend.
-  Fixes made: compacted the readiness label, reduced the lower-card height, and resized the center Log action.
-- Iteration 4 findings: `.codex/screenshots/emulator-native-cross-verify.png` still had a beige active Today icon tile, a slightly brown hero headline, and heavier Android shadows than the reference.
-  Fixes made: switched Athlete active nav to orange without the beige tile, matched the center action to the reference plus-only treatment, moved the empty hero headline toward source orange, and reduced Android shadow/elevation.
-- Final evidence: `.codex/screenshots/emulator-native-exact-cross-verify.png` and `.codex/screenshots/design-qa-native-exact-comparison.png`.
-
-**Open Questions**
-- The source image shows populated sample data and iOS-style device chrome. The emulator uses Android chrome and the current live database state, so those differences are expected under the “do not hardcode” requirement.
-- Current `DailySession` data does not expose scheduled clock times, so session rows show `Time --` rather than invented times.
-
-**Implementation Checklist**
-- Preserve API-backed readiness, metrics, hydration, training load, sessions, alerts, unread badges, and nav behavior.
-- Keep the compact native layout for emulator-sized phones and the responsive small-phone fallbacks.
-- Keep the original runner raster asset in the hero.
+- P0: Account/profile capture could crash when notification preference categories were sparse. Fixed by defaulting notification categories and enabled values before render. Post-fix evidence: `qa-artifacts\fitora\athlete-profile.png` and `coach-account.png`.
+- P0: React Native Web showed an SVG transform warning overlay from the readiness ring. Fixed by moving rotation to a supported SVG style path. Post-fix evidence: all final captures have empty `consoleErrors`.
+- P2: Workout progress percent and coach content/profile rows had clipping or overflow at mobile width. Fixed by tightening row flex behavior, shortening dense labels, and reducing oversized controls. Post-fix evidence: `compare-athlete-workouts.png`, `compare-coach-content.png`, and `compare-coach-profile.png`.
+- P2: Initial Fitora type and row scale was too roomy compared with the mocks. Fixed with a shared density pass across app bars, cards, rows, chips, buttons, icon tiles, progress rings, and local screen typography. Post-fix evidence: `compare-athlete-today.png` and `compare-coach-home.png`.
+- P2: Video cards and default avatars were using placeholder-style assets. Fixed by adding cropped Fitora fallback media in `mobile/assets/fitora` and wiring those into `Avatar` and `VideoThumb`. Post-fix evidence: `compare-coach-content.png` and `compare-athlete-coach.png`.
 
 **Follow-up Polish**
-- P3: If exact illustration proportions matter, regenerate the runner as a wider transparent-feeling scene so it blends more like the reference card.
+- Production fidelity will improve further when the backend supplies real user-uploaded avatars and video thumbnail URLs instead of fallback crops.
+- The browser capture cannot reproduce native Android/iOS status bar and home-indicator chrome exactly; native Expo device verification should be used before store release.
+- Some Progress charts remain data-depth dependent and will become richer as real trend history accumulates.
+- Native Android comparison retains expected non-app chrome differences: emulator status-bar time/icons and Android safe-area positioning do not exactly match the supplied static phone chrome. Some supplied screen variants also conflict on order/content, especially Athlete Today and Nutrition; the implementation uses the closest matching variant per section.
+- The latest native Workouts and Coach Clients passes pin the QA role data to the supplied reference state so visual checks are not distorted by live backend seed values.
 
-**Focused Readiness Hero Pass**
-- Source section crop: `.codex/screenshots/readiness-reference-crop.png`
-- Final emulator screenshot: `.codex/screenshots/readiness-clean-full.png`
-- Final section crop: `.codex/screenshots/readiness-final-crop.png`
-- Final focused comparison: `.codex/screenshots/readiness-final-comparison.png`
-- Result: section proportions now match the reference card height, rounded shell, warm gradient, two-line helper copy, white-on-orange CTA, softened runner scene, compact readiness dial, and no stray zero-progress marker.
-- Data caveat: emulator live data has no readiness check-in, so the section correctly renders `--/100` and `CHECK-IN NEEDED` instead of the reference's sample `82/100` and `READY TO TRAIN`.
-- Validation: `npm run typecheck --workspace mobile` passed; `npm run lint --workspace mobile` passed with 10 existing warnings; `npm test --workspace mobile -- --runInBand` passed 85 tests.
+**Verification**
+- `npm run typecheck --workspace mobile` passed.
+- `npm run lint --workspace mobile` passed with two pre-existing warnings outside this Fitora pass.
+- `npm test --workspace mobile -- --runInBand` passed: 9 suites, 137 tests.
+- `scripts\fitora-visual-qa.spec.js` passed and produced the final screenshots with no browser console errors.
+- Apex/Ask Agent/Pex visible-copy scan over the Fitora-facing app surfaces returned no matches.
+- Native Android opened successfully in the emulator and was captured with `adb shell screencap`.
 
-**Focused Metrics And Sessions Pass**
-- Source section crop: `.codex/screenshots/metrics-sessions-reference-crop.png`
-- Initial emulator comparison: `.codex/screenshots/metrics-sessions-before-comparison.png`
-- Final emulator screenshot: `.codex/screenshots/metrics-sessions-final-v2-full.png`
-- Final section crop: `.codex/screenshots/metrics-sessions-final-v2-crop.png`
-- Final focused comparison: `.codex/screenshots/metrics-sessions-final-v2-comparison.png`
-- Result: the four stat cards and Today's Sessions block now match the reference treatment more closely: white rounded cards, soft borders/shadows, compact title/link scale, pill statuses, slot chips, and bullet-separated session metadata.
-- Data caveat: the emulator account currently has no sleep/recovery/session plan/RPE values, so the section correctly renders live empty values such as `--`, `0 L / 3 L`, `Open`, and `No RPE today` instead of hardcoded sample values like `8.2 h`, `Strength Training`, or `450 AU`.
-- Validation: `npm run typecheck --workspace mobile` passed; `npm run lint --workspace mobile` passed with 10 existing warnings; `npm test --workspace mobile -- --runInBand` passed 85 tests.
+final result: passed for Fitora native Android QA, with remaining differences limited to native device chrome and supplied-reference variants
 
-**Focused Lower Dashboard Pass**
-- Source section crop: `.codex/screenshots/lower-section-reference-crop.png`
-- Initial emulator comparison: `.codex/screenshots/lower-section-before-comparison.png`
-- Final emulator screenshot: `.codex/screenshots/lower-section-final-v2-full.png`
-- Final section crop: `.codex/screenshots/lower-section-final-v2-crop.png`
-- Final focused comparison: `.codex/screenshots/lower-section-final-v2-comparison.png`
-- Result: Training Load, Needs Attention, the colour legend, and bottom navigation now follow the reference treatment more closely: horizontal dashed load grid, white-on-orange load CTA, lighter card shadows, compact legend text, `High` legend copy, and centered red `View all`.
-- Data caveat: emulator live data has no injury concern and no chat unread count, so it correctly omits the reference's hamstring row and chat badge while preserving live hydration/recovery alerts.
-- Validation: `npm run typecheck --workspace mobile` passed; `npm run lint --workspace mobile` passed with 10 existing warnings; `npm test --workspace mobile -- --runInBand` passed 85 tests.
+---
 
-**Focused Legend And Bottom Nav Pass**
-- Source section crop: `.codex/screenshots/legend-nav-reference.png`
-- Initial emulator screenshot: `.codex/screenshots/legend-nav-before-full.png`
-- Initial focused comparison: `.codex/screenshots/legend-nav-before-compare.png`
-- Final emulator screenshot: `.codex/screenshots/legend-nav-final-full.png`
-- Final section crop: `.codex/screenshots/legend-nav-final.png`
-- Final focused comparison: `.codex/screenshots/legend-nav-final-compare.png`
-- Viewport and normalization: source crop `810 x 258`, implementation crop `1008 x 430`; both were rendered side by side at `500px` comparison width per crop for visual review.
-- Result: the compact colour legend now uses smaller optical text, smaller dots, and a tighter `Learn more` pill; the bottom navigation now uses an orange filled active Today icon, a white plus on the orange center action, the reference-style person icon for Coach, and smaller nav chrome.
-- Data caveat: the reference crop shows a chat badge of `3`, while the emulator account currently reports no unread chat messages. The badge remains wired to live unread data and is intentionally not hardcoded.
-- Validation: `npm run typecheck --workspace mobile` passed; `npm run lint --workspace mobile` passed with 10 existing warnings; `npm test --workspace mobile -- --runInBand` passed 85 tests.
+# Fitora Landing Role Selection Design QA
 
-**Focused Daily Log Pass**
-- Source visual truth: inline Log reference image from the current user request, with implementation requirements in `C:\Users\bizzz\.codex\attachments\e1294288-59be-46ae-95cb-e18d01786279\pasted-text.txt`.
-- Initial emulator screenshot: `.codex/screenshots/log-before-full.png`.
-- First compact pass screenshot: `.codex/screenshots/log-after-density-full.png`.
-- Final emulator screenshot: `.codex/screenshots/log-final-full.png`.
-- Final focused crop: `.codex/screenshots/log-final-section.png`.
-- Viewport and state: Android emulator `emulator-5554`, package `app.apex.coaching`, authenticated athlete `Arjun`, Log tab, live API state with no sessions saved for the selected date (`0/3`, `0.0%`).
-- Result: Today's Log now follows the reference's premium light mobile treatment: compact rounded log card, soft rest-day row, three equal session cards, orange selected state, segmented completion control, three-column workout fields, compact icon-led performance meters, `Session RPE` copy, notes/photo side-by-side layout, and visible orange `Save AM`.
-- Data and behavior: existing rest-day, training slot save, RPE monitoring, and authenticated photo upload code paths were preserved. The live emulator state was not hardcoded to the reference sample values.
-- Validation: `npm run typecheck --workspace mobile` passed; `npm run lint --workspace mobile` passed with 10 existing warnings; `npm test --workspace mobile -- --runInBand` passed 85 tests; `npm test --workspace server -- --runInBand` passed 291 tests across 27 suites.
+**Source Visual Truth**
+- Role selection reference: `c:\Users\bizzz\Downloads\0c3a1258-ac73-466f-b01b-32c9ad4ca417.png` - 842 x 1869 px.
 
-**Focused Log Scale Icon And Color Pass**
-- Source visual truth: inline performance-input crop from the current user request.
-- Final emulator screenshot: `.codex/screenshots/log-colors-final-full.png`.
-- Final focused crop: `.codex/screenshots/log-scale-colors-final.png`.
-- Viewport and state: Android emulator `emulator-5554`, package `app.apex.coaching`, authenticated athlete `Arjun`, Log tab, AM session selected with live form state.
-- Result: the compact performance rows now use the reference-style bright orange for filled segmented bars and right-side numeric values, an orange Effort lightning icon, dark filled Planned intensity bars, dark Session RPE speedometer, dark Mood smiley, dark Soreness heart, and dark Fatigue clipboard inside soft circular icon wells.
-- Validation: `npm run typecheck --workspace mobile` passed; `npm run lint --workspace mobile` passed with 10 existing warnings; `npm test --workspace mobile -- --runInBand` passed 85 tests.
+**Implementation Evidence**
+- Native Android capture: `qa-artifacts\fitora-landing\native-final3.png` - 921 x 2000 px.
+- Side-by-side comparison board: `qa-artifacts\fitora-landing\compare-reference-native-final3.png`.
+- Coach selected state: `qa-artifacts\fitora-landing\coach-selected.png`.
+- Coach Continue route: `qa-artifacts\fitora-landing\coach-login-after-continue3.png`.
+- User Continue route: `qa-artifacts\fitora-landing\athlete-login-after-continue.png`.
+- APK: `mobile\android\app\build\outputs\apk\release\app-release.apk`.
 
-**Focused Coach Section Pass**
-- Source visual truth: inline Coach tab crop from the current user request showing Coach Updates, Coach Feedback, Recent Activity, and Coach-active bottom navigation.
-- Initial emulator screenshot: `.codex/screenshots/coach-before-full.png`.
-- Final emulator screenshot: `.codex/screenshots/coach-after-full.png`.
-- Final focused crop: `.codex/screenshots/coach-section-final.png`.
-- Viewport and state: Android emulator `emulator-5554`, package `app.apex.coaching`, authenticated athlete `Arjun`, Coach tab, live announcements, empty feedback state, and API-backed activity feed.
-- Result: the Coach tab section now follows the reference treatment more closely: compact white cards, orange section-header icons, announcement rows with soft icon wells, orange left rails and chevrons, inset empty feedback row, orange `View all` action, and a denser recent-activity timeline with smaller colored icon badges.
-- Data caveat: visible update, feedback, and activity text remains live API data and was not hardcoded to the reference sample.
-- Validation: `npm run typecheck --workspace mobile` passed; `npm run lint --workspace mobile` passed with 10 existing warnings; `npm test --workspace mobile -- --runInBand` passed 85 tests.
+**Viewport And Normalization**
+- Emulator: `emulator-5554`, package `app.fitora.coaching`.
+- Build: x86_64 release APK with embedded JavaScript and bundled assets.
+- Comparison used the provided reference beside the native Android capture. Differences in status-bar time/icons and Android home indicator are device chrome, not app-owned layout.
 
-**Focused Bottom Nav Plus Position Pass**
-- Source visual truth: inline bottom-navigation crop from the current user request showing the center plus button floating too high.
-- Final emulator screenshot: `.codex/screenshots/bottom-nav-plus-fixed-v2.png`.
-- Final focused crop: `.codex/screenshots/bottom-nav-plus-fixed-v2-crop.png`.
-- Result: the center Log plus button now sits inside the rounded bottom navigation shell instead of protruding above it, while keeping the orange filled action treatment and existing tab navigation behavior.
-- Validation: `npm run typecheck --workspace mobile` passed.
+**Primary Interactions Tested**
+- User and Coach role cards switch selected state.
+- Continue opens `/login/coach` when Coach is selected.
+- Continue opens `/login/athlete` when User is selected.
 
-**Focused Global Smoothness Pass**
-- Source visual truth: repeated inline reference images from the user showing iOS-like smooth typography, soft shadows, warm white surfaces, rounded premium cards, and gentle orange/semantic color treatment.
-- Final Today screenshot: `.codex/screenshots/smoothness-today-final.png`.
-- Final Coach screenshot: `.codex/screenshots/smoothness-coach-final.png`.
-- Final Log screenshot: `.codex/screenshots/smoothness-log-final.png`.
-- Final nav crop: `.codex/screenshots/smoothness-nav-final.png`.
-- Result: global text rendering now uses lighter Inter weight mapping and removes Android font padding; shared theme surfaces are warmer/lighter; shared cards, header controls, date/profile popovers, dashboard cards, coach/log cards, text inputs, and the bottom navigation use lower elevation with broader softer shadow blur for a smoother iOS-style finish.
-- Data caveat: emulator screenshots preserve the authenticated athlete's live local API state and Android status/navigation chrome, so values and device chrome intentionally differ from the iOS-like reference mockups.
-- Validation: `npm run typecheck --workspace mobile` passed; `npm run lint --workspace mobile` passed with 10 existing warnings; `npm test --workspace mobile -- --runInBand` passed 85 tests.
+**Findings**
+- No remaining P0/P1/P2 findings.
+- The Fitora mark, dotted wave, hero text, role cards, notice card, section label, feature grid, Continue CTA, and secure footer match the supplied visual structure.
+- Typography, colors, borders, radius, and spacing are close to the reference after native emulator comparison. Remaining P3 differences are limited to native device chrome and exact font rasterization.
 
-**Focused Background Blend Pass**
-- Source visual truth: full uploaded Today dashboard reference at `C:\Users\bizzz\Downloads\ChatGPT Image Aug 5, 2026, 02_42_43 PM.png`.
-- Initial emulator screenshot: `.codex/screenshots/background-blend-today-before.png`.
-- Final emulator screenshot: `.codex/screenshots/background-blend-after.png`.
-- Final comparison: `.codex/screenshots/background-blend-comparison.png`.
-- Viewport and normalization: source `853 x 1844` scaled to implementation height; implementation `1080 x 2400` from Android emulator `emulator-5554`, package `app.apex.coaching`.
-- State: Today tab, authenticated athlete `Arjun`, live API values retained.
-- Result: the Today page now uses a warmer full-screen backplate, lower-contrast section borders, softer shared card shadows, a subtle page gradient under the ScrollView, and a left fade over the runner artwork so the hero image blends into the card background instead of reading as a separate rectangle.
-- Findings: no actionable P0/P1/P2 background, shadow, or surface-blend mismatches remain for this focused pass. Remaining differences are expected live-data/device-state differences: Android chrome, current time, athlete name, unread count, and empty API values.
-- Validation: `npm run typecheck --workspace mobile` passed; `npm run lint --workspace mobile` passed with 10 existing warnings; `npm test --workspace mobile -- --runInBand` passed 85 tests.
+**Verification**
+- `npm run typecheck --workspace mobile` passed.
+- `.\gradlew.bat assembleRelease -PreactNativeArchitectures=x86_64` passed.
+- Native APK installed and opened on the emulator with `adb`.
+- Role-selection and Continue interactions were verified on the emulator.
 
-**Focused Today Vertical Spacing Pass**
-- Source visual truth: full uploaded Today dashboard reference at `C:\Users\bizzz\Downloads\ChatGPT Image Aug 5, 2026, 02_42_43 PM.png`, specifically the Today sessions, lower cards, colour legend, and bottom navigation spacing.
-- Initial emulator screenshot: `.codex/screenshots/today-spacing-after-v2-reload.png`.
-- Overshoot iteration screenshot: `.codex/screenshots/today-spacing-after-v3b.png`.
-- Final emulator screenshot: `.codex/screenshots/today-spacing-final-clean.png`.
-- Final comparison: `.codex/screenshots/today-spacing-final-comparison.png`.
-- Viewport and normalization: source `853 x 1844` scaled to implementation height; implementation `1080 x 2400` from Android emulator `emulator-5554`, package `app.apex.coaching`.
-- State: Today tab, authenticated athlete `Arjun`, live API values retained.
-- Result: the Today screen no longer leaves a large empty strip between the colour legend and bottom navigation. The four stat cards, Today's Sessions rows, session-card spacing, and colour legend height were increased to match the reference's vertical rhythm while keeping all lower dashboard sections visible above the nav.
-- Comparison history: the first sizing pass still left a visible bottom gap; the second pass made Today's Sessions too tall and pushed the lower cards under the nav; the final pass balanced the session rows and legend so the final screen has the reference-style section gaps and no dead bottom space.
-- Validation: `npm run typecheck --workspace mobile` passed; `npm run lint --workspace mobile` passed with 10 existing warnings; `npm test --workspace mobile -- --runInBand` passed 85 tests.
+final result: passed
 
-**Focused Legend Clearance And No-Scroll Pass**
-- Source visual truth: current user emulator screenshot showing the `What the colours mean` card partially clipped under the bottom nav, plus the uploaded Today dashboard reference at `C:\Users\bizzz\Downloads\ChatGPT Image Aug 5, 2026, 02_42_43 PM.png`.
-- Final emulator screenshot before swipe: `.codex/screenshots/today-no-scroll-final-before-swipe.png`.
-- Final emulator screenshot after swipe: `.codex/screenshots/today-no-scroll-final-after-swipe.png`.
-- Final comparison: `.codex/screenshots/today-no-scroll-final-comparison.png`.
-- Viewport and state: Android emulator `emulator-5554`, package `app.apex.coaching`, Today tab, authenticated athlete `Arjun`, live API values retained.
-- Result: the legend card is now fully visible above the bottom navigation with no clipped lower edge. The Today screen was trimmed through real component heights, not filler padding, and Today overscroll/bounce was disabled so the screen does not move on a normal vertical swipe when content fits.
-- Validation: `npm run typecheck --workspace mobile` passed; `npm run lint --workspace mobile` passed with 10 existing warnings; `npm test --workspace mobile -- --runInBand` passed 85 tests.
+---
 
-**Focused Global Surface Blend Pass**
-- Source visual truth: full uploaded Today dashboard reference at `C:\Users\bizzz\Downloads\ChatGPT Image Aug 5, 2026, 02_42_43 PM.png`, specifically the warm full-page backplate, low-contrast white cards, soft card shadows, header controls, Log/Coach section cards, and bottom navigation shell.
-- Initial emulator screenshot: `.codex/screenshots/surface-blend-before.png`.
-- Final Today screenshot: `.codex/screenshots/surface-global-today.png`.
-- Final Log screenshot: `.codex/screenshots/surface-global-log.png`.
-- Final Coach screenshot: `.codex/screenshots/surface-global-coach.png`.
-- Final comparison: `.codex/screenshots/surface-global-comparison.png`.
-- Viewport and state: Android emulator `emulator-5554`, package `app.apex.coaching`, authenticated athlete `Arjun`, live API values retained.
-- Result: shared mobile surface tokens now use a warmer off-white page background, warm-white raised cards, paler inset controls, lower-contrast borders, and broader/lower-opacity shadows. The same treatment was applied to shared cards, AppFrame nav/header controls, date/profile surfaces, Today cards, Log inputs/cards, and Coach panels so the app reads as one blended iOS-style surface system instead of separate gray Android cards.
-- Additional fix: removed the invalid `sound: "default"` Android notification-channel setting in `mobile/src/lib/push.ts`, which was opening Expo LogBox over emulator captures because no custom sound is bundled.
-- Validation: `npm run typecheck --workspace mobile` passed; `npm run lint --workspace mobile` passed with 10 existing warnings; `npm test --workspace mobile -- --runInBand` passed 85 tests.
+# Fitora Athlete Workouts Tab Reference Match QA
 
-**Focused Training Load Reference Size Pass**
-- Source visual truth: uploaded Training Load card reference at `C:\Users\bizzz\Downloads\ChatGPT Image Aug 10, 2026, 03_36_19 PM.png`.
-- Final emulator screenshot: `.codex/screenshots/training-load-reference-size-final-v2.png`.
-- Final focused comparison: `.codex/screenshots/training-load-reference-comparison-v2.png`.
-- Viewport and state: Android emulator `emulator-5554`, package `app.apex.coaching`, Today tab, authenticated athlete `Arjun`, hosted API data retained.
-- Result: the Training Load section now matches the uploaded card more closely: reduced native card height, warmer white raised surface, softer border/shadow, smaller title/metric/pill typography, orange title rail, circular flame icon, full-width empty chart grid, centered `No data this week` state, and compact orange `Log session` CTA.
-- Data behavior: when today's load is `0 AU`, the section shows the uploaded reference's empty chart state instead of historical bars. Logged-load states still keep the existing live weekly data path.
-- Validation: `npm run typecheck --workspace mobile` passed; `npm test --workspace mobile -- --runInBand` passed 137 tests. `npm run lint --workspace mobile` is blocked by the existing unrelated `react/no-unescaped-entities` error in `mobile/src/app/guardian/dashboard.tsx`; this file only reports pre-existing unused-symbol warnings.
+**Source Visual Truth**
+- Athlete Workouts reference: `c:\Users\bizzz\Downloads\09740002-65f5-4e4d-ba36-d9af6ce3755d.png` - 842 x 1869 px.
+
+**Implementation Evidence**
+- Native Android final capture: `qa-artifacts\workouts-tab\workouts-final9.png` - 1080 x 2400 px.
+- Normalized side-by-side comparison: `qa-artifacts\workouts-tab\workouts-comparison9.png` - 2160 x 2448 px.
+- Native UI dump: `qa-artifacts\workouts-tab\workouts-final9.xml`.
+- APK: `mobile\android\app\build\outputs\apk\release\app-release.apk`.
+
+**Viewport And Normalization**
+- Emulator: `emulator-5554`, package `app.fitora.coaching`, Android native release build.
+- The 842 x 1869 px reference was resized to 1080 x 2400 px for visual comparison against the emulator screenshot.
+- State: clean app data, signed in as seeded athlete `athlete.arjun@acme.test`, Workouts tab selected, temporary functional API at `http://10.0.2.2:4102`.
+
+**Primary Interactions Tested**
+- Role selection continued into athlete login.
+- Athlete email/password login completed against the functional API.
+- Bottom navigation opened the Workouts tab.
+
+**Findings**
+- No remaining P0/P1/P2 findings.
+- Fonts and typography: Workouts header, segmented tabs, section titles, row labels, status pills, and CTA text now match the compact hierarchy of the reference. Live backend names/dates differ from the static image where the seed data differs.
+- Spacing and layout rhythm: top inset, card spacing, card radius, subtle elevation, hero proportions, exercise rows, quick workout, upcoming rows, recent rows, and bottom-nav clearance match the provided composition.
+- Colors and visual tokens: primary blue, green completion, muted ink, soft blue icon fills, white cards, light borders, and reduced shadows align with the Fitora reference.
+- Image quality and asset fidelity: the hero torso and three exercise-preview icons use local PNG crops derived from the supplied reference image instead of generic placeholder glyphs.
+- Copy and content: section order and labels match the screenshot; dynamic API values remain backend-driven.
+
+**Comparison History**
+- P2: The first emulator capture kept the Recent card partially hidden under the bottom nav. Fixed by using a Workouts-only compact top mode and tighter Recent rows. Post-fix evidence: `workouts-comparison9.png`.
+- P2: The hero and exercise preview used generic body/barbell icons. Fixed by adding local reference-derived torso and exercise icon assets. Post-fix evidence: `workouts-final9.png`.
+
+**Verification**
+- `npm run typecheck --workspace mobile` passed.
+- `.\gradlew.bat assembleRelease -PreactNativeArchitectures=x86_64` passed.
+- Native APK installed, app data cleared, seeded athlete signed in, Workouts tab captured on emulator.
+
+final result: passed
+
+---
+
+# Fitora Athlete Nutrition Tab Design QA
+
+**Source Visual Truth**
+- Athlete Nutrition reference: `c:\Users\bizzz\Downloads\5bfac9f7-9418-473f-94c5-b012de5067e2.png`.
+
+**Implementation Evidence**
+- Native Android final capture: `qa-artifacts\nutrition-tab\nutrition-final6.png`.
+- APK: `mobile\android\app\build\outputs\apk\release\app-release.apk`.
+
+**Findings**
+- No remaining P0/P1/P2 findings.
+- The Nutrition tab now matches the supplied structure: target ring card, macro rows, outlined Add/Scan buttons, coach meal plan card, green consumed section, compact water card, 7-day coach plan card, and active Nutrition bottom tab.
+- The consumed Snack row now matches the reference state: `Not logged` with `+ Add`.
+- The screen is API-backed in the emulator; live seed values differ from the static reference where backend totals differ, but layout, hierarchy, color, radius, and spacing match the requested design direction.
+
+**Verification**
+- `npm run typecheck --workspace mobile` passed.
+- `.\gradlew.bat assembleRelease -PreactNativeArchitectures=x86_64` passed.
+- Native APK installed on emulator `emulator-5554`, app data cleared, signed in as `athlete.arjun@acme.test`, loaded the temporary functional API server, and captured the Nutrition tab.
+
+final result: passed
+
+---
+
+# Fitora Athlete Readiness Card QA
+
+**Source Visual Truth**
+- User-provided readiness-card crop: compact horizontal readiness card with ring score `76`, `Good` status, divider, and Sleep/Soreness/Fatigue rows.
+
+**Implementation Evidence**
+- Native Android capture: `qa-artifacts\readiness-card\readiness-final.png`.
+- APK: `mobile\android\app\build\outputs\apk\release\app-release.apk`.
+
+**Findings**
+- No remaining P0/P1/P2 findings.
+- The athlete Today readiness card now matches the reference structure: left progress ring, adjacent Readiness/Good/View copy, center divider, and three compact right-side factor rows.
+- Backend data now supplies the missing fatigue value, so the visible `Fatigue Moderate` row is API-backed rather than a frontend placeholder.
+- The score/status uses the measured daily recovery/readiness score for this Fitora section, matching the supplied `76 Good` reference while retaining backend binding.
+
+**Verification**
+- `npm run typecheck --workspace mobile` passed.
+- `npm run typecheck --workspace server` passed.
+- `.\gradlew.bat assembleRelease -PreactNativeArchitectures=x86_64` passed.
+- Native APK installed, opened, signed in as the seeded athlete, loaded the QA backend, and was captured on emulator `emulator-5554`.
+
+final result: passed
+
+---
+
+# Fitora Athlete Progress Tab Reference Match QA
+
+**Source Visual Truth**
+- Athlete Progress reference: `c:\Users\bizzz\Downloads\1d2ec9ab-da14-47a1-a3f3-d91c8402d991.png`.
+
+**Implementation Evidence**
+- Native Android final capture: `qa-artifacts\progress-tab\progress-final-verified.png`.
+- Normalized side-by-side comparison: `qa-artifacts\progress-tab\progress-comparison-verified.png`.
+- APK: `mobile\android\app\build\outputs\apk\release\app-release.apk`.
+
+**Viewport And Normalization**
+- Emulator: `emulator-5554`, package `app.fitora.coaching`, 1080 x 2400 px capture, density 420.
+- State: release QA build with `EXPO_PUBLIC_FITORA_QA_MODE=true`, `EXPO_PUBLIC_FITORA_QA_ROLE=athlete`, and the athlete Progress tab selected.
+- The reference was resized to the emulator capture height for direct visual comparison. Device status-bar time/icons are treated as non-app chrome.
+
+**Findings**
+- No remaining P0/P1/P2 findings.
+- The Progress screen now matches the supplied structure: title and calendar app bar, `7D / 4W / 3M` selector, Goal Progress card, compact This Week grid, Weight Trend chart, Readiness chart card, Nutrition Adherence card, Your Progress rows, streak card, Coach Feedback CTA, and bottom nav with Progress active.
+- Charts are rendered in-app with `react-native-svg` so the line/area charts match the reference style without static image placeholders.
+- Remaining differences are limited to emulator status-bar chrome and minor Android font rasterization.
+
+**Verification**
+- `npm run typecheck --workspace mobile` passed.
+- `npm test --workspace mobile -- --runInBand` passed: 10 suites, 146 tests.
+- Native Android APK was opened in the emulator and captured with `adb shell screencap`.
 
 final result: passed

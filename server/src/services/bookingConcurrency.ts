@@ -1,6 +1,7 @@
 import mongoose, { Types, type ClientSession, type HydratedDocument } from "mongoose";
 import { CoachSession, type CoachSessionDoc, type CoachSessionEventType } from "../models/CoachSession";
 import { CoachSessionSlotLock } from "../models/CoachSessionSlotLock";
+import { getVideoProvider } from "./videoProvider";
 
 export class BookingConflictError extends Error {
   constructor() {
@@ -168,4 +169,65 @@ export async function closeSessionAndReleaseLocks(
     await session.save(txnSession ? { session: txnSession } : undefined);
   });
   return session;
+}
+
+/**
+ * Cancels every still-open (requested/confirmed/rescheduled) CoachSession for
+ * a relationship and releases their slot locks — used when a coach/athlete
+ * relationship ends (Phase 12), so a straggler booking never keeps its slot
+ * locked against the coach's real availability once the relationship that
+ * authorized it no longer exists. Deliberately not scoped to "future only":
+ * any non-terminal session for the relationship is closed regardless of
+ * scheduledStart, since a non-terminal-but-past session is itself a data
+ * anomaly this cleanup should also resolve, not leave behind. Runs inside one
+ * transaction (or the sequential dev fallback) so a partial failure can't
+ * leave some sessions cancelled and others still holding a lock. Idempotent:
+ * calling this twice for the same relationship finds nothing left to do the
+ * second time, since the query only matches non-terminal statuses.
+ */
+export async function cancelOpenSessionsForRelationship(
+  relationshipId: Types.ObjectId,
+  actorId: Types.ObjectId,
+  note: string
+): Promise<HydratedDocument<CoachSessionDoc>[]> {
+  return withOptionalTransaction(async (txnSession) => {
+    const query = CoachSession.find({
+      relationshipId,
+      status: { $in: ["requested", "confirmed", "rescheduled"] },
+    });
+    const sessions = txnSession ? await query.session(txnSession) : await query;
+    const closed: HydratedDocument<CoachSessionDoc>[] = [];
+    for (const session of sessions) {
+      await releaseLocks(session._id, txnSession);
+      session.status = "cancelled";
+      session.events.push({ at: new Date(), type: "cancelled", actorId, note });
+      await session.save(txnSession ? { session: txnSession } : undefined);
+      closed.push(session);
+    }
+    return closed;
+  });
+}
+
+/**
+ * Same as cancelOpenSessionsForRelationship, plus best-effort live-video-room
+ * teardown for anything that had one — the combined operation used by
+ * coachRelationship.ts (endRelationship / a completed coach switch) so
+ * neither caller needs its own import of services/coachSession.ts (which
+ * itself imports services/subscription.ts, and subscription.ts is one of the
+ * two callers here — importing coachSession.ts from either would be
+ * circular). Video teardown failures are swallowed, matching
+ * coachSession.ts's own terminateVideoRoomIfAny.
+ */
+export async function cancelOpenSessionsAndVideoRoomsForRelationship(
+  relationshipId: Types.ObjectId,
+  actorId: Types.ObjectId,
+  note: string
+): Promise<HydratedDocument<CoachSessionDoc>[]> {
+  const closed = await cancelOpenSessionsForRelationship(relationshipId, actorId, note);
+  await Promise.all(
+    closed
+      .filter((s) => s.videoRoomRef)
+      .map((s) => getVideoProvider().terminateRoom(s.videoRoomRef as string).catch(() => undefined))
+  );
+  return closed;
 }

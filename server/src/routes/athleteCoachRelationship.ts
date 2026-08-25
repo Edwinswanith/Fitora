@@ -24,7 +24,7 @@ router.post("/coach/leave", writeRateLimit({ windowMs: 60_000, max: 10 }), async
   if (!relationship) return void res.status(404).json({ error: "no_active_coach" });
 
   try {
-    const ended = await endRelationship(relationship, "athlete_left");
+    const ended = await endRelationship(relationship, "athlete_left", req.actor!.userId);
     res.json({ relationship: { id: ended._id.toString(), status: ended.status, endedAt: ended.endedAt, endedReason: ended.endedReason } });
   } catch (err) {
     if (err instanceof CoachRelationshipError) return void res.status(err.status).json({ error: err.message });
@@ -32,7 +32,14 @@ router.post("/coach/leave", writeRateLimit({ windowMs: 60_000, max: 10 }), async
   }
 });
 
-/** POST /coach-switch — body: { newCoachId, newPricingPlanId }. Ends any current relationship, then starts checkout with the new coach. */
+/**
+ * POST /coach-switch — body: { newCoachId, newPricingPlanId }. Starts
+ * checkout with the new coach WITHOUT touching the current relationship — it
+ * only ends, atomically with the new one activating, once the new coach's
+ * payment is webhook-verified (services/subscription.ts completeSwitchIntent).
+ * If the athlete has no current coach at all, this degrades to a plain
+ * subscribe (kind: "subscribe") since there's nothing to protect.
+ */
 router.post("/coach-switch", writeRateLimit({ windowMs: 60_000, max: 10 }), async (req: Request, res: Response) => {
   const athleteId = selfAthleteId(req);
   if (!athleteId) return void res.status(404).json({ error: "athlete_profile_not_found" });
@@ -47,8 +54,16 @@ router.post("/coach-switch", writeRateLimit({ windowMs: 60_000, max: 10 }), asyn
   }
 
   try {
-    const { subscription, checkoutRef } = await switchCoach(athleteId, new Types.ObjectId(newCoachId), new Types.ObjectId(newPricingPlanId));
-    res.status(201).json({ subscription: serializeSubscription(subscription), checkoutRef });
+    const result = await switchCoach(athleteId, new Types.ObjectId(newCoachId), new Types.ObjectId(newPricingPlanId));
+    if (result.kind === "subscribe") {
+      res.status(201).json({ kind: "subscribe", subscription: serializeSubscription(result.subscription), checkoutRef: result.checkoutRef });
+      return;
+    }
+    res.status(201).json({
+      kind: "switch",
+      switchIntentId: result.intent._id.toString(),
+      checkoutRef: result.checkoutRef,
+    });
   } catch (err) {
     if (err instanceof CoachRelationshipError || err instanceof SubscriptionError) {
       return void res.status(err.status).json({ error: err.message });

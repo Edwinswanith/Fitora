@@ -154,12 +154,6 @@ export default function Announcements() {
           <View style={styles.sentHeaderRow}>
             <Text style={styles.sentLabel}>Sent</Text>
             <View style={styles.sentDivider} />
-            {items && items.length > 0 ? (
-              <View style={styles.sentViewAllRow}>
-                <Text style={styles.sentViewAll}>View all</Text>
-                <Ionicons name="chevron-forward" size={14} color={accent} />
-              </View>
-            ) : null}
           </View>
 
           {loading && !items ? (
@@ -184,7 +178,6 @@ export default function Announcements() {
                       ) : null}
                     </View>
                   </View>
-                  <Ionicons name="ellipsis-horizontal" size={16} color={colors.inkFaint} style={styles.sentMenuIcon} />
                 </Card>
               ))}
             </View>
@@ -247,10 +240,7 @@ const styles = StyleSheet.create({
     textTransform: "uppercase",
   },
   sentDivider: { flex: 1, height: StyleSheet.hairlineWidth, backgroundColor: colors.lineStrong },
-  sentViewAllRow: { flexDirection: "row", alignItems: "center", gap: 2 },
-  sentViewAll: { color: ROLE_THEMES.coach.accent, fontSize: 12, fontWeight: "900" },
   sentCard: { flexDirection: "row", alignItems: "flex-start", gap: 12 },
-  sentMenuIcon: { marginTop: 2 },
   sentIconTile: {
     height: 34,
     width: 34,

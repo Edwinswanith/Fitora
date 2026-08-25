@@ -2,6 +2,35 @@ import { Types, type HydratedDocument } from "mongoose";
 import { CoachReview, type CoachReviewDoc, REVIEW_SUB_RATING_KEYS } from "../models/CoachReview";
 import { CoachAthleteAssignment, type CoachAthleteAssignmentDoc } from "../models/CoachAthleteAssignment";
 import { CoachProfile } from "../models/CoachProfile";
+import { AthleteProfile } from "../models/AthleteProfile";
+import { User } from "../models/User";
+import { evaluateAndDispatch } from "./notificationEligibility";
+import { resolveTimezoneForUser } from "./timezone";
+import { categoryForType } from "../lib/notificationTypes";
+import { buildNewReview } from "./notificationTemplates";
+
+/** Best-effort — never lets a notification failure fail the review write. */
+async function notifyCoachOfNewReview(review: HydratedDocument<CoachReviewDoc>): Promise<void> {
+  try {
+    const athleteProfile = await AthleteProfile.findById(review.athleteId).select("userId").lean();
+    const athleteUserDoc = athleteProfile?.userId
+      ? await User.findById(athleteProfile.userId).select("name").lean()
+      : null;
+    const timezone = await resolveTimezoneForUser({ userId: review.coachId as Types.ObjectId, role: "coach" });
+    await evaluateAndDispatch({
+      userId: review.coachId as Types.ObjectId,
+      type: "new_review",
+      category: categoryForType("new_review"),
+      priorityTier: 3,
+      dedupKey: `new_review:${review._id.toString()}`,
+      timezone,
+      entityRef: { collection: "CoachReview", id: review._id as Types.ObjectId },
+      ...buildNewReview({ athleteName: (athleteUserDoc?.name as string) || "An athlete", rating: review.overallRating as number }),
+    });
+  } catch (err) {
+    console.error("[coachReview] notification dispatch failed (non-fatal)", (err as Error).message);
+  }
+}
 
 export class CoachReviewError extends Error {
   status: number;
@@ -96,6 +125,7 @@ export async function createReview(
   }
 
   await recomputeCoachRatingAggregate(relationship.coachId as Types.ObjectId);
+  await notifyCoachOfNewReview(review);
   return review;
 }
 

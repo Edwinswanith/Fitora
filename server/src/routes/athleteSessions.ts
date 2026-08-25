@@ -53,7 +53,7 @@ router.post("/coaches/:coachId/sessions", writeRateLimit({ windowMs: 60_000, max
   if (!scheduledStart) return void res.status(400).json({ error: "invalid_scheduledStart" });
 
   try {
-    const session = await requestSession({
+    const { session, quota } = await requestSession({
       coachId: new Types.ObjectId(req.params.coachId),
       athleteId,
       relationshipId: relationship._id,
@@ -61,7 +61,7 @@ router.post("/coaches/:coachId/sessions", writeRateLimit({ windowMs: 60_000, max
       scheduledStart,
       requestedBy: req.actor!.userId,
     });
-    res.status(201).json({ session: serializeSession(session, "athlete") });
+    res.status(201).json({ session: serializeSession(session, "athlete"), quota });
   } catch (err) {
     if (err instanceof CoachSessionError) return void res.status(err.status).json({ error: err.message });
     throw err;

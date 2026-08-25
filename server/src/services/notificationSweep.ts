@@ -3,6 +3,9 @@ import { env } from "../config/env";
 import { User, type UserRole } from "../models/User";
 import { AthleteProfile } from "../models/AthleteProfile";
 import { CoachAthleteAssignment } from "../models/CoachAthleteAssignment";
+import { AthleteCoachSubscription } from "../models/AthleteCoachSubscription";
+import { CoachSession } from "../models/CoachSession";
+import { WorkoutAssignment } from "../models/WorkoutAssignment";
 import { Attendance } from "../models/Attendance";
 import { Wellness } from "../models/Wellness";
 import { TrainingSession, type SessionSlot } from "../models/TrainingSession";
@@ -255,6 +258,111 @@ export async function buildAthleteCandidates(
     });
   }
 
+  // Subscription expiry reminders (Phase 12 §5) — dedupKey is keyed on the
+  // subscription's currentPeriodEnd itself (not the sweep-run date), so each
+  // threshold fires exactly once per billing period regardless of how many
+  // times the sweep re-evaluates this athlete before it's decided/suppressed.
+  const activeRelationship = await CoachAthleteAssignment.findOne({ athleteId: profile._id, status: "active" })
+    .select("coachId subscriptionId")
+    .lean();
+  if (activeRelationship?.subscriptionId) {
+    const subscription = await AthleteCoachSubscription.findById(activeRelationship.subscriptionId)
+      .select("status currentPeriodEnd")
+      .lean();
+    if (subscription && ["active", "payment_due"].includes(subscription.status as string) && subscription.currentPeriodEnd) {
+      const periodEnd = subscription.currentPeriodEnd as Date;
+      const daysRemaining = (periodEnd.getTime() - now.getTime()) / (24 * 60 * 60 * 1000);
+      const periodEndKey = periodEnd.toISOString().slice(0, 10);
+      const coach = await User.findById(activeRelationship.coachId).select("name").lean();
+      const coachName = (coach?.name as string) || "your coach";
+      if (daysRemaining >= 0 && daysRemaining <= 1) {
+        candidates.push({
+          userId: user._id,
+          type: "subscription_expiring",
+          category: "deadlines",
+          priorityTier: 2,
+          dedupKey: `subscription_expiring:${profile._id.toString()}:1d:${periodEndKey}`,
+          timezone: tz,
+          academyId,
+          ...templates.buildSubscriptionExpiringReminder({ coachName, daysRemaining: 1 }),
+        });
+      } else if (daysRemaining > 1 && daysRemaining <= 7) {
+        candidates.push({
+          userId: user._id,
+          type: "subscription_expiring",
+          category: "deadlines",
+          priorityTier: 3,
+          dedupKey: `subscription_expiring:${profile._id.toString()}:7d:${periodEndKey}`,
+          timezone: tz,
+          academyId,
+          ...templates.buildSubscriptionExpiringReminder({ coachName, daysRemaining: 7 }),
+        });
+      }
+    }
+  }
+
+  // Workout-due reminder (Phase 12 §3) — same time-of-day gate as the
+  // existing training_session_reminder, but for the newer WorkoutAssignment
+  // system (Phase 2), which has no reminder of its own yet.
+  if (minute >= env.notification.missedActivityReminderMinute) {
+    const dueAssignments = await WorkoutAssignment.find({
+      assignedTo: profile._id,
+      scheduledDate: { $gte: today, $lt: todayEnd },
+      status: "scheduled",
+    })
+      .select("_id nameSnapshot")
+      .lean();
+    for (const assignment of dueAssignments) {
+      candidates.push({
+        userId: user._id,
+        type: "workout_due",
+        category: "reminders",
+        priorityTier: 3,
+        dedupKey: `workout_due:${(assignment._id as Types.ObjectId).toString()}:${dateKey}`,
+        timezone: tz,
+        academyId,
+        entityRef: { collection: "WorkoutAssignment", id: assignment._id as Types.ObjectId },
+        ...templates.buildWorkoutDue({ workoutName: assignment.nameSnapshot as string }),
+        isActionAlreadyCompleted: async () => {
+          const current = await WorkoutAssignment.findById(assignment._id).select("status").lean();
+          return !current || current.status !== "scheduled";
+        },
+      });
+    }
+  }
+
+  // Session-starting reminder (Phase 12 §5) — a short window before a
+  // confirmed CoachSession's scheduledStart, for both participants (coach
+  // side is built in buildCoachCandidates below). Evaluated every sweep tick;
+  // the dedupKey (keyed on the session id, not the tick time) guarantees
+  // exactly one send per session regardless of how many ticks fall inside the
+  // window before it's claimed.
+  const upcomingAthleteSessions = await CoachSession.find({
+    athleteId: profile._id,
+    status: { $in: ["confirmed", "rescheduled"] },
+    scheduledStart: {
+      $gte: now,
+      $lte: new Date(now.getTime() + env.notification.sessionStartingLeadMinutes * 60_000),
+    },
+  })
+    .select("_id coachId scheduledStart")
+    .lean();
+  for (const session of upcomingAthleteSessions) {
+    const coach = await User.findById(session.coachId).select("name").lean();
+    const minutesUntil = Math.max(0, Math.round((session.scheduledStart.getTime() - now.getTime()) / 60_000));
+    candidates.push({
+      userId: user._id,
+      type: "session_starting",
+      category: "reminders",
+      priorityTier: 1,
+      dedupKey: `session_starting:${(session._id as Types.ObjectId).toString()}:athlete`,
+      timezone: tz,
+      academyId,
+      entityRef: { collection: "CoachSession", id: session._id as Types.ObjectId },
+      ...templates.buildSessionStarting({ counterpartName: (coach?.name as string) || "your coach", minutesUntil }),
+    });
+  }
+
   return candidates;
 }
 
@@ -352,6 +460,39 @@ export async function buildCoachCandidates(
         flaggedCount,
       }),
     });
+  }
+
+  // Session-starting reminder, coach side — same window/dedup shape as the
+  // athlete side in buildAthleteCandidates above.
+  const upcomingCoachSessions = await CoachSession.find({
+    coachId: user._id,
+    status: { $in: ["confirmed", "rescheduled"] },
+    scheduledStart: {
+      $gte: now,
+      $lte: new Date(now.getTime() + env.notification.sessionStartingLeadMinutes * 60_000),
+    },
+  })
+    .select("_id athleteId scheduledStart")
+    .lean();
+  if (upcomingCoachSessions.length > 0) {
+    const names = await athleteNameMap(upcomingCoachSessions.map((s) => s.athleteId as Types.ObjectId));
+    for (const session of upcomingCoachSessions) {
+      const minutesUntil = Math.max(0, Math.round((session.scheduledStart.getTime() - now.getTime()) / 60_000));
+      candidates.push({
+        userId: user._id,
+        type: "session_starting",
+        category: "reminders",
+        priorityTier: 1,
+        dedupKey: `session_starting:${(session._id as Types.ObjectId).toString()}:coach`,
+        timezone: tz,
+        academyId: user.academyId ?? null,
+        entityRef: { collection: "CoachSession", id: session._id as Types.ObjectId },
+        ...templates.buildSessionStarting({
+          counterpartName: names.get((session.athleteId as Types.ObjectId).toString()) ?? "your athlete",
+          minutesUntil,
+        }),
+      });
+    }
   }
 
   return candidates;

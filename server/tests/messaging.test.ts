@@ -265,6 +265,52 @@ describe("Coach⇄athlete direct messaging", () => {
     expect(older.body.messages.map((m: { body: string }) => m.body)).toEqual(["m0", "m1"]);
   });
 
+  test("Phase 12: athlete CAN still read historical messages with a coach whose relationship has ended, but cannot send new ones", async () => {
+    const app = buildApp();
+    const { coach, athleteUser, profile } = await seedPair();
+    const cTok = coachToken(coach._id);
+    const aTok = athleteToken(athleteUser._id);
+
+    await request(app).post(`/api/coach/athletes/${profile._id}/messages`).set("Authorization", `Bearer ${cTok}`).send({ body: "before you left" });
+    await request(app).post(`/api/athlete/messages/${coach._id}`).set("Authorization", `Bearer ${aTok}`).send({ body: "ok coach" });
+
+    // Relationship ends.
+    await CoachAthleteAssignment.updateOne(
+      { coachId: coach._id, athleteId: profile._id },
+      { $set: { endedAt: new Date(), status: "ended", endedReason: "athlete_left" } }
+    );
+
+    // History is still readable.
+    const history = await request(app).get(`/api/athlete/messages/${coach._id}`).set("Authorization", `Bearer ${aTok}`);
+    expect(history.status).toBe(200);
+    expect(history.body.messages.map((m: { body: string }) => m.body)).toEqual(["before you left", "ok coach"]);
+
+    // The ended coach's thread still shows up in the thread list.
+    const threads = await request(app).get("/api/athlete/messages/threads").set("Authorization", `Bearer ${aTok}`);
+    expect(threads.body.threads.map((t: { partyId: string }) => t.partyId)).toContain(coach._id.toString());
+
+    // Marking read still works (part of reading, not a new outbound action).
+    const marked = await request(app).post(`/api/athlete/messages/${coach._id}/read`).set("Authorization", `Bearer ${aTok}`);
+    expect(marked.status).toBe(200);
+
+    // But sending a NEW message is still blocked.
+    const send = await request(app).post(`/api/athlete/messages/${coach._id}`).set("Authorization", `Bearer ${aTok}`).send({ body: "please reply" });
+    expect(send.status).toBe(403);
+    expect(send.body.error).toBe("coach_not_assigned");
+  });
+
+  test("Phase 12: reading a thread with a coach who was NEVER assigned is still rejected (coach_never_assigned)", async () => {
+    const app = buildApp();
+    const { athleteUser } = await seedPair();
+    const strangerCoach = await User.create({ email: "never-assigned@m.io", passwordHash: "x", role: "coach", name: "Never Assigned" });
+
+    const res = await request(app)
+      .get(`/api/athlete/messages/${strangerCoach._id}`)
+      .set("Authorization", `Bearer ${athleteToken(athleteUser._id)}`);
+    expect(res.status).toBe(403);
+    expect(res.body.error).toBe("coach_never_assigned");
+  });
+
   test("repeating an athlete message POST with the same clientActionId does not double-send", async () => {
     const app = buildApp();
     const { coach, athleteUser, profile } = await seedPair();

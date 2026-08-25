@@ -14,18 +14,18 @@ import {
   Inter_900Black,
 } from "@expo-google-fonts/inter";
 import { AuthProvider, useAuth } from "../lib/auth";
+import { AthleteAskAgentOverlay, CoachAskAgentOverlay } from "../components/RoleAskAgentOverlays";
 import { dashboardPathForRole } from "../lib/roles";
 import { colors } from "../lib/theme";
 import { MobileTourProvider, useTourRootView } from "../lib/tour/MobileTourProvider";
-import { TourOverlay } from "../components/mascot/TourOverlay";
-import { MascotReactionOverlay } from "../components/mascot/MascotReactionOverlay";
 import { subscribeToPushMessages } from "../lib/push";
 
 SplashScreen.preventAutoHideAsync().catch(() => undefined);
 
 const KNOWN_PUSH_ROUTES = [
   "/athlete/dashboard", "/athlete/check-in", "/athlete/rpe", "/athlete/water", "/athlete/trends",
-  "/coach/dashboard", "/coach/athletes", "/coach/messages", "/coach/announcements", "/coach/coaches",
+  "/athlete/active-workout", "/athlete/meal-scan", "/athlete/coach-discovery",
+  "/coach/dashboard", "/coach/athletes", "/coach/plan", "/coach/content", "/coach/profile",
   "/account", "/notifications",
 ];
 
@@ -67,19 +67,17 @@ function Gate() {
   }
 
   return (
-    <Stack screenOptions={{ headerShown: false, contentStyle: { backgroundColor: colors.surface } }} />
+    <View style={{ flex: 1 }}>
+      <Stack screenOptions={{ headerShown: false, contentStyle: { backgroundColor: colors.surface } }} />
+      {status === "authed" && user?.role === "athlete" ? <AthleteAskAgentOverlay /> : null}
+      {status === "authed" && user?.role === "coach" ? <CoachAskAgentOverlay /> : null}
+    </View>
   );
 }
 
 /**
- * A single `View`, mounted once here, that both the router's screen content
- * (`Gate`/`Stack`) and `TourOverlay` share as an ancestor — see
- * `measureRelativeToRoot`'s doc comment for why every tour measurement is
- * computed relative to this node instead of via `measureInWindow`: on this
- * RN/Fabric + expo-router setup, `measureInWindow` for a view inside the
- * router's navigator was observed to disagree with `TourOverlay`'s own
- * absolutely-positioned frame by exactly the top safe-area inset, which
- * this sidesteps entirely.
+ * Keeps legacy tour-hook consumers under the same root view without mounting
+ * the old guided-tour visuals in the Fitora app shell.
  */
 function TourRootBoundary({ children }: { children: ReactNode }) {
   const rootRef = useTourRootView();
@@ -113,8 +111,6 @@ export default function RootLayout() {
           <TourRootBoundary>
             <StatusBar style="dark" />
             <Gate />
-            <TourOverlay />
-            <MascotReactionOverlay />
           </TourRootBoundary>
         </MobileTourProvider>
       </AuthProvider>

@@ -34,6 +34,15 @@ export type BuildVoiceActionOptions = {
 
 const WELLNESS_KEYS = ["sleepQuality", "mood", "stress", "soreness", "fatigue"] as const;
 
+function todayKey(): string {
+  const isDev = typeof __DEV__ !== "undefined" && __DEV__;
+  if (isDev && process.env.EXPO_PUBLIC_FITORA_QA_DATE) {
+    return process.env.EXPO_PUBLIC_FITORA_QA_DATE;
+  }
+  const date = new Date();
+  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")}`;
+}
+
 export function buildVoiceAction(
   intent: VoiceIntentNameV2,
   entities: Record<string, unknown>,
@@ -105,6 +114,29 @@ export function buildVoiceAction(
         body: { amountMl: entities.amountMl, clientActionId: opts.clientActionId },
         successMessage: "Water logged.",
       };
+
+    case "log_meal": {
+      const foodName =
+        typeof entities.foodName === "string" ? entities.foodName : typeof entities.mealName === "string" ? entities.mealName : "Meal";
+      const mealName = typeof entities.mealName === "string" ? entities.mealName : foodName;
+      return {
+        kind: "http",
+        method: "POST",
+        path: "/api/athlete/voice/log-meal",
+        body: {
+          date: todayKey(),
+          mealType: entities.mealType,
+          name: mealName,
+          foodName,
+          calories: entities.calories,
+          proteinG: typeof entities.proteinG === "number" ? entities.proteinG : 0,
+          carbsG: typeof entities.carbsG === "number" ? entities.carbsG : 0,
+          fatG: typeof entities.fatG === "number" ? entities.fatG : 0,
+          clientActionId: opts.clientActionId,
+        },
+        successMessage: "Meal logged.",
+      };
+    }
 
     case "set_water_goal":
       return {

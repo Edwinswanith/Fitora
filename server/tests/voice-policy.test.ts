@@ -95,6 +95,32 @@ describe("voiceIntentPolicy — fresh intents", () => {
     expect(result.requiresConfirmation).toBe(false);
   });
 
+  test("show_nutrition and show_upcoming_session are read-only answers", () => {
+    const nutrition = derivePolicy(turn("show_nutrition", {}), null);
+    expect(nutrition.action).toBe("answer");
+    expect(nutrition.requiresConfirmation).toBe(false);
+
+    const session = derivePolicy(turn("show_upcoming_session", {}), null);
+    expect(session.action).toBe("answer");
+    expect(session.requiresConfirmation).toBe(false);
+  });
+
+  test("log_meal requires meal type, food name, and calories before confirmation", () => {
+    const incomplete = derivePolicy(turn("log_meal", { mealType: "lunch", foodName: "Chicken rice bowl" }), null);
+    expect(incomplete.action).toBe("collect_fields");
+    expect(incomplete.missingFields).toEqual(["calories"]);
+
+    const ready = derivePolicy(
+      turn("log_meal", { mealType: "Lunch", foodName: "Chicken rice bowl", calories: 650, proteinG: 45 }),
+      null
+    );
+    expect(ready.action).toBe("ready_to_confirm");
+    expect(ready.requiresConfirmation).toBe(true);
+    expect(ready.entities.mealType).toBe("lunch");
+    expect(ready.spokenResponse).toMatch(/Chicken rice bowl/);
+    expect(ready.spokenResponse).toMatch(/650 calories/);
+  });
+
   test("open_screen with an allowlisted screen navigates", () => {
     const result = derivePolicy(turn("open_screen", { screen: "progress" }), null);
     expect(result.action).toBe("navigate");

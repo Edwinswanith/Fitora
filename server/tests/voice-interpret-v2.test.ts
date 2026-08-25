@@ -7,6 +7,8 @@ import { AthleteProfile } from "../src/models/AthleteProfile";
 import { VoicePendingState } from "../src/models/VoicePendingState";
 import { Wellness } from "../src/models/Wellness";
 import { WaterIntake } from "../src/models/WaterIntake";
+import { Meal } from "../src/models/Meal";
+import { MealFood } from "../src/models/MealFood";
 import athleteVoiceV2Router from "../src/routes/athleteVoiceV2";
 import { signAccessToken } from "../src/lib/tokens";
 import {
@@ -359,6 +361,54 @@ describe("POST /api/athlete/voice/interpret-v2 — expanded fillable fields", ()
     expect(res.body.action).toBe("answer");
     expect(res.body.requiresConfirmation).toBe(false);
   });
+
+  test("a nutrition remaining question classifies as show_nutrition, not a checklist", async () => {
+    const app = buildApp();
+    const { user } = await makeAthlete("Ritika");
+    const token = tokenFor(user._id as Types.ObjectId, "athlete");
+    const res = await request(app)
+      .post("/api/athlete/voice/interpret-v2")
+      .set("Cookie", [`accessToken=${token}`])
+      .send({ transcript: "how much protein and calories do I have left today" });
+    expect(res.status).toBe(200);
+    expect(res.body.intent).toBe("show_nutrition");
+    expect(res.body.action).toBe("answer");
+    expect(res.body.requiresConfirmation).toBe(false);
+  });
+
+  test("a meal log extracts meal fields and waits for confirmation", async () => {
+    const app = buildApp();
+    const { user } = await makeAthlete("Tanvi");
+    const token = tokenFor(user._id as Types.ObjectId, "athlete");
+    const res = await request(app)
+      .post("/api/athlete/voice/interpret-v2")
+      .set("Cookie", [`accessToken=${token}`])
+      .send({ transcript: "log lunch chicken rice bowl 650 calories 45 protein 70 carbs 12 fat" });
+    expect(res.status).toBe(200);
+    expect(res.body.intent).toBe("log_meal");
+    expect(res.body.action).toBe("ready_to_confirm");
+    expect(res.body.entities.mealType).toBe("lunch");
+    expect(res.body.entities.foodName).toMatch(/chicken rice bowl/i);
+    expect(res.body.entities.calories).toBe(650);
+    expect(res.body.entities.proteinG).toBe(45);
+    expect(res.body.entities.carbsG).toBe(70);
+    expect(res.body.entities.fatG).toBe(12);
+    expect(res.body.requiresConfirmation).toBe(true);
+  });
+
+  test("starting a workout navigates to workouts instead of logging a session", async () => {
+    const app = buildApp();
+    const { user } = await makeAthlete("Uma");
+    const token = tokenFor(user._id as Types.ObjectId, "athlete");
+    const res = await request(app)
+      .post("/api/athlete/voice/interpret-v2")
+      .set("Cookie", [`accessToken=${token}`])
+      .send({ transcript: "continue my workout" });
+    expect(res.status).toBe(200);
+    expect(res.body.intent).toBe("open_screen");
+    expect(res.body.entities.screen).toBe("workouts");
+    expect(res.body.action).toBe("navigate");
+  });
 });
 
 describe("GET /api/athlete/voice/today-checklist", () => {
@@ -430,5 +480,51 @@ describe("sanitizeModelOutput — malformed model output never reaches the polic
   test("confidence is clamped into [0,1]", () => {
     expect(sanitizeModelOutput({ intent: "show_readiness", entities: {}, confidence: 5 }).confidence).toBe(1);
     expect(sanitizeModelOutput({ intent: "show_readiness", entities: {}, confidence: -3 }).confidence).toBe(0);
+  });
+});
+
+describe("POST /api/athlete/voice/log-meal", () => {
+  test("logs a consumed meal once for a repeated clientActionId", async () => {
+    const app = buildApp();
+    const { user, profile } = await makeAthlete("Vani");
+    const token = tokenFor(user._id as Types.ObjectId, "athlete");
+    const body = {
+      clientActionId: "meal-action-1",
+      date: TODAY.toISOString().slice(0, 10),
+      mealType: "lunch",
+      name: "Chicken rice bowl",
+      foodName: "Chicken rice bowl",
+      calories: 650,
+      proteinG: 45,
+      carbsG: 70,
+      fatG: 12,
+    };
+
+    const first = await request(app)
+      .post("/api/athlete/voice/log-meal")
+      .set("Cookie", [`accessToken=${token}`])
+      .send(body);
+    expect(first.status).toBe(201);
+
+    const second = await request(app)
+      .post("/api/athlete/voice/log-meal")
+      .set("Cookie", [`accessToken=${token}`])
+      .send(body);
+    expect(second.status).toBe(200);
+
+    expect(await Meal.countDocuments({ athleteId: profile._id })).toBe(1);
+    expect(await MealFood.countDocuments()).toBe(1);
+  });
+
+  test("rejects missing calories instead of guessing", async () => {
+    const app = buildApp();
+    const { user } = await makeAthlete("Wafa");
+    const token = tokenFor(user._id as Types.ObjectId, "athlete");
+    const res = await request(app)
+      .post("/api/athlete/voice/log-meal")
+      .set("Cookie", [`accessToken=${token}`])
+      .send({ clientActionId: "meal-action-2", mealType: "snack", foodName: "Banana" });
+    expect(res.status).toBe(400);
+    expect(res.body.error).toBe("invalid_calories");
   });
 });

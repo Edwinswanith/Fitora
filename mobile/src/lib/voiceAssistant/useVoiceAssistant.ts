@@ -10,6 +10,8 @@ import type { InterpretV2Response, VoiceIntentNameV2 } from "./types";
 export type UseVoiceAssistantOptions = {
   /** Called after a successful save, so the screen can refresh whatever data changed. */
   onExecuted?: (intent: VoiceIntentNameV2) => void;
+  /** Called for policy-approved open_screen commands. */
+  onNavigate?: (screen: string) => void;
 };
 
 /**
@@ -61,6 +63,13 @@ export function useVoiceAssistant(options: UseVoiceAssistantOptions = {}) {
         return performExecute(res.intent, res.entities);
       }
 
+      if (res.action === "navigate") {
+        dispatch({ type: "TURN", payload: res, clientActionId: null });
+        const screen = typeof res.entities.screen === "string" ? res.entities.screen : "";
+        if (screen) options.onNavigate?.(screen);
+        return res.spokenResponse;
+      }
+
       if (res.action === "answer") {
         // The server deliberately never states real data (voiceIntentPolicy's
         // spokenResponse is a fixed placeholder here) — fetch the athlete's
@@ -106,7 +115,7 @@ export function useVoiceAssistant(options: UseVoiceAssistantOptions = {}) {
 
       return res.spokenResponse;
     },
-    [performExecute]
+    [performExecute, options]
   );
 
   const runTurn = useCallback(

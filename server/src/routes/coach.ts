@@ -235,16 +235,23 @@ router.get("/athletes", async (req: Request, res: Response) => {
     return;
   }
 
-  const profiles = await AthleteProfile.find({ _id: { $in: ids } })
-    .select("_id userId sport position academyId")
-    .lean();
+  const [profiles, assignments] = await Promise.all([
+    AthleteProfile.find({ _id: { $in: ids } })
+      .select("_id userId sport position academyId")
+      .lean(),
+    CoachAthleteAssignment.find({ athleteId: { $in: ids }, coachId: req.actor.userId, status: "active" })
+      .select("athleteId subscriptionId")
+      .lean(),
+  ]);
   const users = await User.find({ _id: { $in: profiles.map((p) => p.userId) } })
     .select("_id name email avatarKind avatarDefaultId")
     .lean();
   const userById = new Map(users.map((u) => [u._id.toString(), u]));
+  const assignmentByAthleteId = new Map(assignments.map((a) => [(a.athleteId as Types.ObjectId).toString(), a]));
 
   const athletes = profiles.map((p) => {
     const u = userById.get((p.userId as Types.ObjectId).toString());
+    const assignment = assignmentByAthleteId.get(p._id.toString());
     return {
       athleteId: p._id.toString(),
       userId: (p.userId as Types.ObjectId).toString(),
@@ -254,6 +261,7 @@ router.get("/athletes", async (req: Request, res: Response) => {
       position: p.position ?? null,
       academyId: p.academyId ? (p.academyId as Types.ObjectId).toString() : null,
       avatar: u ? avatarSummary(u) : { kind: null, defaultId: null },
+      hasActiveMembership: Boolean(assignment?.subscriptionId),
     };
   });
 

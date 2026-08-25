@@ -1,24 +1,28 @@
-// Design tokens for the mobile app.
-// so the native app shares one visual identity. Light, warm off-white theme with
-// a per-role accent hue.
+// Shared Fitora design tokens for the Expo mobile app.
 
 import type { Role } from "./roles";
 
 export const colors = {
-  surface: "#fbfaf6", // warm off-white page bg
-  surfaceRaised: "#fffefd", // white cards with a warm paper tint
-  surfaceInset: "#f6f5f0", // pale inset (fields, tiles)
-  ink: "#111514",
-  inkMuted: "#606862",
-  inkFaint: "#818982",
-  line: "rgba(31,35,32,0.042)",
-  lineStrong: "rgba(31,35,32,0.082)",
+  surface: "#fbfcff",
+  surfaceRaised: "#ffffff",
+  surfaceInset: "#f5f7fb",
+  ink: "#0f172a",
+  inkMuted: "#475569",
+  inkFaint: "#64748b",
+  line: "#e2e8f0",
+  lineStrong: "#cbd5e1",
+  primary: "#0b5cff",
+  primaryStrong: "#0048d9",
+  primarySoft: "#eaf1ff",
   ok: "#16a34a",
-  warn: "#ca8a04",
-  bad: "#dc2626",
+  okSoft: "#e8f7ed",
+  warn: "#f59e0b",
+  warnSoft: "#fff7e6",
+  bad: "#ef4444",
+  badSoft: "#feecec",
 } as const;
 
-export type IconName = "pulse" | "flash" | "heart";
+export type IconName = "home-outline" | "barbell-outline";
 
 export type RoleTheme = {
   role: Role;
@@ -34,29 +38,29 @@ export type RoleTheme = {
 };
 
 export const ROLE_THEMES: Record<Role, RoleTheme> = {
+  athlete: {
+    role: "athlete",
+    label: "User",
+    heading: "Your coaching day, simplified.",
+    subcopy: "Workout, nutrition, coaching and progress in one place.",
+    tagline: "Fitness, nutrition and coaching",
+    accent: colors.primary,
+    accentStrong: colors.primaryStrong,
+    accentInk: "#ffffff",
+    accentSoft: colors.primarySoft,
+    icon: "home-outline",
+  },
   coach: {
     role: "coach",
     label: "Coach",
-    heading: "Coach by the numbers.",
-    subcopy: "Readiness, training load and risk flags for every assigned athlete.",
-    tagline: "Readiness & risk flags",
-    accent: "#0b7d55",
-    accentStrong: "#0a6e4d",
+    heading: "Coach every client with context.",
+    subcopy: "Plans, sessions, content and client readiness in one flow.",
+    tagline: "Clients, plans and content",
+    accent: colors.primary,
+    accentStrong: colors.primaryStrong,
     accentInk: "#ffffff",
-    accentSoft: "rgba(11,125,85,0.16)",
-    icon: "pulse",
-  },
-  athlete: {
-    role: "athlete",
-    label: "Athlete",
-    heading: "Train. Log. Recover.",
-    subcopy: "Your daily check-in, sessions and recovery in under a minute.",
-    tagline: "Check-in & recovery",
-    accent: "#efa94e",
-    accentStrong: "#9a5a0c",
-    accentInk: "#1a0c00",
-    accentSoft: "rgba(239,169,78,0.18)",
-    icon: "flash",
+    accentSoft: colors.primarySoft,
+    icon: "barbell-outline",
   },
 };
 
@@ -65,5 +69,5 @@ export const ROLE_THEME_LIST: RoleTheme[] = [
   ROLE_THEMES.coach,
 ];
 
-export const radius = { sm: 8, md: 10, lg: 13, pill: 999 } as const;
+export const radius = { sm: 8, md: 12, lg: 16, xl: 18, pill: 999 } as const;
 export const space = (n: number) => n * 4;

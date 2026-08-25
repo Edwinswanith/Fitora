@@ -5,7 +5,7 @@ import { Platform } from "react-native";
 import { apiFetch } from "./api";
 
 let cachedToken: string | null = null;
-const PUSH_CHANNEL_ID = "apex_push_popups_v2";
+const PUSH_CHANNEL_ID = "fitora_push_popups_v1";
 
 Notifications.setNotificationHandler({
   handleNotification: async () => ({
@@ -17,18 +17,19 @@ Notifications.setNotificationHandler({
 });
 
 function supportsRemotePush(): boolean {
+  if (__DEV__ && process.env.EXPO_PUBLIC_FITORA_QA_MODE === "true") return false;
   return Platform.OS === "android" || Platform.OS === "ios";
 }
 
 async function ensureChannel(): Promise<void> {
   if (Platform.OS !== "android") return;
   await Notifications.setNotificationChannelAsync(PUSH_CHANNEL_ID, {
-    name: "Apex popup alerts",
+    name: "Fitora alerts",
     importance: Notifications.AndroidImportance.MAX,
     vibrationPattern: [0, 300, 200, 300],
     enableVibrate: true,
     enableLights: true,
-    lightColor: "#c47a11",
+    lightColor: "#0b5cff",
     lockscreenVisibility: Notifications.AndroidNotificationVisibility.PUBLIC,
     showBadge: true,
   }).catch(() => undefined);

@@ -1489,6 +1489,9 @@ router.get("/rpe-monitoring", async (req: Request, res: Response) => {
 /**
  * Resolve+validate the `:coachId` param against the athlete's active coaches.
  * Returns the coach ObjectId, or null after sending the appropriate error.
+ * Used to gate anything that grants NEW capability (sending a message,
+ * marking messages read) — a coach the relationship has since ended with is
+ * rejected here even though the thread still exists.
  */
 async function assertAssignedCoach(
   req: Request,
@@ -1508,6 +1511,33 @@ async function assertAssignedCoach(
   });
   if (!active) {
     res.status(403).json({ error: "coach_not_assigned" });
+    return null;
+  }
+  return coachId;
+}
+
+/**
+ * Same param resolution as assertAssignedCoach, but accepts ANY assignment
+ * the athlete has ever had with this coach — active or ended (Phase 12 §17:
+ * an athlete must be able to read their own historical thread with a coach
+ * they've since left, even though they can no longer send to them). Used
+ * only for read-oriented routes (thread history); write routes must keep
+ * using assertAssignedCoach.
+ */
+async function assertKnownCoach(
+  req: Request,
+  res: Response,
+  athleteId: Types.ObjectId
+): Promise<Types.ObjectId | null> {
+  const raw = req.params.coachId;
+  if (!raw || !Types.ObjectId.isValid(raw)) {
+    res.status(400).json({ error: "invalid_coach_id" });
+    return null;
+  }
+  const coachId = new Types.ObjectId(raw);
+  const everAssigned = await CoachAthleteAssignment.exists({ athleteId, coachId });
+  if (!everAssigned) {
+    res.status(403).json({ error: "coach_never_assigned" });
     return null;
   }
   return coachId;
@@ -1544,20 +1574,26 @@ router.get("/coaches", async (req: Request, res: Response) => {
   });
 });
 
-/** GET /api/athlete/messages/threads — one row per coach the athlete has messaged. */
+/**
+ * GET /api/athlete/messages/threads — one row per coach the athlete has ever
+ * messaged, including a coach whose relationship has since ended (Phase 12
+ * §17 — history stays visible; buildAthleteThreads already only returns rows
+ * where messages actually exist, so a never-messaged ended coach simply
+ * doesn't appear, same as today for a currently-assigned-but-never-messaged
+ * coach).
+ */
 router.get("/messages/threads", async (req: Request, res: Response) => {
   const profileId = selfAthleteId(req);
   if (!profileId) {
     res.status(404).json({ error: "athlete_profile_not_found" });
     return;
   }
-  const assignments = await CoachAthleteAssignment.find({
-    athleteId: profileId,
-    endedAt: null,
-  })
+  const assignments = await CoachAthleteAssignment.find({ athleteId: profileId })
     .select("coachId")
     .lean();
-  const coachIds = assignments.map((a) => a.coachId as Types.ObjectId);
+  const coachIds = Array.from(new Set(assignments.map((a) => (a.coachId as Types.ObjectId).toString()))).map(
+    (id) => new Types.ObjectId(id)
+  );
   const threads = await buildAthleteThreads(profileId, coachIds);
   res.json({ threads });
 });
@@ -1573,14 +1609,19 @@ router.get("/messages/unread-count", async (req: Request, res: Response) => {
   res.json({ unreadCount });
 });
 
-/** GET /api/athlete/messages/:coachId?before=&limit= — thread history. */
+/**
+ * GET /api/athlete/messages/:coachId?before=&limit= — thread history. Allowed
+ * for ANY coach the athlete has ever been assigned to, active or ended
+ * (Phase 12 §17) — reading your own past conversation isn't a capability
+ * that should disappear just because the coaching relationship did.
+ */
 router.get("/messages/:coachId", async (req: Request, res: Response) => {
   const profileId = selfAthleteId(req);
   if (!profileId) {
     res.status(404).json({ error: "athlete_profile_not_found" });
     return;
   }
-  const coachId = await assertAssignedCoach(req, res, profileId);
+  const coachId = await assertKnownCoach(req, res, profileId);
   if (!coachId) return;
   const before = req.query.before ? new Date(String(req.query.before)) : undefined;
   if (before && Number.isNaN(before.getTime())) {
@@ -1638,14 +1679,19 @@ router.post("/messages/:coachId", async (req: Request, res: Response) => {
   res.status(201).json(outcome.result);
 });
 
-/** POST /api/athlete/messages/:coachId/read — mark coach msgs read. */
+/**
+ * POST /api/athlete/messages/:coachId/read — mark coach msgs read. Uses the
+ * same "ever assigned" check as thread history (Phase 12 §17), since marking
+ * old messages read is part of reading a historical thread, not a new
+ * outbound action.
+ */
 router.post("/messages/:coachId/read", async (req: Request, res: Response) => {
   const profileId = selfAthleteId(req);
   if (!profileId) {
     res.status(404).json({ error: "athlete_profile_not_found" });
     return;
   }
-  const coachId = await assertAssignedCoach(req, res, profileId);
+  const coachId = await assertKnownCoach(req, res, profileId);
   if (!coachId) return;
   const marked = await markThreadRead({
     coachId,

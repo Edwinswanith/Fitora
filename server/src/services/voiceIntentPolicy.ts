@@ -12,6 +12,7 @@
  */
 
 import { SESSION_SLOTS, SESSION_STATUS, type SessionSlot } from "../models/TrainingSession";
+import { MEAL_TYPES, type MealType } from "../models/PlannedMeal";
 import { TRAINING_CATEGORIES } from "../lib/trainingCategories";
 
 export const VOICE_INTENTS_V2 = [
@@ -20,7 +21,9 @@ export const VOICE_INTENTS_V2 = [
   "log_session",
   "log_rpe",
   "add_water",
+  "log_meal",
   "show_hydration",
+  "show_nutrition",
   "set_water_goal",
   "change_hydration_reminder",
   "log_recovery",
@@ -31,6 +34,7 @@ export const VOICE_INTENTS_V2 = [
   "add_note",
   "show_readiness",
   "show_today_plan",
+  "show_upcoming_session",
   "show_progress",
   "show_coach_feedback",
   "show_daily_checklist",
@@ -63,6 +67,8 @@ const READ_ONLY_INTENTS: VoiceIntentNameV2[] = [
   "show_progress",
   "show_coach_feedback",
   "show_hydration",
+  "show_nutrition",
+  "show_upcoming_session",
   "show_daily_checklist",
 ];
 
@@ -72,6 +78,7 @@ const WRITE_INTENTS: VoiceIntentNameV2[] = [
   "log_session",
   "log_rpe",
   "add_water",
+  "log_meal",
   "set_water_goal",
   "change_hydration_reminder",
   "log_recovery",
@@ -84,6 +91,8 @@ const WRITE_INTENTS: VoiceIntentNameV2[] = [
 
 export const OPEN_SCREEN_ALLOWLIST = [
   "today",
+  "workouts",
+  "nutrition",
   "progress",
   "log",
   "coach",
@@ -91,6 +100,7 @@ export const OPEN_SCREEN_ALLOWLIST = [
   "water",
   "goals",
   "trends",
+  "notifications",
 ] as const;
 export type OpenScreenTarget = (typeof OPEN_SCREEN_ALLOWLIST)[number];
 
@@ -119,6 +129,10 @@ const NUMERIC_ENTITY_RANGES: Record<string, [number, number]> = {
   fatigue: [1, 10],
   amountMl: [1, 4000],
   goalMl: [500, 8000],
+  calories: [0, 5000],
+  proteinG: [0, 500],
+  carbsG: [0, 800],
+  fatG: [0, 400],
   sets: [0, 200],
   actualDurationMin: [0, 600],
   effortScore: [1, 10],
@@ -166,7 +180,9 @@ const INTENT_ENTITY_KEYS: Partial<Record<VoiceIntentNameV2, string[]>> = {
     "moodMotivation",
   ],
   add_water: ["amountMl"],
+  log_meal: ["mealType", "mealName", "foodName", "calories", "proteinG", "carbsG", "fatG"],
   show_hydration: [],
+  show_nutrition: [],
   set_water_goal: ["goalMl"],
   change_hydration_reminder: ["enabled", "intervalMinutes"],
   log_recovery: ["modalities", "skipped", "note"],
@@ -185,6 +201,7 @@ const INTENT_ENTITY_KEYS: Partial<Record<VoiceIntentNameV2, string[]>> = {
   start_check_in: [],
   show_readiness: [],
   show_today_plan: [],
+  show_upcoming_session: [],
   show_progress: [],
   show_coach_feedback: [],
   show_daily_checklist: [],
@@ -257,6 +274,10 @@ function sanitizeEntities(intent: VoiceIntentNameV2, entities: Record<string, un
   if ("trainingCategory" in out && !TRAINING_CATEGORIES.includes(out.trainingCategory as (typeof TRAINING_CATEGORIES)[number])) {
     delete out.trainingCategory;
   }
+  if ("mealType" in out) {
+    if (typeof out.mealType === "string") out.mealType = out.mealType.trim().toLowerCase();
+    if (!MEAL_TYPES.includes(out.mealType as MealType)) delete out.mealType;
+  }
   if ("screen" in out && !OPEN_SCREEN_ALLOWLIST.includes(out.screen as OpenScreenTarget)) delete out.screen;
   if (Array.isArray(out.modalities)) {
     out.modalities = out.modalities.filter((m): m is RecoveryModality => RECOVERY_MODALITIES.includes(m as RecoveryModality));
@@ -266,7 +287,7 @@ function sanitizeEntities(intent: VoiceIntentNameV2, entities: Record<string, un
     out.term = key in APP_FIELD_EXPLANATIONS ? key : undefined;
     if (out.term === undefined) delete out.term;
   }
-  for (const key of ["body", "workoutType", "reps", "notes", "bodyConditionFeedback", "position"]) {
+  for (const key of ["body", "workoutType", "reps", "notes", "bodyConditionFeedback", "position", "mealName", "foodName"]) {
     if (key in out && typeof out[key] !== "string") delete out[key];
   }
   if ("position" in out && typeof out.position === "string") {
@@ -276,6 +297,14 @@ function sanitizeEntities(intent: VoiceIntentNameV2, entities: Record<string, un
   }
   if ("body" in out && typeof out.body === "string") out.body = out.body.trim();
   if (out.body === "") delete out.body;
+  for (const key of ["mealName", "foodName"]) {
+    const value = out[key];
+    if (typeof value === "string") {
+      const trimmed = value.trim();
+      if (!trimmed || trimmed.length > 160) delete out[key];
+      else out[key] = trimmed;
+    }
+  }
   if ("enabled" in out && typeof out.enabled !== "boolean") delete out.enabled;
 
   return out;
@@ -307,6 +336,13 @@ function requiredMissingFields(intent: VoiceIntentNameV2, entities: Record<strin
       return typeof entities.rpe === "number" ? [] : ["rpe"];
     case "add_water":
       return typeof entities.amountMl === "number" ? [] : ["amountMl"];
+    case "log_meal": {
+      const missing: string[] = [];
+      if (typeof entities.mealType !== "string") missing.push("mealType");
+      if (typeof entities.foodName !== "string" && typeof entities.mealName !== "string") missing.push("foodName");
+      if (typeof entities.calories !== "number") missing.push("calories");
+      return missing;
+    }
     case "set_water_goal":
       return typeof entities.goalMl === "number" ? [] : ["goalMl"];
     case "change_hydration_reminder":
@@ -342,11 +378,14 @@ const FIELD_FOLLOW_UP_QUESTIONS: Record<string, string> = {
   trainingCategory: "Which training category was this — for example endurance, max speed, or strength?",
   plannedIntensityPercent: "What was the planned intensity, as a percent?",
   amountMl: "How much water, in millilitres?",
+  mealType: "Which meal was it - breakfast, lunch, dinner, or snack?",
+  foodName: "What did you eat?",
+  calories: "How many calories should I log?",
   goalMl: "What should your new water goal be, in millilitres?",
   reminderChange: "Turn reminders on, off, or change the spacing?",
   modalities: "Which recovery did you do — stretching, ice bath, mobility, or physio? Or should I skip it?",
   body: "What would you like the message to say?",
-  screen: "Which screen — today, progress, log, coach, messages, water, goals, or trends?",
+  screen: "Which screen - today, workouts, nutrition, coach, progress, messages, water, goals, trends, or notifications?",
   term: "Which term would you like explained?",
   heartRateValue: "What was your heart rate — waking, resting before bed, or both?",
   profileField: "What would you like to update — height, weight, or position?",
@@ -368,6 +407,17 @@ function formatSessionSummary(entities: Record<string, unknown>): string {
 }
 
 /** Templated, deterministic spoken text — never model-authored (correction #1, #13). */
+function formatMealSummary(entities: Record<string, unknown>): string {
+  const mealType = typeof entities.mealType === "string" ? entities.mealType : "meal";
+  const name =
+    typeof entities.mealName === "string" ? entities.mealName : typeof entities.foodName === "string" ? entities.foodName : "this meal";
+  const parts = [`${entities.calories} calories`];
+  if (typeof entities.proteinG === "number") parts.push(`${entities.proteinG} g protein`);
+  if (typeof entities.carbsG === "number") parts.push(`${entities.carbsG} g carbs`);
+  if (typeof entities.fatG === "number") parts.push(`${entities.fatG} g fat`);
+  return `Log ${name} for ${mealType} with ${parts.join(", ")}?`;
+}
+
 function spokenResponseFor(
   intent: VoiceIntentNameV2,
   action: VoiceAction,
@@ -419,6 +469,8 @@ function spokenResponseFor(
       return `Save session RPE ${entities.rpe} ${typeof entities.trainingCategory === "string" ? `for ${entities.trainingCategory}` : ""}?`;
     case "add_water":
       return `Log ${entities.amountMl} ml of water?`;
+    case "log_meal":
+      return formatMealSummary(entities);
     case "set_water_goal":
       return `Set your water goal to ${entities.goalMl} ml?`;
     case "change_hydration_reminder": {

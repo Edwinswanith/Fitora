@@ -359,7 +359,13 @@ describe("Readiness + riskReasons flow through to coach dashboard", () => {
     expect(rpe.riskFlag).toBe("red");
     expect(Array.isArray(rpe.riskReasons)).toBe(true);
     expect(rpe.riskReasons.length).toBeGreaterThan(0);
-    expect(typeof rpe.readinessScore).toBe("number");
-    expect(rpe.readinessBand).toBe("red");
+    // Phase 12: renamed on the DailyCard's nested rpe/rpeEntries summary
+    // (trainingReadinessScore/Band) to disambiguate from the card's own
+    // top-level readinessScore (wellness-derived "Daily Readiness") — see
+    // services/dashboard.ts DailyRpeSummary. The raw POST response above
+    // (post.body.entry.readinessScore/Band) is unchanged, since that's the
+    // RpeMonitoring model's own persisted field name, not this serialized view.
+    expect(typeof rpe.trainingReadinessScore).toBe("number");
+    expect(rpe.trainingReadinessBand).toBe("red");
   });
 });

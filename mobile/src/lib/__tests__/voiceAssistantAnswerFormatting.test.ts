@@ -4,6 +4,8 @@ import {
   formatProgressAnswer,
   formatCoachFeedbackAnswer,
   formatHydrationAnswer,
+  formatNutritionAnswer,
+  formatUpcomingSessionAnswer,
   formatDailyChecklistAnswer,
   type DailyCardForAnswers,
 } from "../voiceAssistant/answerFormatting";
@@ -97,6 +99,42 @@ describe("formatHydrationAnswer", () => {
 
   test("congratulates on goal met instead of a negative remaining number", () => {
     expect(formatHydrationAnswer(3200, 3000)).toBe("You've reached your 3000 millilitre water goal today.");
+  });
+});
+
+describe("formatNutritionAnswer", () => {
+  test("reports calories and macro remaining from real totals", () => {
+    const result = formatNutritionAnswer(
+      { calories: 2100, proteinG: 150, carbsG: 220, fatG: 65 },
+      { calories: 1680, proteinG: 120, carbsG: 180, fatG: 48 }
+    );
+    expect(result).toContain("1680 calories");
+    expect(result).toContain("420 calories remaining");
+    expect(result).toContain("Protein 30 grams left");
+  });
+
+  test("does not invent a target when none is set", () => {
+    expect(formatNutritionAnswer(null, { calories: 0, proteinG: 0, carbsG: 0, fatG: 0 })).toMatch(/no nutrition target/i);
+  });
+});
+
+describe("formatUpcomingSessionAnswer", () => {
+  test("returns the next future non-cancelled session", () => {
+    const now = new Date("2026-08-14T10:00:00.000Z").getTime();
+    const result = formatUpcomingSessionAnswer(
+      [
+        { status: "cancelled", type: "cancelled", scheduledStart: "2026-08-14T11:00:00.000Z", scheduledEnd: "2026-08-14T11:30:00.000Z" },
+        { status: "confirmed", type: "Progress Review", coachName: "Arjun", scheduledStart: "2026-08-14T12:30:00.000Z", scheduledEnd: "2026-08-14T13:00:00.000Z" },
+      ],
+      now
+    );
+    expect(result).toContain("Progress Review");
+    expect(result).toContain("Coach Arjun");
+    expect(result).toContain("30 minutes");
+  });
+
+  test("says no upcoming session when there is none", () => {
+    expect(formatUpcomingSessionAnswer([], Date.now())).toMatch(/do not have an upcoming/i);
   });
 });
 

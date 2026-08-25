@@ -17,6 +17,11 @@ const coachAvailabilitySchema = new Schema(
     timezone: { type: String, required: true, default: "UTC" },
     sessionDurationMin: { type: Number, required: true, min: 5, max: 240, default: 30 },
     bufferMin: { type: Number, default: 0, min: 0, max: 120 },
+    // Phase 12 — optional per-rule cap on total bookable sessions for that
+    // day of week, across ALL of the coach's rules for that day (not just
+    // this one window). Nullable/unset = uncapped, preserving existing
+    // behavior for every coach who never sets it.
+    maxSessionsPerDay: { type: Number, default: null, min: 1, max: 100 },
   },
   { timestamps: true }
 );

@@ -1,89 +1,185 @@
+import { useState } from "react";
 import { Image, Pressable, ScrollView, StyleSheet, View } from "react-native";
 import { Text } from "../components/AppText";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { useRouter } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
-import { ROLE_THEME_LIST, colors, radius } from "../lib/theme";
-import { H1, Muted } from "../components/ui";
+import { colors } from "../lib/theme";
+import type { Role } from "../lib/roles";
 
-const APP_ICON = require("../../assets/images/adaptive-icon.png");
+const BRAND_MARK = require("../../assets/fitora/landing-logo-reference.png");
+const DOT_WAVE = require("../../assets/fitora/landing-dot-wave-reference.png");
 
-const FEATURES: { icon: keyof typeof Ionicons.glyphMap; title: string; sub: string }[] = [
-  { icon: "flash", title: "Daily check-in & RPM", sub: "Log training load, sleep, soreness in seconds" },
-  { icon: "speedometer-outline", title: "Readiness & risk flags", sub: "Green / amber / red, computed for you" },
-  { icon: "chatbubble-ellipses-outline", title: "Coach feedback", sub: "Notes and guidance, right where you train" },
-  { icon: "trending-up-outline", title: "Trends & history", sub: "Watch every number move over time" },
+type RoleOption = {
+  role: Role;
+  label: string;
+  sub: string;
+  icon: keyof typeof Ionicons.glyphMap;
+  popular?: boolean;
+};
+
+type Feature = {
+  icon: keyof typeof Ionicons.glyphMap;
+  title: string;
+  sub: string;
+  tone: "blue" | "purple" | "green" | "gold";
+};
+
+const ROLE_OPTIONS: RoleOption[] = [
+  {
+    role: "athlete",
+    label: "User",
+    sub: "Fitness, nutrition\nand coaching",
+    icon: "person-outline",
+    popular: true,
+  },
+  {
+    role: "coach",
+    label: "Coach",
+    sub: "Clients, plans\nand content",
+    icon: "barbell-outline",
+  },
 ];
+
+const FEATURES: Feature[] = [
+  {
+    icon: "calendar-outline",
+    title: "Daily coaching plan",
+    sub: "Workouts, meals, sessions, and coach tasks in one place.",
+    tone: "blue",
+  },
+  {
+    icon: "shield-checkmark-outline",
+    title: "Readiness and risk flags",
+    sub: "Clear signals for training, recovery, and attention.",
+    tone: "purple",
+  },
+  {
+    icon: "restaurant-outline",
+    title: "Nutrition support",
+    sub: "Track targets, planned meals, water, and coach changes.",
+    tone: "green",
+  },
+  {
+    icon: "trending-up-outline",
+    title: "Progress views",
+    sub: "Review adherence, weight trends, readiness, and feedback.",
+    tone: "gold",
+  },
+];
+
+const FEATURE_TONES: Record<Feature["tone"], { bg: string; color: string }> = {
+  blue: { bg: "#edf3ff", color: colors.primary },
+  purple: { bg: "#f0ecff", color: "#6c50d7" },
+  green: { bg: "#e9f7ef", color: "#16a34a" },
+  gold: { bg: "#fff4d8", color: "#d69a06" },
+};
 
 export default function Landing() {
   const router = useRouter();
+  const [selectedRole, setSelectedRole] = useState<Role>("athlete");
+
+  function continueToLogin() {
+    router.push(`/login/${selectedRole}` as never);
+  }
+
   return (
     <SafeAreaView style={styles.safe}>
       <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
+        <Image source={DOT_WAVE} style={styles.dotWave} resizeMode="contain" />
+
         <View style={styles.brandRow}>
-          <View style={styles.markWrap}>
-            <Image source={APP_ICON} style={styles.mark} resizeMode="contain" />
-          </View>
-          <Text style={styles.brand}>APEX</Text>
+          <Image source={BRAND_MARK} style={styles.brandMark} resizeMode="contain" />
+          <Text style={styles.brandText}>FITORA</Text>
         </View>
 
-        <H1 style={{ marginTop: 24 }}>
-          Train by the numbers<Text style={styles.dot}>.</Text>
-        </H1>
-        <Muted style={{ marginTop: 10, maxWidth: 300 }}>
-          One performance OS. Choose how you are signing in.
-        </Muted>
+        <Text style={styles.hero}>
+          Coaching that{"\n"}stays organized<Text style={styles.heroDot}>.</Text>
+        </Text>
+        <Text style={styles.subcopy}>Choose the Fitora experience that{"\n"}fits your role.</Text>
 
-        <View style={{ marginTop: 28, gap: 12 }}>
-          {ROLE_THEME_LIST.map((t) => (
-            <Pressable
-              key={t.role}
-              onPress={() => router.push(`/login/${t.role}` as never)}
-              style={({ pressed }) => [styles.roleCard, { opacity: pressed ? 0.85 : 1 }]}
-            >
-              <View style={[styles.roleIcon, { backgroundColor: t.accentSoft }]}>
-                <Ionicons name={`${t.icon}` as never} size={22} color={t.accentStrong} />
-              </View>
-              <View style={{ flex: 1 }}>
-                <Text style={styles.roleLabel}>{t.label}</Text>
-                <Text style={styles.roleTag}>{t.tagline}</Text>
-              </View>
-              <Ionicons name="chevron-forward" size={20} color={colors.inkFaint} />
-            </Pressable>
-          ))}
+        <View style={styles.roleGrid}>
+          {ROLE_OPTIONS.map((option) => {
+            const selected = option.role === selectedRole;
+            return (
+              <Pressable
+                key={option.role}
+                onPress={() => setSelectedRole(option.role)}
+                accessibilityRole="radio"
+                accessibilityState={{ selected }}
+                style={({ pressed }) => [
+                  styles.roleCard,
+                  selected ? styles.roleCardSelected : null,
+                  pressed ? styles.pressed : null,
+                ]}
+              >
+                {option.popular ? (
+                  <View style={styles.popularPill}>
+                    <Text style={styles.popularText}>MOST POPULAR</Text>
+                  </View>
+                ) : null}
+                <View style={styles.roleIconTile}>
+                  <Ionicons name={option.icon} size={31} color={colors.primary} />
+                </View>
+                <Text style={styles.roleTitle}>{option.label}</Text>
+                <Text style={styles.roleSub}>{option.sub}</Text>
+                <View style={[styles.selector, selected ? styles.selectorSelected : null]}>
+                  {selected ? <Ionicons name="checkmark" size={21} color="#fff" /> : null}
+                </View>
+              </Pressable>
+            );
+          })}
         </View>
 
-        <View style={styles.noticeRow}>
+        <View style={styles.notice}>
           <View style={styles.noticeIcon}>
-            <Ionicons name="shield-checkmark-outline" size={16} color={colors.inkMuted} />
+            <Ionicons name="shield-checkmark-outline" size={17} color="#40516e" />
           </View>
-          <Muted style={{ flex: 1, minWidth: 0, fontSize: 12 }}>
-            Existing accounts keep their saved role. New Google users are created from the role they pick.
-          </Muted>
+          <Text style={styles.noticeText}>
+            Existing accounts keep their saved role.{"\n"}New Google users are created from the role you pick.
+          </Text>
         </View>
 
-        <View style={styles.featureSection}>
-          <View style={styles.sectionLabelRow}>
-            <View style={styles.sectionDivider} />
-            <Text style={styles.sectionLabel}>What you get</Text>
-            <View style={styles.sectionDivider} />
-          </View>
-          <View style={styles.featureCard}>
-            {FEATURES.map((feature, index) => (
+        <View style={styles.sectionLabelWrap}>
+          <View style={styles.sectionLine} />
+          <View style={styles.diamond} />
+          <Text style={styles.sectionLabel}>BUILT FOR COACHING</Text>
+          <View style={styles.diamond} />
+          <View style={styles.sectionLine} />
+        </View>
+
+        <View style={styles.featureGrid}>
+          {FEATURES.map((feature, index) => {
+            const tone = FEATURE_TONES[feature.tone];
+            const rightCell = index % 2 === 1;
+            const bottomCell = index > 1;
+            return (
               <View
                 key={feature.title}
-                style={[styles.featureRow, index === FEATURES.length - 1 ? styles.featureRowLast : null]}
+                style={[
+                  styles.featureCell,
+                  rightCell ? styles.featureCellRight : null,
+                  bottomCell ? styles.featureCellBottom : null,
+                ]}
               >
-                <View style={styles.featureIcon}>
-                  <Ionicons name={feature.icon} size={18} color={colors.ink} />
+                <View style={[styles.featureIcon, { backgroundColor: tone.bg }]}>
+                  <Ionicons name={feature.icon} size={21} color={tone.color} />
                 </View>
-                <View style={{ flex: 1, minWidth: 0 }}>
-                  <Text style={styles.featureTitle}>{feature.title}</Text>
-                  <Text style={styles.featureSub}>{feature.sub}</Text>
-                </View>
+                <Text style={styles.featureTitle}>{feature.title}</Text>
+                <Text style={styles.featureSub}>{feature.sub}</Text>
               </View>
-            ))}
-          </View>
+            );
+          })}
+        </View>
+
+        <Pressable onPress={continueToLogin} style={({ pressed }) => [styles.continueButton, pressed ? styles.pressed : null]}>
+          <Text style={styles.continueText}>Continue</Text>
+          <Ionicons name="arrow-forward" size={20} color="#fff" />
+        </Pressable>
+
+        <View style={styles.footer}>
+          <Ionicons name="lock-closed-outline" size={12} color={colors.inkFaint} />
+          <Text style={styles.footerText}>Secure. Private. Built for you.</Text>
         </View>
       </ScrollView>
     </SafeAreaView>
@@ -91,79 +187,251 @@ export default function Landing() {
 }
 
 const styles = StyleSheet.create({
-  safe: { flex: 1, backgroundColor: colors.surface },
-  content: { padding: 24, paddingTop: 32, flexGrow: 1 },
-  brandRow: { flexDirection: "row", alignItems: "center", gap: 10 },
-  markWrap: {
-    height: 32,
-    width: 32,
-    borderRadius: 9,
-    backgroundColor: "#0f1410",
-    alignItems: "center",
-    justifyContent: "center",
-    overflow: "hidden",
+  safe: { flex: 1, backgroundColor: "#ffffff" },
+  content: {
+    minHeight: "100%",
+    paddingHorizontal: 32,
+    paddingTop: 8,
+    paddingBottom: 11,
   },
-  mark: { height: 22, width: 22 },
-  brand: { fontSize: 14, fontWeight: "700", letterSpacing: 4, color: colors.inkMuted },
-  dot: { color: "#ff7e1a" },
-  noticeRow: { marginTop: 22, flexDirection: "row", alignItems: "flex-start", gap: 10 },
-  noticeIcon: {
-    height: 26,
-    width: 26,
-    borderRadius: 13,
-    backgroundColor: colors.surfaceInset,
-    alignItems: "center",
-    justifyContent: "center",
-    marginTop: 1,
+  dotWave: {
+    position: "absolute",
+    top: 8,
+    right: -3,
+    width: 167,
+    height: 91,
+  },
+  brandRow: { flexDirection: "row", alignItems: "center", gap: 10 },
+  brandMark: { width: 38, height: 38 },
+  brandText: {
+    color: "#1c2940",
+    fontSize: 14,
+    lineHeight: 18,
+    fontWeight: "800",
+    letterSpacing: 7,
+  },
+  hero: {
+    marginTop: 18,
+    color: "#111a30",
+    fontSize: 36,
+    lineHeight: 43,
+    fontWeight: "900",
+    letterSpacing: 0,
+  },
+  heroDot: { color: "#ff6437" },
+  subcopy: {
+    marginTop: 8,
+    color: "#556276",
+    fontSize: 17,
+    lineHeight: 24,
+    fontWeight: "500",
+    letterSpacing: 0,
+  },
+  roleGrid: {
+    marginTop: 13,
+    flexDirection: "row",
+    gap: 14,
   },
   roleCard: {
-    flexDirection: "row",
+    flex: 1,
+    height: 220,
     alignItems: "center",
-    gap: 14,
-    backgroundColor: colors.surfaceRaised,
-    borderRadius: radius.lg,
+    borderRadius: 17,
     borderWidth: 1,
-    borderColor: colors.line,
-    padding: 16,
+    borderColor: "#dfe5ef",
+    backgroundColor: "#ffffff",
+    paddingTop: 27,
   },
-  roleIcon: { height: 44, width: 44, borderRadius: 12, alignItems: "center", justifyContent: "center" },
-  roleLabel: { fontSize: 17, fontWeight: "700", color: colors.ink },
-  roleTag: { fontSize: 13, color: colors.inkMuted, marginTop: 2 },
-  featureSection: { marginTop: 28 },
-  sectionLabelRow: { flexDirection: "row", alignItems: "center", gap: 12 },
-  sectionDivider: { flex: 1, height: StyleSheet.hairlineWidth, backgroundColor: colors.lineStrong },
-  sectionLabel: {
-    fontSize: 11,
+  roleCardSelected: {
+    borderColor: colors.primary,
+    borderWidth: 1.5,
+    backgroundColor: "#fbfdff",
+  },
+  popularPill: {
+    position: "absolute",
+    top: 7,
+    minHeight: 17,
+    borderRadius: 5,
+    backgroundColor: colors.primary,
+    paddingHorizontal: 8,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  popularText: {
+    color: "#ffffff",
+    fontSize: 9,
+    lineHeight: 11,
     fontWeight: "800",
-    letterSpacing: 1.8,
-    textTransform: "uppercase",
-    color: colors.inkMuted,
+    letterSpacing: 0.8,
   },
-  featureCard: {
-    marginTop: 12,
-    backgroundColor: colors.surfaceRaised,
-    borderRadius: radius.lg,
+  roleIconTile: {
+    width: 59,
+    height: 59,
+    borderRadius: 19,
+    backgroundColor: "#f0f4ff",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  roleTitle: {
+    marginTop: 10,
+    color: "#111a30",
+    fontSize: 20,
+    lineHeight: 25,
+    fontWeight: "900",
+    letterSpacing: 0,
+  },
+  roleSub: {
+    marginTop: 5,
+    color: "#566174",
+    fontSize: 14,
+    lineHeight: 19,
+    fontWeight: "500",
+    textAlign: "center",
+    letterSpacing: 0,
+  },
+  selector: {
+    marginTop: 0,
+    width: 28,
+    height: 28,
+    borderRadius: 14,
+    borderWidth: 2,
+    borderColor: "#cfd7e5",
+    backgroundColor: "#ffffff",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  selectorSelected: {
+    borderWidth: 0,
+    backgroundColor: colors.primary,
+  },
+  notice: {
+    minHeight: 45,
+    marginTop: 14,
+    borderRadius: 16,
     borderWidth: 1,
-    borderColor: colors.line,
-    overflow: "hidden",
-  },
-  featureRow: {
+    borderColor: "#e3e8f0",
+    backgroundColor: "#ffffff",
     flexDirection: "row",
     alignItems: "center",
     gap: 12,
-    padding: 16,
-    borderBottomWidth: 1,
-    borderBottomColor: colors.line,
+    paddingHorizontal: 12,
   },
-  featureRowLast: { borderBottomWidth: 0 },
-  featureIcon: {
-    height: 36,
-    width: 36,
-    borderRadius: 10,
-    backgroundColor: colors.surfaceInset,
+  noticeIcon: {
+    width: 34,
+    height: 34,
+    borderRadius: 17,
+    backgroundColor: "#eef3fb",
     alignItems: "center",
     justifyContent: "center",
   },
-  featureTitle: { fontSize: 14, fontWeight: "700", color: colors.ink },
-  featureSub: { fontSize: 12, color: colors.inkMuted, marginTop: 2, lineHeight: 16 },
+  noticeText: {
+    flex: 1,
+    color: "#556276",
+    fontSize: 11,
+    lineHeight: 16,
+    fontWeight: "500",
+    letterSpacing: 0,
+  },
+  sectionLabelWrap: {
+    marginTop: 18,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  sectionLine: {
+    flex: 1,
+    height: 1,
+    backgroundColor: "#e6ecf5",
+  },
+  diamond: {
+    width: 6,
+    height: 6,
+    marginHorizontal: 12,
+    backgroundColor: colors.primary,
+    transform: [{ rotate: "45deg" }],
+  },
+  sectionLabel: {
+    color: colors.primary,
+    fontSize: 12,
+    lineHeight: 15,
+    fontWeight: "900",
+    letterSpacing: 4,
+  },
+  featureGrid: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    borderWidth: 1,
+    borderColor: "#e3e8f0",
+    borderRadius: 17,
+    overflow: "hidden",
+    backgroundColor: "#ffffff",
+  },
+  featureCell: {
+    width: "50%",
+    height: 116,
+    paddingTop: 13,
+    paddingHorizontal: 16,
+    borderColor: "#e7ecf4",
+  },
+  featureCellRight: {
+    borderLeftWidth: 1,
+  },
+  featureCellBottom: {
+    borderTopWidth: 1,
+  },
+  featureIcon: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  featureTitle: {
+    marginTop: 8,
+    color: "#111a30",
+    fontSize: 11,
+    lineHeight: 15,
+    fontWeight: "900",
+    letterSpacing: 0,
+  },
+  featureSub: {
+    marginTop: 5,
+    color: "#5b687c",
+    fontSize: 9.5,
+    lineHeight: 13,
+    fontWeight: "500",
+    letterSpacing: 0,
+  },
+  continueButton: {
+    height: 34,
+    marginTop: 15,
+    borderRadius: 8,
+    backgroundColor: colors.primary,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 10,
+  },
+  continueText: {
+    color: "#ffffff",
+    fontSize: 14,
+    lineHeight: 18,
+    fontWeight: "800",
+    letterSpacing: 0,
+  },
+  footer: {
+    marginTop: 3,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 8,
+  },
+  footerText: {
+    color: "#647084",
+    fontSize: 10.5,
+    lineHeight: 13,
+    fontWeight: "500",
+    letterSpacing: 0,
+  },
+  pressed: { opacity: 0.76 },
 });

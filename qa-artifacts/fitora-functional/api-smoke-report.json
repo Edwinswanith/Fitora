@@ -1,0 +1,300 @@
+{
+  "base": "http://localhost:4102",
+  "today": "2026-08-18",
+  "total": 37,
+  "failed": 0,
+  "results": [
+    {
+      "name": "athlete login",
+      "status": 200,
+      "ok": true,
+      "role": "athlete",
+      "hasRefreshToken": true
+    },
+    {
+      "name": "coach login",
+      "status": 200,
+      "ok": true,
+      "role": "coach",
+      "hasRefreshToken": true
+    },
+    {
+      "name": "auth me athlete",
+      "status": 200,
+      "ok": true,
+      "keys": [
+        "user"
+      ]
+    },
+    {
+      "name": "athlete profile",
+      "status": 200,
+      "ok": true,
+      "keys": [
+        "athlete"
+      ]
+    },
+    {
+      "name": "athlete daily",
+      "status": 200,
+      "ok": true,
+      "keys": [
+        "date",
+        "card",
+        "workoutAssignments"
+      ]
+    },
+    {
+      "name": "nutrition target",
+      "status": 200,
+      "ok": true,
+      "keys": [
+        "target"
+      ]
+    },
+    {
+      "name": "planned meals",
+      "status": 200,
+      "ok": true,
+      "keys": [
+        "plannedMeals"
+      ]
+    },
+    {
+      "name": "logged meals",
+      "status": 200,
+      "ok": true,
+      "keys": [
+        "meals",
+        "totals"
+      ]
+    },
+    {
+      "name": "water day",
+      "status": 200,
+      "ok": true,
+      "keys": [
+        "date",
+        "goalMl",
+        "totalMl",
+        "entries"
+      ]
+    },
+    {
+      "name": "assigned coaches",
+      "status": 200,
+      "ok": true,
+      "keys": [
+        "coaches"
+      ]
+    },
+    {
+      "name": "current subscription",
+      "status": 200,
+      "ok": true,
+      "keys": [
+        "subscription"
+      ]
+    },
+    {
+      "name": "athlete sessions",
+      "status": 200,
+      "ok": true,
+      "keys": [
+        "sessions"
+      ]
+    },
+    {
+      "name": "trends",
+      "status": 200,
+      "ok": true,
+      "keys": [
+        "days",
+        "series"
+      ]
+    },
+    {
+      "name": "coach comments",
+      "status": 200,
+      "ok": true,
+      "keys": [
+        "comments"
+      ]
+    },
+    {
+      "name": "notifications",
+      "status": 200,
+      "ok": true,
+      "keys": [
+        "unreadCount",
+        "hasUrgentUnread",
+        "notifications"
+      ]
+    },
+    {
+      "name": "unread count",
+      "status": 200,
+      "ok": true,
+      "keys": [
+        "unreadCount",
+        "hasUrgentUnread"
+      ]
+    },
+    {
+      "name": "coach videos visible to athlete",
+      "status": 200,
+      "ok": true,
+      "count": 3
+    },
+    {
+      "name": "workout assignments today",
+      "status": 200,
+      "ok": true,
+      "count": 1
+    },
+    {
+      "name": "workout detail",
+      "status": 200,
+      "ok": true,
+      "exercises": 6,
+      "progress": 3
+    },
+    {
+      "name": "workout progress write",
+      "status": 200,
+      "ok": true,
+      "exerciseStatus": "in_progress"
+    },
+    {
+      "name": "water +250 write",
+      "status": 201,
+      "ok": true,
+      "beforeMl": 2050,
+      "afterMl": 2300
+    },
+    {
+      "name": "nutrition meal write",
+      "status": 201,
+      "ok": true,
+      "mealType": "snack"
+    },
+    {
+      "name": "notification mark read",
+      "status": 200,
+      "ok": true
+    },
+    {
+      "name": "coach dashboard",
+      "status": 200,
+      "ok": true,
+      "keys": [
+        "date",
+        "count",
+        "cards"
+      ]
+    },
+    {
+      "name": "coach athletes",
+      "status": 200,
+      "ok": true,
+      "keys": [
+        "athletes"
+      ]
+    },
+    {
+      "name": "coach sessions",
+      "status": 200,
+      "ok": true,
+      "keys": [
+        "sessions"
+      ]
+    },
+    {
+      "name": "squad analytics",
+      "status": 200,
+      "ok": true,
+      "keys": [
+        "days",
+        "series"
+      ]
+    },
+    {
+      "name": "notes inbox",
+      "status": 200,
+      "ok": true,
+      "keys": [
+        "days",
+        "notes",
+        "openCount"
+      ]
+    },
+    {
+      "name": "workout templates",
+      "status": 200,
+      "ok": true,
+      "keys": [
+        "templates"
+      ]
+    },
+    {
+      "name": "meal plans",
+      "status": 200,
+      "ok": true,
+      "keys": [
+        "mealPlans"
+      ]
+    },
+    {
+      "name": "coach videos",
+      "status": 200,
+      "ok": true,
+      "keys": [
+        "videos"
+      ]
+    },
+    {
+      "name": "coach profile",
+      "status": 200,
+      "ok": true,
+      "keys": [
+        "profile"
+      ]
+    },
+    {
+      "name": "pricing plans",
+      "status": 200,
+      "ok": true,
+      "keys": [
+        "pricingPlans"
+      ]
+    },
+    {
+      "name": "availability",
+      "status": 200,
+      "ok": true,
+      "keys": [
+        "rules"
+      ]
+    },
+    {
+      "name": "coach add athlete write",
+      "status": 201,
+      "ok": true,
+      "created": true,
+      "hasTempPassword": true
+    },
+    {
+      "name": "coach profile patch",
+      "status": 200,
+      "ok": true,
+      "philosophy": "Functional QA profile update"
+    },
+    {
+      "name": "coach video upload write",
+      "status": 201,
+      "ok": true,
+      "title": "Functional QA Upload",
+      "category": "mobility"
+    }
+  ]
+}

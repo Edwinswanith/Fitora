@@ -3,8 +3,48 @@ import { MealPlan, type MealPlanDoc } from "../models/MealPlan";
 import { MealPlanAssignment, type MealPlanAssignmentDoc } from "../models/MealPlanAssignment";
 import { PlannedMeal } from "../models/PlannedMeal";
 import { AthleteProfile } from "../models/AthleteProfile";
+import { User } from "../models/User";
 import { getCurrentTarget } from "./nutritionTarget";
 import { dayRange } from "./dashboard";
+import { evaluateAndDispatch } from "./notificationEligibility";
+import { resolveTimezoneForUser } from "./timezone";
+import { categoryForType } from "../lib/notificationTypes";
+import { buildMealPlanAssigned, buildMealPlanUpdated } from "./notificationTemplates";
+
+/** Best-effort — never lets a notification failure fail the write that triggered it. */
+async function notifyAthleteMealPlanEvent(
+  athleteId: Types.ObjectId,
+  coachId: Types.ObjectId,
+  dedupKey: string,
+  type: "meal_plan_assigned" | "meal_plan_updated",
+  planName: string,
+  entityId: Types.ObjectId,
+  entityCollection: string
+): Promise<void> {
+  try {
+    const [profile, coach] = await Promise.all([
+      AthleteProfile.findById(athleteId).select("userId").lean(),
+      User.findById(coachId).select("name").lean(),
+    ]);
+    if (!profile?.userId) return;
+    const userId = profile.userId as Types.ObjectId;
+    const timezone = await resolveTimezoneForUser({ userId, role: "athlete" });
+    const coachName = (coach?.name as string) || "your coach";
+    const template = type === "meal_plan_assigned" ? buildMealPlanAssigned({ coachName, planName }) : buildMealPlanUpdated({ coachName, planName });
+    await evaluateAndDispatch({
+      userId,
+      type,
+      category: categoryForType(type),
+      priorityTier: type === "meal_plan_assigned" ? 2 : 3,
+      dedupKey,
+      timezone,
+      entityRef: { collection: entityCollection, id: entityId },
+      ...template,
+    });
+  } catch (err) {
+    console.error("[mealPlanAssignment] notification dispatch failed (non-fatal)", (err as Error).message);
+  }
+}
 
 export class MealPlanAssignmentError extends Error {
   status: number;
@@ -134,7 +174,48 @@ export async function assignMealPlanToAthlete(params: {
     { $set: { mealPlanAssignmentId: assignment._id } }
   );
 
+  await notifyAthleteMealPlanEvent(
+    params.assignedTo,
+    params.assignedBy,
+    `meal_plan_assigned:${assignment._id.toString()}`,
+    "meal_plan_assigned",
+    assignment.nameSnapshot as string,
+    assignment._id,
+    "MealPlanAssignment"
+  );
+
   return assignment;
+}
+
+/**
+ * Fires `meal_plan_updated` to every athlete with a still-`active`
+ * assignment of this plan (Phase 12 §3) — informational only, since
+ * snapshotting means their actual assignment content is untouched.
+ */
+export async function notifyMealPlanTemplateUpdated(
+  plan: Pick<MealPlanDoc, "_id" | "name" | "ownerId" | "version">
+): Promise<void> {
+  try {
+    const affected = await MealPlanAssignment.find({ mealPlanId: plan._id, status: "active" })
+      .select("assignedTo")
+      .lean();
+    const athleteIds = Array.from(new Set(affected.map((a) => (a.assignedTo as Types.ObjectId).toString())));
+    await Promise.all(
+      athleteIds.map((athleteId) =>
+        notifyAthleteMealPlanEvent(
+          new Types.ObjectId(athleteId),
+          plan.ownerId as Types.ObjectId,
+          `meal_plan_updated:${plan._id.toString()}:v${plan.version}:${athleteId}`,
+          "meal_plan_updated",
+          plan.name as string,
+          plan._id as Types.ObjectId,
+          "MealPlan"
+        )
+      )
+    );
+  } catch (err) {
+    console.error("[mealPlanAssignment] template-updated notification failed (non-fatal)", (err as Error).message);
+  }
 }
 
 /**

@@ -80,13 +80,24 @@ const RESPONSE_SCHEMA_V2 = {
         },
         skipped: { type: "BOOLEAN", description: "log_recovery: true if the athlete explicitly skipped recovery." },
         amountMl: { type: "NUMBER", description: "add_water: amount in millilitres, 1-4000." },
+        mealType: {
+          type: "STRING",
+          enum: ["breakfast", "lunch", "dinner", "snack"],
+          description: "log_meal: meal slot explicitly stated by the athlete.",
+        },
+        mealName: { type: "STRING", description: "log_meal: short meal label, e.g. 'Chicken rice bowl'." },
+        foodName: { type: "STRING", description: "log_meal: primary food item eaten." },
+        calories: { type: "NUMBER", description: "log_meal: calories/kcal explicitly stated, 0-5000." },
+        proteinG: { type: "NUMBER", description: "log_meal: grams of protein explicitly stated." },
+        carbsG: { type: "NUMBER", description: "log_meal: grams of carbs explicitly stated." },
+        fatG: { type: "NUMBER", description: "log_meal: grams of fat explicitly stated." },
         goalMl: { type: "NUMBER", description: "set_water_goal: new daily goal in millilitres, 500-8000." },
         enabled: { type: "BOOLEAN", description: "change_hydration_reminder/mark_rest_day: on/off." },
         intervalMinutes: { type: "NUMBER", description: "change_hydration_reminder: minimum spacing between reminders, 15-720." },
         body: { type: "STRING", description: "send_coach_note/add_note: the message or note body." },
         screen: {
           type: "STRING",
-          enum: ["today", "progress", "log", "coach", "messages", "water", "goals", "trends"],
+          enum: ["today", "workouts", "nutrition", "progress", "log", "coach", "messages", "water", "goals", "trends", "notifications"],
           description: "open_screen: which section/tab to open.",
         },
         term: { type: "STRING", description: "explain_app_field: the Apex-specific term asked about." },
@@ -139,6 +150,14 @@ const SYSTEM_PROMPT_V2 =
   "Distinguish send_coach_note (explicit 'tell/send/message my coach...') from add_note (private, " +
   "not sent to the coach). Never extract a coach name or identifier — coach targeting is resolved " +
   "by the app, not by you.\n\n" +
+  "log_meal is for explicitly logging consumed food, e.g. 'log lunch chicken rice bowl 650 calories, " +
+  "45 protein, 70 carbs, 12 fat'. Extract mealType, mealName/foodName, calories, proteinG, carbsG, " +
+  "and fatG only when stated. Do not estimate calories or macros. If the athlete asks how many " +
+  "calories/macros are left, classify show_nutrition, not log_meal.\n\n" +
+  "show_nutrition is for questions about today's consumed calories, remaining calories, macros, or " +
+  "nutrition status. show_upcoming_session is for questions about the next booked coach session or " +
+  "call. open_screen can open Fitora tabs such as today, workouts, nutrition, coach, progress, " +
+  "messages, water, goals, trends, or notifications.\n\n" +
   "log_heart_rate is for a standalone heart-rate reading not tied to an RPE workflow (e.g. 'my " +
   "waking heart rate was 52', 'resting heart rate before bed was 58'). If restingHeartRate is " +
   "mentioned alongside an RPE/training-category context, that belongs to log_rpe's " +
@@ -152,7 +171,7 @@ const SYSTEM_PROMPT_V2 =
   "Tamil, Tanglish, and mixed Tamil-English commands may appear; 'sleep score 8' means " +
   "sleepQuality=8; 'naan 7 mani neram thoonginen sleep score 6' means sleepHours=7, " +
   "sleepQuality=6. Only extract sleepHours when the athlete says hours/hrs/mani/neram.\n\n" +
-  "For show_readiness/show_today_plan/show_progress/show_coach_feedback/show_daily_checklist: " +
+  "For show_readiness/show_today_plan/show_nutrition/show_upcoming_session/show_progress/show_coach_feedback/show_daily_checklist: " +
   "classify topic only, and never invent/state a number, plan detail, or feedback text — you have " +
   "no access to real data.\n\n" +
   "Report a calibrated confidence 0-1 — lower it for ambiguous, very short, or noisy transcripts.\n\n" +
@@ -261,6 +280,10 @@ export class MockVoiceIntentInterpreterV2 implements VoiceIntentInterpreterV2 {
     if (/^(open|show|go to)\b/.test(t)) {
       const screens: Record<string, string> = {
         today: "today",
+        workout: "workouts",
+        workouts: "workouts",
+        nutrition: "nutrition",
+        meal: "nutrition",
         progress: "progress",
         log: "log",
         training: "log",
@@ -269,6 +292,8 @@ export class MockVoiceIntentInterpreterV2 implements VoiceIntentInterpreterV2 {
         water: "water",
         goals: "goals",
         trends: "trends",
+        notification: "notifications",
+        notifications: "notifications",
       };
       for (const [keyword, screen] of Object.entries(screens)) {
         if (t.includes(keyword)) return { intent: "open_screen", entities: { screen }, confidence: 0.9 };
@@ -280,7 +305,13 @@ export class MockVoiceIntentInterpreterV2 implements VoiceIntentInterpreterV2 {
         (candidate) => t.includes(candidate)
       );
       if (term) return { intent: "explain_app_field", entities: { term }, confidence: 0.85 };
-      return { intent: "unknown_intent", entities: {}, confidence: 0.3 };
+    }
+
+    if (
+      /\b(?:calories?|kcal|protein|carbs?|fat|macros?|nutrition|meal plan|diet)\b/.test(t) &&
+      /\b(?:left|remaining|remain|status|today|target|plan|consumed|eaten|how much|how many)\b/.test(t)
+    ) {
+      return { intent: "show_nutrition", entities: {}, confidence: 0.82 };
     }
 
     if (
@@ -289,6 +320,24 @@ export class MockVoiceIntentInterpreterV2 implements VoiceIntentInterpreterV2 {
       /\bhave i logged everything\b|\bdaily checklist\b/.test(t)
     ) {
       return { intent: "show_daily_checklist", entities: {}, confidence: 0.8 };
+    }
+
+    if (
+      /\b(?:log|add|record)\b.*\b(?:meal|breakfast|lunch|dinner|snack|calories?|kcal|protein|carbs?|fat)\b/.test(t) ||
+      /\b(?:i\s+)?(?:ate|had)\b.*\b(?:breakfast|lunch|dinner|snack|calories?|kcal|protein|carbs?|fat)\b/.test(t)
+    ) {
+      return { intent: "log_meal", entities: extractEntitiesFor("log_meal", t, input.transcript), confidence: 0.72 };
+    }
+
+    if (
+      /\b(?:calories?|kcal|protein|carbs?|fat|macros?|nutrition|meal plan|diet)\b/.test(t) &&
+      /\b(?:left|remaining|remain|status|today|target|plan|consumed|eaten|how much|how many)\b/.test(t)
+    ) {
+      return { intent: "show_nutrition", entities: {}, confidence: 0.82 };
+    }
+
+    if (/\b(?:next|upcoming|booked|scheduled)\b.*\b(?:session|call|appointment)\b/.test(t) || /\bwhen\b.*\b(?:session|call)\b/.test(t)) {
+      return { intent: "show_upcoming_session", entities: {}, confidence: 0.82 };
     }
 
     if (t.includes("readiness") || t.includes("how am i")) return { intent: "show_readiness", entities: {}, confidence: 0.85 };
@@ -327,6 +376,13 @@ export class MockVoiceIntentInterpreterV2 implements VoiceIntentInterpreterV2 {
     }
 
     if (/\bcheck.?in\b/.test(t)) return { intent: "start_check_in", entities: {}, confidence: 0.85 };
+
+    if (
+      /\b(?:start|continue|open|resume)\b.*\b(?:workout|workouts|training)\b/.test(t) ||
+      /\b(?:workout|workouts|training)\b.*\b(?:start|continue|open|resume)\b/.test(t)
+    ) {
+      return { intent: "open_screen", entities: { screen: "workouts" }, confidence: 0.85 };
+    }
 
     // A one-sentence session description ("session", "sets", "completed", a
     // duration in minutes) belongs to log_session even when it also mentions
@@ -369,6 +425,31 @@ function numberNear(text: string, label: string): number | undefined {
   if (after) return Number(after[1]);
   const before = text.match(new RegExp(`(\\d{1,4}(?:\\.\\d+)?)[^a-z0-9]{0,20}(?:${label})`));
   return before ? Number(before[1]) : undefined;
+}
+
+function numberForNutritionLabel(text: string, label: string): number | undefined {
+  const before = text.match(new RegExp(`(\\d{1,4}(?:\\.\\d+)?)\\s*(?:g|grams?)?\\s*(?:${label})\\b`));
+  if (before) return Number(before[1]);
+  return numberNear(text, label);
+}
+
+function extractMealName(rawTranscript: string, mealType?: string): string | undefined {
+  let cleaned = rawTranscript
+    .trim()
+    .replace(/^["'`]+|["'`]+$/g, "")
+    .replace(/^(?:please\s+)?(?:log|add|record)\s+(?:my\s+)?(?:meal|food)?\s*/i, "")
+    .replace(/^(?:i\s+)?(?:ate|had)\s+/i, "");
+  if (mealType) cleaned = cleaned.replace(new RegExp(`\\b${mealType}\\b`, "i"), " ");
+  cleaned = cleaned
+    .replace(/\b\d+(?:\.\d+)?\s*(?:calories|calorie|kcal|cals?)\b/gi, " ")
+    .replace(/\b\d+(?:\.\d+)?\s*(?:g|grams?)?\s*(?:protein|carbs?|carbohydrates?|fat)\b/gi, " ")
+    .replace(/\b(?:protein|carbs?|carbohydrates?|fat)\s*\d+(?:\.\d+)?\s*(?:g|grams?)?\b/gi, " ")
+    .replace(/\b(?:with|and|plus|meal|food|for|as|of)\b/gi, " ")
+    .replace(/[,:;.-]+/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+  if (!cleaned || /^(?:breakfast|lunch|dinner|snack)$/i.test(cleaned)) return undefined;
+  return cleaned.slice(0, 160);
 }
 
 /** Minimal shared entity-extraction heuristics for the mock interpreter's fallback path. */
@@ -429,6 +510,25 @@ function extractEntitiesFor(intent: VoiceIntentNameV2, t: string, rawTranscript:
     }
   }
 
+  if (intent === "log_meal") {
+    const mealType = ["breakfast", "lunch", "dinner", "snack"].find((candidate) => t.includes(candidate));
+    if (mealType) entities.mealType = mealType;
+    const caloriesBefore = t.match(/(\d{1,4}(?:\.\d+)?)\s*(?:calories?|kcal|cals?)\b/);
+    const calories = caloriesBefore ? Number(caloriesBefore[1]) : numberNear(t, "calories?|kcal|cals?");
+    if (calories !== undefined) entities.calories = calories;
+    const proteinG = numberForNutritionLabel(t, "protein");
+    if (proteinG !== undefined) entities.proteinG = proteinG;
+    const carbsG = numberForNutritionLabel(t, "carbs?|carbohydrates?");
+    if (carbsG !== undefined) entities.carbsG = carbsG;
+    const fatG = numberForNutritionLabel(t, "fat");
+    if (fatG !== undefined) entities.fatG = fatG;
+    const mealName = extractMealName(rawTranscript, mealType);
+    if (mealName) {
+      entities.mealName = mealName;
+      entities.foodName = mealName;
+    }
+  }
+
   if (intent === "set_water_goal") {
     const litre = t.match(/(\d+(?:\.\d+)?)\s*l(?:itre|iter)?s?\b/);
     if (litre) entities.goalMl = Math.round(Number(litre[1]) * 1000);
@@ -477,7 +577,6 @@ function extractEntitiesFor(intent: VoiceIntentNameV2, t: string, rawTranscript:
     if (position) entities.position = position[1].trim();
   }
 
-  void rawTranscript;
   return entities;
 }
 

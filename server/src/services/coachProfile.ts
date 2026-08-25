@@ -24,6 +24,7 @@ export async function getOrCreateCoachProfile(coachUserId: Types.ObjectId): Prom
 export function serializeOwnCoachProfile(profile: CoachProfileDoc, user: { name?: string; email?: string } | null) {
   return {
     id: profile._id.toString(),
+    coachId: (profile.userId as Types.ObjectId).toString(),
     name: user?.name ?? "",
     email: user?.email ?? "",
     bio: profile.bio ?? null,

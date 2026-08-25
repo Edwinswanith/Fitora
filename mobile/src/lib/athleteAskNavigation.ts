@@ -92,7 +92,7 @@ export function parseAthleteNavigationCommand(command: string): AthleteNavigatio
 
 export function athleteNavigationReply(command: AthleteNavigationCommand): string {
   if (command.kind === "notifications") return "Opening notifications.";
-  if (command.kind === "calendar") return "Opening calendar.";
+  if (command.kind === "calendar") return "There's no calendar view yet - opening your sessions instead.";
   if (command.slot) {
     const label = command.slot === "AFT" ? "Afternoon" : command.slot;
     return `Opening ${label} log.`;

@@ -1,16 +1,16 @@
 {
   "expo": {
-    "name": "Apex",
-    "slug": "sports-coaching-platform",
+    "name": "Fitora",
+    "slug": "fitora",
     "owner": "edwinswanith",
     "version": "1.0.24",
     "orientation": "portrait",
     "icon": "./assets/images/icon.png",
-    "scheme": "apex",
+    "scheme": "fitora",
     "userInterfaceStyle": "automatic",
     "ios": {
       "icon": "./assets/images/icon.png",
-      "bundleIdentifier": "app.apex.coaching",
+      "bundleIdentifier": "app.fitora.coaching",
       "buildNumber": "27",
       "infoPlist": {
         "ITSAppUsesNonExemptEncryption": false
@@ -24,10 +24,10 @@
     },
     "android": {
       "adaptiveIcon": {
-        "backgroundColor": "#0f1410",
+        "backgroundColor": "#ffffff",
         "foregroundImage": "./assets/images/adaptive-icon.png"
       },
-      "package": "app.apex.coaching",
+      "package": "app.fitora.coaching",
       "versionCode": 27,
       "predictiveBackGestureEnabled": false,
       "googleServicesFile": "./google-services.json",
@@ -48,7 +48,7 @@
       [
         "expo-splash-screen",
         {
-          "backgroundColor": "#0f1410",
+          "backgroundColor": "#ffffff",
           "android": {
             "image": "./assets/images/splash-icon.png",
             "imageWidth": 160
@@ -81,8 +81,8 @@
       [
         "expo-speech-recognition",
         {
-          "microphonePermission": "Allow Apex to use the microphone for the Ask Agent voice assistant.",
-          "speechRecognitionPermission": "Allow Apex to use speech recognition for the Ask Agent voice assistant.",
+          "microphonePermission": "Allow Fitora to use the microphone for voice notes and coaching workflows.",
+          "speechRecognitionPermission": "Allow Fitora to use speech recognition for voice notes and coaching workflows.",
           "androidSpeechServicePackages": ["com.google.android.googlequicksearchbox"]
         }
       ],
@@ -91,7 +91,7 @@
         {
           "isBackgroundEnabled": false,
           "modes": ["central"],
-          "bluetoothAlwaysPermission": "Allow Apex to connect to heart-rate and fitness sensors."
+          "bluetoothAlwaysPermission": "Allow Fitora to connect to heart-rate and fitness sensors."
         }
       ]
     ],

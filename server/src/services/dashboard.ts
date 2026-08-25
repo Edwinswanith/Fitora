@@ -119,9 +119,17 @@ export type DailyCard = AthleteSummary & {
       photos: SessionPhotoView[];
     }
   >;
+  // "Daily Readiness" (Phase 12 §25) — derived purely from the day's Wellness
+  // check-in (computeReadiness below). This is the ONE value a Today screen
+  // should render as "readiness." Distinct from DailyRpeSummary's
+  // trainingReadinessScore nested under `rpe`/`rpeEntries` — that's a
+  // different, per-session concept (post-session training risk from RPE
+  // inputs), deliberately renamed so a frontend consumer never has two
+  // same-named-but-different-meaning fields in one DailyCard payload.
   readinessScore: number | null;
   sleep: { hours: number | null; quality: number | null };
   soreness: number | null;
+  fatigue: number | null;
   heartRate: { wakeHr: number | null; bedHr: number | null };
   recovery: {
     status: string | null;
@@ -152,8 +160,15 @@ export type DailyRpeSummary = {
   bodyConditionFeedback: string | null;
   riskFlag: "green" | "amber" | "red";
   riskReasons: string[];
-  readinessScore: number;
-  readinessBand: "green" | "amber" | "red";
+  // "Training Readiness" (Phase 12 §25) — a per-RPE-session concept distinct
+  // from DailyCard.readinessScore ("Daily Readiness," the wellness-derived
+  // value). Named `trainingReadinessScore`/`trainingReadinessBand` here
+  // specifically so it never collides with the daily one in a DailyCard
+  // payload. The underlying formula/persisted field names on the
+  // RpeMonitoring model itself are unchanged (readinessScore/readinessBand)
+  // — only this serialized view is renamed.
+  trainingReadinessScore: number;
+  trainingReadinessBand: "green" | "amber" | "red";
 };
 
 async function loadAthleteSummaries(
@@ -311,8 +326,8 @@ export async function buildDailyCardsForAthletes(
       (rpeRow.bodyConditionFeedback as string | undefined) ?? null,
     riskFlag: rpeRow.riskFlag as "green" | "amber" | "red",
     riskReasons: (rpeRow.riskReasons as string[] | undefined) ?? [],
-    readinessScore: (rpeRow.readinessScore as number | undefined) ?? 0,
-    readinessBand:
+    trainingReadinessScore: (rpeRow.readinessScore as number | undefined) ?? 0,
+    trainingReadinessBand:
       (rpeRow.readinessBand as "green" | "amber" | "red" | undefined) ??
       "red",
   });
@@ -369,6 +384,7 @@ export async function buildDailyCardsForAthletes(
         quality: (w?.sleepQuality as number | undefined) ?? null,
       },
       soreness: (w?.soreness as number | undefined) ?? null,
+      fatigue: (w?.fatigue as number | undefined) ?? null,
       heartRate: {
         wakeHr: (w?.wakeHrBpm as number | undefined) ?? null,
         bedHr: (w?.bedHrBpm as number | undefined) ?? null,

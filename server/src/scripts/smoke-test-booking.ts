@@ -42,7 +42,7 @@ async function run() {
 
   const scheduledStart = new Date("2026-01-05T08:00:00.000Z");
 
-  const session = await requestSession({
+  const { session } = await requestSession({
     coachId: coach._id,
     athleteId: profileA._id,
     relationshipId: relA._id,

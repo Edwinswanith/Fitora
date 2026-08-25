@@ -1,515 +1,744 @@
 import { useEffect, useMemo, useState } from "react";
-import { ActivityIndicator, Alert, KeyboardAvoidingView, Platform, Pressable, ScrollView, StyleSheet, Switch, View } from "react-native";
-import { Text } from "../components/AppText";
-import { SafeAreaView } from "react-native-safe-area-context";
+import { ActivityIndicator, Alert, KeyboardAvoidingView, Platform, Pressable, StyleSheet, Switch, TextInput, View } from "react-native";
 import { useRouter } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
-import * as DocumentPicker from "expo-document-picker";
-import { apiFetch, changePassword, persistUser, type StoredUser } from "../lib/api";
+import { Text } from "../components/AppText";
+import { Avatar } from "../components/Avatar";
+import {
+  ActionButton,
+  AppCard,
+  ErrorState,
+  IconTile,
+  LoadingState,
+  RowLink,
+  ScreenContainer,
+  SectionHeader,
+  SettingsRow,
+  StatusChip,
+} from "../components/fitora";
+import { apiFetch, changePassword } from "../lib/api";
 import { useAuth } from "../lib/auth";
-import { ROLE_THEMES, colors, type RoleTheme } from "../lib/theme";
-import { DEFAULT_VOICE_LANGUAGE, VOICE_LANGUAGES, setVoiceLanguagePreference } from "../lib/voiceLanguage";
-import { Banner, Card, Label, Muted, PrimaryButton, TextField } from "../components/ui";
-import { Avatar, AvatarBadgePicker } from "../components/Avatar";
+import { colors, radius } from "../lib/theme";
 import { useNotificationPreferences, type NotificationCategories } from "../lib/notificationPreferences";
-import { useMobileTour } from "../lib/tour/MobileTourProvider";
-import { isKnownRole, type Role } from "../lib/roles";
+import {
+  firstName,
+  loadAthleteDashboardData,
+  loadCoachProfileData,
+  mealCalories,
+  titleCase,
+  useAsyncData,
+  type AthleteDashboardData,
+  type CoachProfileData,
+} from "../lib/fitoraData";
 
-const CATEGORY_LABELS: Record<keyof NotificationCategories, string> = {
-  reminders: "Reminders",
-  alerts: "Alerts",
-  deadlines: "Deadlines",
-  digests: "Weekly summaries",
-  milestones: "Milestones",
-  messages: "Messages & feedback",
+const FITNESS_GOALS = ["lose_weight", "maintain_weight", "gain_weight"] as const;
+const GOAL_INTENSITIES = ["mild", "moderate", "aggressive"] as const;
+const ACTIVITY_LEVELS = ["sedentary", "light", "moderate", "active", "very_active"] as const;
+
+const NOTIFICATION_ROWS: { key: keyof NotificationCategories; label: string; icon: keyof typeof Ionicons.glyphMap }[] = [
+  { key: "alerts", label: "Risk Alerts", icon: "notifications-outline" },
+  { key: "reminders", label: "Workout Completion", icon: "checkbox-outline" },
+  { key: "messages", label: "Messages", icon: "chatbubble-outline" },
+  { key: "digests", label: "Weekly Summaries", icon: "bar-chart-outline" },
+];
+
+const DEFAULT_NOTIFICATION_CATEGORIES: NotificationCategories = {
+  reminders: true,
+  alerts: true,
+  deadlines: true,
+  digests: true,
+  milestones: true,
+  messages: true,
 };
 
-function NotificationsCard({ accent }: { accent: string }) {
-  const { prefs, status, update } = useNotificationPreferences();
-  if (!prefs) return null;
-  const saving = status === "saving";
+export default function Account() {
+  const { user } = useAuth();
+  if (user?.role === "athlete") return <AthleteAccount />;
+  return <CoachAccount />;
+}
+
+function AthleteAccount() {
+  const state = useAsyncData(loadAthleteDashboardData, []);
+  const [editOpen, setEditOpen] = useState(false);
+
+  if (state.loading && !state.data) {
+    return (
+      <ScreenContainer>
+        <LoadingState />
+      </ScreenContainer>
+    );
+  }
+
+  if (state.error && !state.data) {
+    return (
+      <ScreenContainer>
+        <ErrorState message={state.error} onRetry={state.reload} />
+      </ScreenContainer>
+    );
+  }
+
+  if (!state.data) return null;
 
   return (
-    <Card style={{ gap: 4 }}>
-      <View style={rowStyles.row}>
-        <View style={rowStyles.textCol}>
-          <Text style={rowStyles.label}>Push notifications</Text>
-          <Muted>Phone alerts for messages, reminders, and safety updates.</Muted>
-        </View>
-        <Switch
-          value={prefs.enabled}
-          disabled={saving}
-          onValueChange={(value) => update({ enabled: value })}
-          trackColor={{ true: accent }}
+    <ProfileShell refreshing={state.refreshing} onRefresh={state.reload} onEditPress={() => setEditOpen((value) => !value)}>
+      {editOpen ? (
+        <AthleteEditForm
+          data={state.data}
+          onClose={() => setEditOpen(false)}
+          onSaved={() => {
+            setEditOpen(false);
+            state.reload();
+          }}
         />
-      </View>
-      <View style={rowStyles.divider} />
-      {(Object.keys(CATEGORY_LABELS) as (keyof NotificationCategories)[]).map((key) => (
-        <View key={key} style={rowStyles.row}>
-          <Text style={rowStyles.label}>{CATEGORY_LABELS[key]}</Text>
-          <Switch
-            value={prefs.categories[key]}
-            disabled={saving || !prefs.enabled}
-            onValueChange={(value) => update({ categories: { [key]: value } })}
-            trackColor={{ true: accent }}
-          />
-        </View>
-      ))}
-    </Card>
+      ) : null}
+      <AthleteProfileContent data={state.data} onManageGoal={() => setEditOpen(true)} />
+    </ProfileShell>
   );
 }
 
-function GuidedTourCard({ accent, role }: { accent: string; role: Role }) {
-  const { prefs, updatePrefs, replayTour } = useMobileTour();
-  const [replaying, setReplaying] = useState(false);
+function CoachAccount() {
+  const state = useAsyncData(loadCoachProfileData, []);
+  const [editOpen, setEditOpen] = useState(false);
 
-  async function onReplay() {
-    setReplaying(true);
-    await replayTour(role);
-    setReplaying(false);
+  if (state.loading && !state.data) {
+    return (
+      <ScreenContainer>
+        <LoadingState />
+      </ScreenContainer>
+    );
+  }
+
+  if (state.error && !state.data) {
+    return (
+      <ScreenContainer>
+        <ErrorState message={state.error} onRetry={state.reload} />
+      </ScreenContainer>
+    );
+  }
+
+  if (!state.data) return null;
+
+  return (
+    <ProfileShell refreshing={state.refreshing} onRefresh={state.reload} onEditPress={() => setEditOpen((value) => !value)}>
+      {editOpen ? (
+        <CoachEditForm
+          data={state.data}
+          onClose={() => setEditOpen(false)}
+          onSaved={() => {
+            setEditOpen(false);
+            state.reload();
+          }}
+        />
+      ) : null}
+      <CoachProfileContent data={state.data} />
+    </ProfileShell>
+  );
+}
+
+function ProfileShell({
+  children,
+  refreshing,
+  onRefresh,
+  onEditPress,
+}: {
+  children: React.ReactNode;
+  refreshing: boolean;
+  onRefresh: () => void;
+  onEditPress: () => void;
+}) {
+  const router = useRouter();
+  return (
+    <ScreenContainer refreshing={refreshing} onRefresh={onRefresh}>
+      <View style={styles.headerRow}>
+        <Pressable onPress={() => router.back()} hitSlop={10} style={styles.iconButton}>
+          <Ionicons name="arrow-back" size={24} color={colors.ink} />
+        </Pressable>
+        <Text style={styles.pageTitle}>Profile</Text>
+        <Pressable onPress={onEditPress} hitSlop={10}>
+          <Text style={styles.editText}>Edit</Text>
+        </Pressable>
+      </View>
+      {children}
+      <SecurityCard />
+      <DangerZone />
+    </ScreenContainer>
+  );
+}
+
+function AthleteProfileContent({ data, onManageGoal }: { data: AthleteDashboardData; onManageGoal: () => void }) {
+  const { user } = useAuth();
+  const router = useRouter();
+  const profile = data.profile;
+  const target = data.target;
+  const coachName = data.coachProfile?.name || data.coaches[0]?.name;
+  const consumed = data.mealTotals?.calories ?? data.meals.reduce((sum, meal) => sum + mealCalories(meal), 0);
+
+  return (
+    <>
+      <AppCard>
+        <View style={styles.identityRow}>
+          <Avatar avatar={user?.avatar} name={profile?.name || user?.name || "Profile"} size={78} accentSoft={colors.primarySoft} accentStrong={colors.primary} />
+          <View style={{ flex: 1, minWidth: 0 }}>
+            <Text style={styles.identityName} numberOfLines={1}>{profile?.name || user?.name}</Text>
+            <Text style={styles.identityRole}>{titleCase(profile?.fitnessGoal) || profile?.sport || "Fitness"}</Text>
+            <Text style={styles.muted} numberOfLines={1}>{profile?.email || user?.email}</Text>
+          </View>
+        </View>
+      </AppCard>
+
+      <AppCard>
+        <SectionHeader title="Your Goal" />
+        <View style={styles.goalRow}>
+          <IconTile icon="locate-outline" size={50} />
+          <View style={{ flex: 1 }}>
+            <View style={styles.inlineTitleRow}>
+              <Text style={styles.cardTitle}>{titleCase(profile?.fitnessGoal) || "Goal not set"}</Text>
+              {profile?.goalIntensity ? <StatusChip label={titleCase(profile.goalIntensity)} tone="primary" /> : null}
+            </View>
+            <Text style={styles.muted}>
+              {target ? `Target: ${target.calories.toLocaleString()} kcal/day` : "Nutrition target not configured"}
+            </Text>
+          </View>
+          <ActionButton label="Manage Goal" onPress={onManageGoal} />
+        </View>
+      </AppCard>
+
+      <AppCard>
+        <SectionHeader title="Personal" />
+        <SettingsRow icon="scale-outline" label="Weight" value={profile?.weightKg ? `${profile.weightKg} kg` : "Not set"} />
+        <SettingsRow icon="resize-outline" label="Height" value={profile?.heightCm ? `${profile.heightCm} cm` : "Not set"} />
+        <SettingsRow icon="calendar-outline" label="Age" value={profile?.dob ? String(ageFromDob(profile.dob)) : "Not set"} />
+        <SettingsRow icon="pulse-outline" label="Activity Level" value={titleCase(profile?.activityLevel) || "Not set"} />
+      </AppCard>
+
+      <AppCard>
+        <SectionHeader title="Nutrition" />
+        <SettingsRow icon="restaurant-outline" label="Diet" value={(profile?.dietaryPreferences ?? []).join(", ") || "Not set"} />
+        <SettingsRow icon="fast-food-outline" label="Cuisine" value={(profile?.cuisinePreferences ?? []).join(", ") || "Not set"} />
+        <SettingsRow icon="warning-outline" label="Allergies" value={(profile?.allergies ?? []).join(", ") || "None"} />
+        <RowLink
+          icon="nutrition-outline"
+          title={`${consumed.toLocaleString()} / ${target?.calories?.toLocaleString() ?? "-"} kcal`}
+          subtitle="Today"
+          progress={target?.calories ? consumed / target.calories : 0}
+          tone="success"
+        />
+      </AppCard>
+
+      <AppCard>
+        <View style={styles.coachRow}>
+          <Avatar avatar={data.coachProfile?.avatar} name={coachName || "Coach"} size={48} accentSoft={colors.primarySoft} accentStrong={colors.primary} />
+          <View style={{ flex: 1, minWidth: 0 }}>
+            <Text style={styles.cardTitle}>{coachName ? "My Coach" : "No coach connected"}</Text>
+            <Text style={[styles.statusText, { color: coachName ? colors.ok : colors.inkMuted }]}>
+              {coachName ? `Connected with ${firstName(coachName, "Coach")}` : "Browse coaches to start a plan"}
+            </Text>
+          </View>
+          <ActionButton
+            label={coachName ? "View Coach" : "Find Coach"}
+            onPress={() => router.push(coachName ? { pathname: "/athlete/dashboard", params: { section: "coach" } } as never : ("/athlete/coach-discovery" as never))}
+          />
+        </View>
+      </AppCard>
+
+      <AppCard>
+        <SectionHeader title="Connected Devices" />
+        <SettingsRow icon="heart-outline" label="Apple Health" value="Not connected" />
+        <SettingsRow icon="watch-outline" label="Wearable" value="Not connected" />
+      </AppCard>
+
+      <NotificationCard />
+      <PreferencesCard />
+    </>
+  );
+}
+
+function CoachProfileContent({ data }: { data: CoachProfileData }) {
+  const { user } = useAuth();
+  const profile = data.profile;
+  return (
+    <>
+      <AppCard>
+        <View style={styles.identityRow}>
+          <Avatar avatar={user?.avatar} name={profile?.name || user?.name || "Coach"} size={78} accentSoft={colors.primarySoft} accentStrong={colors.primary} />
+          <View style={{ flex: 1, minWidth: 0 }}>
+            <Text style={styles.identityName} numberOfLines={1}>{profile?.name || user?.name}</Text>
+            <Text style={styles.identityRole}>Fitness Coach</Text>
+            <Text style={styles.muted}>{profile?.active ? "Marketplace profile active" : "Marketplace profile hidden"}</Text>
+          </View>
+        </View>
+      </AppCard>
+
+      <AppCard>
+        <SectionHeader title="Coaching" />
+        <SettingsRow icon="barbell-outline" label="Specialization" value={(profile?.specializations ?? []).join(", ") || "Not set"} />
+        <SettingsRow icon="people-outline" label="Pricing Plans" value={String(data.pricingPlans.length)} />
+        <SettingsRow icon="globe-outline" label="Languages" value={(profile?.languages ?? []).join(", ") || "Not set"} />
+      </AppCard>
+
+      <NotificationCard />
+      <PreferencesCard />
+
+      <AppCard>
+        <SectionHeader title="Account" />
+        <SettingsRow icon="lock-closed-outline" label="Account & Security" />
+        <SettingsRow icon="help-circle-outline" label="Help & Support" />
+        <SettingsRow icon="document-text-outline" label="Terms & Privacy" />
+      </AppCard>
+    </>
+  );
+}
+
+function AthleteEditForm({
+  data,
+  onClose,
+  onSaved,
+}: {
+  data: AthleteDashboardData;
+  onClose: () => void;
+  onSaved: () => void;
+}) {
+  const profile = data.profile;
+  const [weightKg, setWeightKg] = useState(profile?.weightKg != null ? String(profile.weightKg) : "");
+  const [heightCm, setHeightCm] = useState(profile?.heightCm != null ? String(profile.heightCm) : "");
+  const [dob, setDob] = useState(profile?.dob ? profile.dob.slice(0, 10) : "");
+  const [activityLevel, setActivityLevel] = useState(profile?.activityLevel ?? "");
+  const [fitnessGoal, setFitnessGoal] = useState(profile?.fitnessGoal ?? "");
+  const [goalIntensity, setGoalIntensity] = useState(profile?.goalIntensity ?? "");
+  const [dietaryPreferences, setDietaryPreferences] = useState((profile?.dietaryPreferences ?? []).join(", "));
+  const [cuisinePreferences, setCuisinePreferences] = useState((profile?.cuisinePreferences ?? []).join(", "));
+  const [allergies, setAllergies] = useState((profile?.allergies ?? []).join(", "));
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  function splitList(value: string): string[] {
+    return value.split(",").map((item) => item.trim()).filter(Boolean);
+  }
+
+  async function save() {
+    setError(null);
+    const parsedWeight = weightKg.trim() ? Number(weightKg) : null;
+    const parsedHeight = heightCm.trim() ? Number(heightCm) : null;
+    if (weightKg.trim() && !Number.isFinite(parsedWeight)) {
+      setError("Weight must be a number.");
+      return;
+    }
+    if (heightCm.trim() && !Number.isFinite(parsedHeight)) {
+      setError("Height must be a number.");
+      return;
+    }
+    if (dob.trim() && !/^\d{4}-\d{2}-\d{2}$/.test(dob.trim())) {
+      setError("Date of birth must be in YYYY-MM-DD format.");
+      return;
+    }
+    setSaving(true);
+    try {
+      const body: Record<string, unknown> = {
+        dietaryPreferences: splitList(dietaryPreferences),
+        cuisinePreferences: splitList(cuisinePreferences),
+        allergies: splitList(allergies),
+      };
+      if (parsedWeight != null) body.weightKg = parsedWeight;
+      if (parsedHeight != null) body.heightCm = parsedHeight;
+      if (dob.trim()) body.dob = dob.trim();
+      if (activityLevel) body.activityLevel = activityLevel;
+      if (fitnessGoal) body.fitnessGoal = fitnessGoal;
+      if (goalIntensity) body.goalIntensity = goalIntensity;
+      const res = await apiFetch("/api/athlete/me", { method: "PATCH", body: JSON.stringify(body) });
+      if (!res.ok) {
+        setError("Could not save changes. Check your entries and try again.");
+        return;
+      }
+      onSaved();
+    } catch {
+      setError("Network error while saving.");
+    } finally {
+      setSaving(false);
+    }
   }
 
   return (
-    <Card style={{ gap: 4 }}>
-      <View style={rowStyles.row}>
-        <View style={rowStyles.textCol}>
-          <Text style={rowStyles.label}>Show mascot animations</Text>
-          <Muted>Pex walks, points, and reacts through the app.</Muted>
-        </View>
-        <Switch
-          value={prefs.mascotAnimationsEnabled}
-          onValueChange={(value) => updatePrefs({ mascotAnimationsEnabled: value })}
-          trackColor={{ true: accent }}
-        />
+    <AppCard>
+      <View style={styles.editHeader}>
+        <Text style={styles.cardTitle}>Edit Profile</Text>
+        <Pressable onPress={onClose} hitSlop={10}>
+          <Text style={styles.editText}>Close</Text>
+        </Pressable>
       </View>
-      <View style={rowStyles.divider} />
-      <View style={rowStyles.row}>
-        <View style={rowStyles.textCol}>
-          <Text style={rowStyles.label}>Sound effects</Text>
-          <Muted>Optional chimes for tour steps and reactions. No sound files are bundled yet.</Muted>
-        </View>
-        <Switch
-          value={prefs.soundEnabled}
-          onValueChange={(value) => updatePrefs({ soundEnabled: value })}
-          trackColor={{ true: accent }}
-        />
-      </View>
-      <View style={rowStyles.divider} />
-      <PrimaryButton label="Replay guided tour" onPress={onReplay} loading={replaying} accent={accent} accentInk="#fff" />
-    </Card>
+
+      <Text style={styles.formLabel}>Weight (kg)</Text>
+      <TextInput value={weightKg} onChangeText={setWeightKg} keyboardType="numeric" style={styles.input} placeholder="e.g. 72" placeholderTextColor={colors.inkFaint} />
+
+      <Text style={styles.formLabel}>Height (cm)</Text>
+      <TextInput value={heightCm} onChangeText={setHeightCm} keyboardType="numeric" style={styles.input} placeholder="e.g. 178" placeholderTextColor={colors.inkFaint} />
+
+      <Text style={styles.formLabel}>Date of Birth</Text>
+      <TextInput value={dob} onChangeText={setDob} style={styles.input} placeholder="YYYY-MM-DD" placeholderTextColor={colors.inkFaint} />
+
+      <Text style={styles.formLabel}>Activity Level</Text>
+      <ChipPicker options={ACTIVITY_LEVELS} value={activityLevel} onChange={setActivityLevel} />
+
+      <Text style={styles.formLabel}>Fitness Goal</Text>
+      <ChipPicker options={FITNESS_GOALS} value={fitnessGoal} onChange={setFitnessGoal} />
+
+      <Text style={styles.formLabel}>Goal Intensity</Text>
+      <ChipPicker options={GOAL_INTENSITIES} value={goalIntensity} onChange={setGoalIntensity} />
+
+      <Text style={styles.formLabel}>Diet (comma separated)</Text>
+      <TextInput value={dietaryPreferences} onChangeText={setDietaryPreferences} style={styles.input} placeholder="e.g. vegetarian" placeholderTextColor={colors.inkFaint} />
+
+      <Text style={styles.formLabel}>Cuisine (comma separated)</Text>
+      <TextInput value={cuisinePreferences} onChangeText={setCuisinePreferences} style={styles.input} placeholder="e.g. south indian" placeholderTextColor={colors.inkFaint} />
+
+      <Text style={styles.formLabel}>Allergies (comma separated)</Text>
+      <TextInput value={allergies} onChangeText={setAllergies} style={styles.input} placeholder="e.g. peanuts" placeholderTextColor={colors.inkFaint} />
+
+      {error ? <Text style={styles.errorText}>{error}</Text> : null}
+      <Pressable onPress={save} disabled={saving} style={[styles.primaryButton, saving ? styles.disabled : null]}>
+        {saving ? <ActivityIndicator color="#fff" /> : <Text style={styles.primaryButtonText}>Save Changes</Text>}
+      </Pressable>
+    </AppCard>
   );
 }
 
-export default function Account() {
-  const router = useRouter();
-  const { user, setUser, signOut, deleteAccount } = useAuth();
-  const theme: RoleTheme = ROLE_THEMES[(user?.role as keyof typeof ROLE_THEMES) ?? "coach"] ?? ROLE_THEMES.coach;
-  const tourRole: Role | null = user && isKnownRole(user.role) ? user.role : null;
+function CoachEditForm({
+  data,
+  onClose,
+  onSaved,
+}: {
+  data: CoachProfileData;
+  onClose: () => void;
+  onSaved: () => void;
+}) {
+  const profile = data.profile;
+  const [bio, setBio] = useState(profile?.bio ?? "");
+  const [specializations, setSpecializations] = useState((profile?.specializations ?? []).join(", "));
+  const [languages, setLanguages] = useState((profile?.languages ?? []).join(", "));
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
+  function splitList(value: string): string[] {
+    return value.split(",").map((item) => item.trim()).filter(Boolean);
+  }
+
+  async function save() {
+    setSaving(true);
+    setError(null);
+    try {
+      const res = await apiFetch("/api/coach/profile", {
+        method: "PATCH",
+        body: JSON.stringify({
+          bio: bio.trim() || undefined,
+          specializations: splitList(specializations),
+          languages: splitList(languages),
+        }),
+      });
+      if (!res.ok) {
+        setError("Could not save changes.");
+        return;
+      }
+      onSaved();
+    } catch {
+      setError("Network error while saving.");
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  return (
+    <AppCard>
+      <View style={styles.editHeader}>
+        <Text style={styles.cardTitle}>Edit Profile</Text>
+        <Pressable onPress={onClose} hitSlop={10}>
+          <Text style={styles.editText}>Close</Text>
+        </Pressable>
+      </View>
+
+      <Text style={styles.formLabel}>Bio</Text>
+      <TextInput value={bio} onChangeText={setBio} style={[styles.input, styles.inputMultiline]} placeholder="Tell athletes about your coaching style" placeholderTextColor={colors.inkFaint} multiline />
+
+      <Text style={styles.formLabel}>Specializations (comma separated)</Text>
+      <TextInput value={specializations} onChangeText={setSpecializations} style={styles.input} placeholder="e.g. strength, mobility" placeholderTextColor={colors.inkFaint} />
+
+      <Text style={styles.formLabel}>Languages (comma separated)</Text>
+      <TextInput value={languages} onChangeText={setLanguages} style={styles.input} placeholder="e.g. english, hindi" placeholderTextColor={colors.inkFaint} />
+
+      {error ? <Text style={styles.errorText}>{error}</Text> : null}
+      <Pressable onPress={save} disabled={saving} style={[styles.primaryButton, saving ? styles.disabled : null]}>
+        {saving ? <ActivityIndicator color="#fff" /> : <Text style={styles.primaryButtonText}>Save Changes</Text>}
+      </Pressable>
+    </AppCard>
+  );
+}
+
+function ChipPicker<T extends string>({ options, value, onChange }: { options: readonly T[]; value: string; onChange: (value: T) => void }) {
+  return (
+    <View style={styles.chipPickerRow}>
+      {options.map((option) => (
+        <Pressable
+          key={option}
+          onPress={() => onChange(option)}
+          style={[styles.chipOption, value === option ? styles.chipOptionActive : null]}
+        >
+          <Text style={[styles.chipOptionText, value === option ? styles.chipOptionTextActive : null]}>{titleCase(option)}</Text>
+        </Pressable>
+      ))}
+    </View>
+  );
+}
+
+function NotificationCard() {
+  const { prefs, status, update } = useNotificationPreferences();
+  if (!prefs) return null;
+  const categories = { ...DEFAULT_NOTIFICATION_CATEGORIES, ...(prefs.categories ?? {}) };
+  const enabled = prefs.enabled ?? true;
+  const disabled = status === "saving";
+  return (
+    <AppCard>
+      <SectionHeader title="Notifications" />
+      {NOTIFICATION_ROWS.map((row, index) => (
+        <View key={row.key}>
+          <View style={styles.switchRow}>
+            <IconTile icon={row.icon} size={36} />
+            <Text style={styles.switchLabel}>{row.label}</Text>
+            <Switch
+              value={enabled && categories[row.key]}
+              disabled={disabled}
+              onValueChange={(value) => update({ enabled: value || enabled, categories: { [row.key]: value } })}
+              trackColor={{ true: colors.primarySoft }}
+              thumbColor={categories[row.key] ? colors.primary : "#f8fafc"}
+            />
+          </View>
+          {index < NOTIFICATION_ROWS.length - 1 ? <Divider /> : null}
+        </View>
+      ))}
+    </AppCard>
+  );
+}
+
+function PreferencesCard() {
+  return (
+    <AppCard>
+      <SectionHeader title="Preferences" />
+      <SettingsRow icon="resize-outline" label="Units" />
+      <SettingsRow icon="globe-outline" label="Timezone" />
+      <SettingsRow icon="sunny-outline" label="Appearance" />
+      <SettingsRow icon="shield-outline" label="Privacy" />
+    </AppCard>
+  );
+}
+
+function SecurityCard() {
+  const { setUser } = useAuth();
+  const [expanded, setExpanded] = useState(false);
   const [current, setCurrent] = useState("");
   const [next, setNext] = useState("");
   const [confirm, setConfirm] = useState("");
   const [saving, setSaving] = useState(false);
-  const [msg, setMsg] = useState<{ kind: "ok" | "error"; text: string } | null>(null);
-  const [voiceLanguage, setVoiceLanguage] = useState(user?.voiceLanguage ?? DEFAULT_VOICE_LANGUAGE);
-
-  const [avatarBusy, setAvatarBusy] = useState(false);
-  const [avatarError, setAvatarError] = useState<string | null>(null);
-  const [deleting, setDeleting] = useState(false);
+  const [message, setMessage] = useState<{ kind: "ok" | "error"; text: string } | null>(null);
 
   useEffect(() => {
-    setVoiceLanguage(user?.voiceLanguage ?? DEFAULT_VOICE_LANGUAGE);
-  }, [user?.voiceLanguage]);
-
-  async function applyAvatarResponse(res: Response) {
-    const json = (await res.json().catch(() => ({}))) as {
-      avatar?: StoredUser["avatar"];
-      error?: string;
-    };
-    if (!res.ok || !json.avatar) {
-      setAvatarError(
-        json?.error === "file_too_large"
-          ? "That image is too large."
-          : json?.error === "unsupported_file_type"
-            ? "Please choose a JPG, PNG, or WEBP image."
-            : "Could not update your profile photo."
-      );
-      return;
+    if (!expanded) {
+      setCurrent("");
+      setNext("");
+      setConfirm("");
+      setMessage(null);
     }
-    if (user) {
-      const updated = { ...user, avatar: json.avatar };
-      setUser(updated);
-      await persistUser(updated);
-    }
-  }
-
-  async function pickAvatarPhoto() {
-    const result = await DocumentPicker.getDocumentAsync({ type: "image/*" });
-    if (result.canceled || !result.assets?.[0]) return;
-    const asset = result.assets[0];
-    setAvatarBusy(true);
-    setAvatarError(null);
-    try {
-      const body = new FormData();
-      body.append("file", {
-        uri: asset.uri,
-        name: asset.name ?? "avatar.jpg",
-        type: asset.mimeType ?? "image/jpeg",
-      } as unknown as Blob);
-      const res = await apiFetch("/api/me/avatar", { method: "POST", body });
-      await applyAvatarResponse(res);
-    } catch {
-      setAvatarError("Network error - please try again.");
-    } finally {
-      setAvatarBusy(false);
-    }
-  }
-
-  async function chooseAvatarDefault(defaultId: string) {
-    setAvatarBusy(true);
-    setAvatarError(null);
-    try {
-      const res = await apiFetch("/api/me/avatar/default", {
-        method: "POST",
-        body: JSON.stringify({ defaultId }),
-      });
-      await applyAvatarResponse(res);
-    } catch {
-      setAvatarError("Network error - please try again.");
-    } finally {
-      setAvatarBusy(false);
-    }
-  }
-
-  async function removeAvatar() {
-    setAvatarBusy(true);
-    setAvatarError(null);
-    try {
-      const res = await apiFetch("/api/me/avatar", { method: "DELETE" });
-      await applyAvatarResponse(res);
-    } catch {
-      setAvatarError("Network error - please try again.");
-    } finally {
-      setAvatarBusy(false);
-    }
-  }
-
-  async function chooseVoiceLanguage(code: string) {
-    const nextCode = await setVoiceLanguagePreference(code);
-    setVoiceLanguage(nextCode);
-    if (user) {
-      const updated = { ...user, voiceLanguage: nextCode };
-      setUser(updated);
-      await persistUser(updated);
-    }
-  }
+  }, [expanded]);
 
   const localError = useMemo(() => {
     if (next && next.length < 8) return "New password must be at least 8 characters.";
-    if (confirm && next !== confirm) return "Passwords don’t match.";
+    if (confirm && next !== confirm) return "Passwords do not match.";
     return null;
   }, [next, confirm]);
 
   async function save() {
-    setMsg(null);
+    setMessage(null);
     if (!current || !next || !confirm) {
-      setMsg({ kind: "error", text: "Fill in all three fields." });
-      return false;
+      setMessage({ kind: "error", text: "Fill in all three fields." });
+      return;
     }
     if (localError) {
-      setMsg({ kind: "error", text: localError });
-      return false;
+      setMessage({ kind: "error", text: localError });
+      return;
     }
     setSaving(true);
     const res = await changePassword(current, next);
     setSaving(false);
     if (res.ok) {
       setUser(res.user);
-      setCurrent("");
-      setNext("");
-      setConfirm("");
-      setMsg({ kind: "ok", text: "Password updated. Use it next time you sign in." });
-      return true;
+      setExpanded(false);
+      setMessage({ kind: "ok", text: "Password updated." });
+      return;
     }
-    if (res.status === 401) setMsg({ kind: "error", text: "Your current password is incorrect." });
-    else if (res.error === "weak_password") setMsg({ kind: "error", text: "New password must be at least 8 characters." });
-    else if (res.error === "same_password") setMsg({ kind: "error", text: "New password must be different from the current one." });
-    else setMsg({ kind: "error", text: "Couldn’t update password. Try again." });
-    return false;
+    setMessage({ kind: "error", text: res.status === 401 ? "Current password is incorrect." : "Could not update password." });
   }
+
+  return (
+    <AppCard>
+      <Pressable onPress={() => setExpanded((value) => !value)} style={styles.securityHeader}>
+        <IconTile icon="lock-closed-outline" size={38} />
+        <Text style={styles.cardTitle}>Account & Security</Text>
+        <Ionicons name={expanded ? "chevron-up" : "chevron-down"} size={22} color={colors.ink} />
+      </Pressable>
+      {expanded ? (
+        <KeyboardAvoidingView behavior={Platform.OS === "ios" ? "padding" : undefined} style={styles.passwordForm}>
+          <SecureInput value={current} onChangeText={setCurrent} placeholder="Current password" />
+          <SecureInput value={next} onChangeText={setNext} placeholder="New password" />
+          <SecureInput value={confirm} onChangeText={setConfirm} placeholder="Confirm new password" />
+          {localError ? <Text style={styles.errorText}>{localError}</Text> : null}
+          {message ? <Text style={message.kind === "ok" ? styles.successText : styles.errorText}>{message.text}</Text> : null}
+          <Pressable onPress={save} disabled={saving} style={[styles.primaryButton, saving ? styles.disabled : null]}>
+            {saving ? <ActivityIndicator color="#fff" /> : <Text style={styles.primaryButtonText}>Update Password</Text>}
+          </Pressable>
+        </KeyboardAvoidingView>
+      ) : null}
+    </AppCard>
+  );
+}
+
+function SecureInput({
+  value,
+  onChangeText,
+  placeholder,
+}: {
+  value: string;
+  onChangeText: (value: string) => void;
+  placeholder: string;
+}) {
+  return (
+    <TextInput
+      value={value}
+      onChangeText={onChangeText}
+      secureTextEntry
+      autoCapitalize="none"
+      placeholder={placeholder}
+      placeholderTextColor={colors.inkFaint}
+      style={styles.input}
+    />
+  );
+}
+
+function DangerZone() {
+  const router = useRouter();
+  const { signOut, deleteAccount } = useAuth();
+  const [deleting, setDeleting] = useState(false);
 
   async function onSignOut() {
     await signOut();
     router.replace("/");
   }
 
-  function confirmAccountDeletion() {
-    Alert.alert(
-      "Permanently delete account?",
-      "This permanently deletes your account and associated personal data. This cannot be undone.",
-      [
-        { text: "Cancel", style: "cancel" },
-        {
-          text: "Delete account",
-          style: "destructive",
-          onPress: () => {
-            Alert.alert(
-              "Final confirmation",
-              "Are you sure? Your account cannot be recovered after deletion.",
-              [
-                { text: "Keep account", style: "cancel" },
-                {
-                  text: "Delete permanently",
-                  style: "destructive",
-                  onPress: async () => {
-                    setDeleting(true);
-                    setMsg(null);
-                    const result = await deleteAccount();
-                    setDeleting(false);
-                    if (result.ok) {
-                      router.replace("/");
-                    } else {
-                      setMsg({
-                        kind: "error",
-                        text:
-                          result.status === 0
-                            ? "Couldn’t reach the server. Check your connection and try again."
-                            : "Couldn’t delete your account. Please try again.",
-                      });
-                    }
-                  },
-                },
-              ]
-            );
-          },
+  function confirmDelete() {
+    Alert.alert("Delete account?", "This permanently deletes your account and associated personal data.", [
+      { text: "Cancel", style: "cancel" },
+      {
+        text: "Delete",
+        style: "destructive",
+        onPress: async () => {
+          setDeleting(true);
+          const result = await deleteAccount();
+          setDeleting(false);
+          if (result.ok) router.replace("/");
+          else Alert.alert("Could not delete account", "Please try again.");
         },
-      ]
-    );
+      },
+    ]);
   }
 
   return (
-    <SafeAreaView style={styles.safe}>
-      <KeyboardAvoidingView behavior={Platform.OS === "ios" ? "padding" : undefined} style={{ flex: 1 }}>
-        <ScrollView contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
-          <Pressable onPress={() => router.back()} style={styles.back} hitSlop={10}>
-            <Ionicons name="arrow-back" size={18} color={colors.inkFaint} />
-            <Text style={styles.backText}>BACK</Text>
-          </Pressable>
-
-          <Text style={styles.title}>Account</Text>
-
-          <Card style={{ marginTop: 12, gap: 4 }}>
-            <Text style={styles.name}>{user?.name}</Text>
-            <Muted>{user?.email}</Muted>
-            <View style={[styles.roleChip, { backgroundColor: theme.accentSoft }]}>
-              <Text style={[styles.roleText, { color: theme.accentStrong }]}>{theme.label}</Text>
-            </View>
-          </Card>
-
-          <Text style={styles.section}>Profile photo</Text>
-          <Card style={{ gap: 14 }}>
-            <View style={styles.photoRow}>
-              <Avatar
-                avatar={user?.avatar}
-                name={user?.name ?? ""}
-                size={64}
-                accentSoft={theme.accentSoft}
-                accentStrong={theme.accentStrong}
-              />
-              <View style={styles.photoActions}>
-                <Pressable
-                  onPress={pickAvatarPhoto}
-                  disabled={avatarBusy}
-                  style={[styles.photoButton, { borderColor: theme.accent }]}
-                >
-                  {avatarBusy ? (
-                    <ActivityIndicator size="small" color={theme.accentStrong} />
-                  ) : (
-                    <Text style={[styles.photoButtonText, { color: theme.accentStrong }]}>Upload photo</Text>
-                  )}
-                </Pressable>
-                {user?.avatar?.kind ? (
-                  <Pressable onPress={removeAvatar} disabled={avatarBusy} style={styles.photoRemove}>
-                    <Text style={styles.photoRemoveText}>Remove</Text>
-                  </Pressable>
-                ) : null}
-              </View>
-            </View>
-
-            <Label>Or pick a badge icon</Label>
-            <AvatarBadgePicker
-              selectedId={user?.avatar?.kind === "default" ? user.avatar.defaultId : null}
-              onSelect={chooseAvatarDefault}
-              accentColor={theme.accent}
-            />
-
-            {avatarError ? <Text style={styles.localErr}>{avatarError}</Text> : null}
-          </Card>
-
-          <Text style={styles.section}>Voice language</Text>
-          <Card style={{ gap: 12 }}>
-            <Muted>Ask Agent listens and speaks using this language. Commands are translated before the agent runs them.</Muted>
-            <View style={styles.languageGrid}>
-              {VOICE_LANGUAGES.map((language) => {
-                const selected = voiceLanguage === language.code;
-                return (
-                  <Pressable
-                    key={language.code}
-                    onPress={() => chooseVoiceLanguage(language.code)}
-                    style={[
-                      styles.languageOption,
-                      selected ? { borderColor: theme.accent, backgroundColor: theme.accentSoft } : null,
-                    ]}
-                    accessibilityRole="button"
-                    accessibilityState={{ selected }}
-                  >
-                    <Text style={[styles.languageLabel, selected ? { color: theme.accentStrong } : null]}>
-                      {language.label}
-                    </Text>
-                    <Text style={[styles.languageNative, selected ? { color: theme.accentStrong } : null]}>
-                      {language.nativeLabel}
-                    </Text>
-                  </Pressable>
-                );
-              })}
-            </View>
-          </Card>
-
-          <Text style={styles.section}>Notifications</Text>
-          <NotificationsCard accent={theme.accentStrong} />
-
-          {tourRole ? (
-            <>
-              <Text style={styles.section}>Guided tour</Text>
-              <GuidedTourCard accent={theme.accentStrong} role={tourRole} />
-            </>
-          ) : null}
-
-          <Text style={styles.section}>Change password</Text>
-          <Card style={{ gap: 14 }}>
-            <View>
-              <Label>Current password</Label>
-              <View style={{ marginTop: 6 }}>
-                <TextField value={current} onChangeText={setCurrent} isPassword placeholder="••••••••" editable={!saving} />
-              </View>
-            </View>
-            <View>
-              <Label>New password</Label>
-              <View style={{ marginTop: 6 }}>
-                <TextField value={next} onChangeText={setNext} isPassword placeholder="At least 8 characters" editable={!saving} />
-              </View>
-            </View>
-            <View>
-              <Label>Confirm new password</Label>
-              <View style={{ marginTop: 6 }}>
-                <TextField value={confirm} onChangeText={setConfirm} isPassword placeholder="Re-enter new password" editable={!saving} />
-              </View>
-            </View>
-
-            {localError ? <Text style={styles.localErr}>{localError}</Text> : null}
-            {msg ? <Banner kind={msg.kind}>{msg.text}</Banner> : null}
-
-            <PrimaryButton
-              label="Update password"
-              onPress={save}
-              loading={saving}
-              successLabel="Updated"
-              accent={theme.accent}
-              accentInk={theme.accentInk}
-            />
-          </Card>
-
-          <Pressable onPress={onSignOut} style={styles.signOut}>
-            <Ionicons name="log-out-outline" size={18} color={colors.bad} />
-            <Text style={styles.signOutText}>Sign out</Text>
-          </Pressable>
-
-          <Text style={styles.section}>Delete account</Text>
-          <Card style={{ gap: 12 }}>
-            <Text style={styles.deleteDescription}>
-              Permanently remove your account and associated personal data. This action cannot be undone.
-            </Text>
-            <Pressable
-              onPress={confirmAccountDeletion}
-              disabled={deleting}
-              style={[styles.deleteButton, deleting && styles.disabled]}
-            >
-              {deleting ? (
-                <ActivityIndicator size="small" color={colors.bad} />
-              ) : (
-                <Text style={styles.deleteButtonText}>Delete account permanently</Text>
-              )}
-            </Pressable>
-          </Card>
-        </ScrollView>
-      </KeyboardAvoidingView>
-    </SafeAreaView>
+    <>
+      <Pressable onPress={onSignOut} style={styles.logout}>
+        <Text style={styles.logoutText}>Log Out</Text>
+      </Pressable>
+      <Pressable onPress={confirmDelete} disabled={deleting} style={styles.deleteButton}>
+        {deleting ? <ActivityIndicator color={colors.bad} /> : <Text style={styles.deleteText}>Delete Account</Text>}
+      </Pressable>
+    </>
   );
 }
 
+function ageFromDob(dob: string) {
+  const date = new Date(dob);
+  if (Number.isNaN(date.getTime())) return "";
+  const now = new Date();
+  let age = now.getFullYear() - date.getFullYear();
+  const monthDelta = now.getMonth() - date.getMonth();
+  if (monthDelta < 0 || (monthDelta === 0 && now.getDate() < date.getDate())) age -= 1;
+  return age;
+}
+
+function Divider() {
+  return <View style={styles.divider} />;
+}
+
 const styles = StyleSheet.create({
-  safe: { flex: 1, backgroundColor: colors.surface },
-  content: { padding: 20, paddingTop: 16, paddingBottom: 32 },
-  back: { flexDirection: "row", alignItems: "center", gap: 6, marginBottom: 16 },
-  backText: { fontSize: 11, fontWeight: "700", letterSpacing: 2, color: colors.inkFaint },
-  title: { fontSize: 26, fontWeight: "800", color: colors.ink, letterSpacing: -0.4 },
-  name: { fontSize: 18, fontWeight: "700", color: colors.ink },
-  roleChip: { alignSelf: "flex-start", borderRadius: 999, paddingHorizontal: 10, paddingVertical: 4, marginTop: 6 },
-  roleText: { fontSize: 11, fontWeight: "800", letterSpacing: 1, textTransform: "uppercase" },
-  section: { fontSize: 12, fontWeight: "700", color: colors.inkMuted, textTransform: "uppercase", letterSpacing: 1, marginTop: 22, marginBottom: 10 },
-  localErr: { fontSize: 12, color: colors.bad },
-  photoRow: { flexDirection: "row", alignItems: "center", gap: 14 },
-  photoActions: { gap: 8 },
-  photoButton: {
-    borderWidth: 1.5,
-    borderRadius: 10,
-    paddingVertical: 8,
+  headerRow: { minHeight: 58, flexDirection: "row", alignItems: "center", justifyContent: "space-between" },
+  iconButton: { height: 42, width: 42, borderRadius: 21, alignItems: "center", justifyContent: "center" },
+  pageTitle: { color: colors.ink, fontSize: 28, lineHeight: 34, fontWeight: "900" },
+  editText: { color: colors.primary, fontSize: 16, fontWeight: "800" },
+  identityRow: { flexDirection: "row", alignItems: "center", gap: 15 },
+  identityName: { color: colors.ink, fontSize: 22, lineHeight: 28, fontWeight: "900" },
+  identityRole: { color: colors.inkMuted, fontSize: 16, lineHeight: 22, marginTop: 3 },
+  muted: { color: colors.inkMuted, fontSize: 14, lineHeight: 19, marginTop: 3 },
+  cardTitle: { color: colors.ink, fontSize: 18, lineHeight: 23, fontWeight: "900" },
+  inlineTitleRow: { flexDirection: "row", alignItems: "center", gap: 10, flexWrap: "wrap" },
+  goalRow: { flexDirection: "row", alignItems: "center", gap: 12, marginTop: 10 },
+  coachRow: { flexDirection: "row", alignItems: "center", gap: 12 },
+  statusText: { fontSize: 14, lineHeight: 19, fontWeight: "800", marginTop: 2 },
+  avatarEditor: { gap: 12, marginTop: 16 },
+  avatarButtons: { flexDirection: "row", gap: 12 },
+  switchRow: { minHeight: 62, flexDirection: "row", alignItems: "center", gap: 14 },
+  switchLabel: { flex: 1, color: colors.ink, fontSize: 15, fontWeight: "800" },
+  securityHeader: { minHeight: 56, flexDirection: "row", alignItems: "center", gap: 12 },
+  passwordForm: { gap: 10, marginTop: 12 },
+  input: {
+    minHeight: 50,
+    borderRadius: radius.md,
+    borderWidth: 1,
+    borderColor: colors.lineStrong,
     paddingHorizontal: 14,
+    color: colors.ink,
+    fontSize: 15,
+  },
+  primaryButton: {
+    minHeight: 52,
+    borderRadius: radius.md,
+    backgroundColor: colors.primary,
     alignItems: "center",
     justifyContent: "center",
   },
-  photoButtonText: { fontSize: 13, fontWeight: "700" },
-  photoRemove: { paddingVertical: 4, paddingHorizontal: 4 },
-  photoRemoveText: { fontSize: 12, fontWeight: "700", color: colors.bad },
-  languageGrid: { flexDirection: "row", flexWrap: "wrap", gap: 10 },
-  languageOption: {
-    width: "47%",
-    minHeight: 58,
+  primaryButtonText: { color: "#fff", fontSize: 15, fontWeight: "900" },
+  logout: {
+    minHeight: 52,
+    borderRadius: 16,
     borderWidth: 1,
     borderColor: colors.line,
-    borderRadius: 12,
+    backgroundColor: colors.surfaceRaised,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  logoutText: { color: colors.bad, fontSize: 15, fontWeight: "800" },
+  deleteButton: { alignItems: "center", justifyContent: "center", minHeight: 44 },
+  deleteText: { color: colors.bad, fontSize: 14, fontWeight: "700" },
+  successText: { color: colors.ok, fontSize: 14, fontWeight: "800" },
+  errorText: { color: colors.bad, fontSize: 14, fontWeight: "800" },
+  disabled: { opacity: 0.6 },
+  divider: { height: 1, backgroundColor: colors.line },
+  editHeader: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", marginBottom: 6 },
+  formLabel: { color: colors.inkMuted, fontSize: 11, lineHeight: 15, fontWeight: "900", textTransform: "uppercase", marginTop: 12, marginBottom: 6 },
+  inputMultiline: { minHeight: 90, paddingTop: 14, textAlignVertical: "top" },
+  chipPickerRow: { flexDirection: "row", flexWrap: "wrap", gap: 8 },
+  chipOption: {
+    minHeight: 38,
+    borderRadius: radius.sm,
+    borderWidth: 1,
+    borderColor: colors.lineStrong,
     paddingHorizontal: 12,
-    paddingVertical: 10,
-    justifyContent: "center",
-    backgroundColor: colors.surface,
-  },
-  languageLabel: { fontSize: 13, fontWeight: "800", color: colors.ink },
-  languageNative: { marginTop: 2, fontSize: 12, fontWeight: "600", color: colors.inkMuted },
-  signOut: { flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 8, marginTop: 24, paddingVertical: 12 },
-  signOutText: { fontSize: 15, fontWeight: "700", color: colors.bad },
-  deleteDescription: { fontSize: 13, lineHeight: 19, color: colors.inkMuted },
-  deleteButton: {
-    minHeight: 48,
-    borderWidth: 1.5,
-    borderColor: colors.bad,
-    borderRadius: 10,
     alignItems: "center",
     justifyContent: "center",
-    paddingHorizontal: 14,
   },
-  deleteButtonText: { fontSize: 14, fontWeight: "800", color: colors.bad },
-  disabled: { opacity: 0.55 },
-});
-
-const rowStyles = StyleSheet.create({
-  row: {
-    minHeight: 50,
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
-    gap: 12,
-  },
-  textCol: { flex: 1, minWidth: 0, gap: 3 },
-  label: { flex: 1, fontSize: 14, fontWeight: "700", color: colors.ink },
-  divider: { height: 1, backgroundColor: colors.line, marginVertical: 4 },
+  chipOptionActive: { backgroundColor: colors.primarySoft, borderColor: colors.primary },
+  chipOptionText: { color: colors.inkMuted, fontSize: 12, fontWeight: "800" },
+  chipOptionTextActive: { color: colors.primary },
 });

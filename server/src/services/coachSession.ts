@@ -1,8 +1,11 @@
 import { Types, type HydratedDocument } from "mongoose";
 import { CoachSession, type CoachSessionDoc, type CoachSessionType } from "../models/CoachSession";
 import { CoachAthleteAssignment } from "../models/CoachAthleteAssignment";
-import { findMatchingWindow } from "./coachAvailability";
-import { checkSessionBookingEntitlement } from "./subscription";
+import { AthleteProfile } from "../models/AthleteProfile";
+import { User } from "../models/User";
+import { findMatchingWindow, resolveMaxSessionsPerDay, countSessionsForCoachOnDate } from "./coachAvailability";
+import { dayRange } from "./dashboard";
+import { checkSessionBookingEntitlement, type SessionQuota } from "./subscription";
 import {
   createSessionWithLock,
   rescheduleSessionWithLock,
@@ -10,6 +13,57 @@ import {
   BookingConflictError,
 } from "./bookingConcurrency";
 import { getVideoProvider, roomNameForSession, type ParticipantRole, type IssuedToken } from "./videoProvider";
+import { evaluateAndDispatch } from "./notificationEligibility";
+import { resolveTimezoneForUser } from "./timezone";
+import { categoryForType, type NotificationType } from "../lib/notificationTypes";
+import * as templates from "./notificationTemplates";
+
+/**
+ * Resolves the athlete's own User id (booking notifications, unlike everyday
+ * athlete-scoped writes, need to address a real push recipient, not an
+ * AthleteProfile). Returns null if the profile is somehow missing — callers
+ * treat that as "nothing to notify," never a hard failure.
+ */
+async function athleteUserId(athleteProfileId: Types.ObjectId): Promise<Types.ObjectId | null> {
+  const profile = await AthleteProfile.findById(athleteProfileId).select("userId").lean();
+  return (profile?.userId as Types.ObjectId | undefined) ?? null;
+}
+
+async function userName(userId: Types.ObjectId): Promise<string> {
+  const user = await User.findById(userId).select("name").lean();
+  return (user?.name as string) || "someone";
+}
+
+/**
+ * Shared booking-notification dispatch (Phase 12 §3) — best-effort, never
+ * throws, so a notification problem can't fail the session-state-transition
+ * request that triggered it. Every event here goes through the normal
+ * eligibility engine (quiet hours / category prefs / cap / dedup) — booking
+ * events are never safety-critical overrides.
+ */
+async function notifyBookingEvent(
+  recipientUserId: Types.ObjectId,
+  recipientRole: "coach" | "athlete",
+  session: HydratedDocument<CoachSessionDoc>,
+  type: NotificationType,
+  template: templates.TemplateResult
+): Promise<void> {
+  try {
+    const timezone = await resolveTimezoneForUser({ userId: recipientUserId, role: recipientRole });
+    await evaluateAndDispatch({
+      userId: recipientUserId,
+      type,
+      category: categoryForType(type),
+      priorityTier: 2,
+      dedupKey: `${type}:${session._id.toString()}:${session.updatedAt?.getTime() ?? Date.now()}`,
+      timezone,
+      entityRef: { collection: "CoachSession", id: session._id },
+      ...template,
+    });
+  } catch (err) {
+    console.error("[coachSession] notification dispatch failed (non-fatal)", (err as Error).message);
+  }
+}
 
 /**
  * Full date+time parser for booking timestamps — deliberately distinct from
@@ -40,16 +94,29 @@ export type RequestSessionParams = {
   requestedBy: Types.ObjectId;
 };
 
-/** Athlete-initiated booking request — the concurrency-critical create path. */
-export async function requestSession(params: RequestSessionParams): Promise<HydratedDocument<CoachSessionDoc>> {
+/**
+ * Athlete-initiated booking request — the concurrency-critical create path.
+ * `quota` is null when the relationship has no subscription-gated allowance
+ * (unpaywalled/legacy relationship) — see checkSessionBookingEntitlement.
+ */
+export async function requestSession(
+  params: RequestSessionParams
+): Promise<{ session: HydratedDocument<CoachSessionDoc>; quota: SessionQuota | null }> {
   const entitlement = await checkSessionBookingEntitlement(params.athleteId, params.coachId);
   if (!entitlement.allowed) throw new CoachSessionError(403, entitlement.reason);
 
   const window = await findMatchingWindow(params.coachId, params.scheduledStart);
   if (!window) throw new CoachSessionError(422, "outside_availability");
 
+  const dayStart = dayRange(params.scheduledStart).start;
+  const maxPerDay = await resolveMaxSessionsPerDay(params.coachId, dayStart);
+  if (maxPerDay != null) {
+    const bookedToday = await countSessionsForCoachOnDate(params.coachId, dayStart);
+    if (bookedToday >= maxPerDay) throw new CoachSessionError(422, "max_sessions_per_day_reached");
+  }
+
   try {
-    return await createSessionWithLock({
+    const session = await createSessionWithLock({
       coachId: params.coachId,
       athleteId: params.athleteId,
       relationshipId: params.relationshipId,
@@ -59,6 +126,13 @@ export async function requestSession(params: RequestSessionParams): Promise<Hydr
       bufferMin: window.bufferMin,
       requestedBy: params.requestedBy,
     });
+    // A freshly-created session starts life as "requested" — per the
+    // counting policy above, that status doesn't consume the allowance yet
+    // (only once the coach confirms it), so the pre-creation quota snapshot
+    // is still accurate to return as-is.
+    const athleteName = await userName(params.requestedBy);
+    await notifyBookingEvent(params.coachId, "coach", session, "booking_requested", templates.buildBookingRequested({ athleteName }));
+    return { session, quota: entitlement.quota };
   } catch (err) {
     if (err instanceof BookingConflictError) throw new CoachSessionError(409, "slot_conflict");
     throw err;
@@ -91,6 +165,12 @@ export async function confirmSession(
   session.status = "confirmed";
   session.events.push({ at: new Date(), type: "confirmed", actorId });
   await session.save();
+
+  const recipientUserId = await athleteUserId(session.athleteId as Types.ObjectId);
+  if (recipientUserId) {
+    const coachName = await userName(session.coachId as Types.ObjectId);
+    await notifyBookingEvent(recipientUserId, "athlete", session, "booking_confirmed", templates.buildBookingConfirmed({ coachName }));
+  }
   return session;
 }
 
@@ -108,7 +188,13 @@ export async function rescheduleSession(
   if (!window) throw new CoachSessionError(422, "outside_availability");
 
   try {
-    return await rescheduleSessionWithLock(session, newStart, window.scheduledEnd, actorId, note);
+    const updated = await rescheduleSessionWithLock(session, newStart, window.scheduledEnd, actorId, note);
+    const recipientUserId = await athleteUserId(updated.athleteId as Types.ObjectId);
+    if (recipientUserId) {
+      const byName = await userName(actorId);
+      await notifyBookingEvent(recipientUserId, "athlete", updated, "booking_rescheduled", templates.buildBookingRescheduled({ byName }));
+    }
+    return updated;
   } catch (err) {
     if (err instanceof BookingConflictError) throw new CoachSessionError(409, "slot_conflict");
     throw err;
@@ -131,6 +217,18 @@ export async function cancelSession(
   if (!CANCELLABLE_STATUSES.includes(session.status)) throw new CoachSessionError(409, "invalid_transition");
   const updated = await closeSessionAndReleaseLocks(session, "cancelled", "cancelled", actorId, note);
   await terminateVideoRoomIfAny(updated);
+
+  // Notify whichever party did NOT initiate the cancellation.
+  const byName = await userName(actorId);
+  const cancelledByCoach = (updated.coachId as Types.ObjectId).equals(actorId);
+  if (cancelledByCoach) {
+    const recipientUserId = await athleteUserId(updated.athleteId as Types.ObjectId);
+    if (recipientUserId) {
+      await notifyBookingEvent(recipientUserId, "athlete", updated, "booking_cancelled", templates.buildBookingCancelled({ byName }));
+    }
+  } else {
+    await notifyBookingEvent(updated.coachId as Types.ObjectId, "coach", updated, "booking_cancelled", templates.buildBookingCancelled({ byName }));
+  }
   return updated;
 }
 

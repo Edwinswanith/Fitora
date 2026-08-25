@@ -153,3 +153,139 @@ export function buildCoachFeedback(input: { coachName: string; preview: string }
     link: "/athlete/dashboard",
   };
 }
+
+// --- Phase 12: subscriptions, booking, workouts, nutrition, content, reviews ---
+
+export function buildSubscriptionExpiringReminder(input: { coachName: string; daysRemaining: 1 | 7 }): TemplateResult {
+  return input.daysRemaining === 1
+    ? {
+        title: "Your coaching plan expires tomorrow",
+        body: `Renew to continue coaching with ${input.coachName}.`,
+        link: "/athlete/dashboard?section=coach",
+      }
+    : {
+        title: "Your coaching membership expires in 7 days",
+        body: `Renew to continue coaching with ${input.coachName}.`,
+        link: "/athlete/dashboard?section=coach",
+      };
+}
+
+export function buildPaymentFailed(): TemplateResult {
+  return {
+    title: "Your coaching payment failed",
+    body: "Update your payment to continue coaching.",
+    link: "/athlete/dashboard?section=coach",
+  };
+}
+
+export function buildSubscriptionExpired(): TemplateResult {
+  return {
+    title: "Your coaching membership has expired",
+    body: "Renew any time to pick up where you left off.",
+    link: "/athlete/dashboard?section=coach",
+  };
+}
+
+export function buildSubscriptionRenewed(input: { coachName: string }): TemplateResult {
+  return {
+    title: "Coaching plan renewed",
+    body: `Your subscription with ${input.coachName} has renewed successfully.`,
+    link: "/athlete/dashboard?section=coach",
+  };
+}
+
+export function buildBookingRequested(input: { athleteName: string }): TemplateResult {
+  return {
+    title: "New session request",
+    body: `${input.athleteName} requested a session. Please confirm or decline.`,
+    link: null,
+  };
+}
+
+export function buildBookingConfirmed(input: { coachName: string }): TemplateResult {
+  return {
+    title: "Session confirmed",
+    body: `${input.coachName} confirmed your upcoming session.`,
+    link: null,
+  };
+}
+
+export function buildBookingRescheduled(input: { byName: string }): TemplateResult {
+  return {
+    title: "Session rescheduled",
+    body: `${input.byName} rescheduled your session to a new time.`,
+    link: null,
+  };
+}
+
+export function buildBookingCancelled(input: { byName: string }): TemplateResult {
+  return {
+    title: "Session cancelled",
+    body: `${input.byName} cancelled the upcoming session.`,
+    link: null,
+  };
+}
+
+export function buildSessionStarting(input: { counterpartName: string; minutesUntil: number }): TemplateResult {
+  return {
+    title: "Session starting soon",
+    body: `Your session with ${input.counterpartName} starts in ${input.minutesUntil} minutes.`,
+    link: null,
+  };
+}
+
+export function buildWorkoutAssigned(input: { coachName: string; workoutName: string }): TemplateResult {
+  return {
+    title: "New workout assigned",
+    body: `${input.coachName} assigned you "${input.workoutName}".`,
+    link: "/athlete/dashboard",
+  };
+}
+
+export function buildWorkoutUpdated(input: { coachName: string; workoutName: string }): TemplateResult {
+  return {
+    title: "Workout template updated",
+    body: `${input.coachName} updated "${input.workoutName}". Your current assignment is unaffected.`,
+    link: "/athlete/dashboard",
+  };
+}
+
+export function buildWorkoutDue(input: { workoutName: string }): TemplateResult {
+  return {
+    title: "Workout due today",
+    body: `"${input.workoutName}" is on today's plan — mark it completed or skipped when you're done.`,
+    link: "/athlete/dashboard",
+  };
+}
+
+export function buildMealPlanAssigned(input: { coachName: string; planName: string }): TemplateResult {
+  return {
+    title: "New meal plan assigned",
+    body: `${input.coachName} assigned you "${input.planName}".`,
+    link: "/athlete/dashboard",
+  };
+}
+
+export function buildMealPlanUpdated(input: { coachName: string; planName: string }): TemplateResult {
+  return {
+    title: "Meal plan template updated",
+    body: `${input.coachName} updated "${input.planName}". Your current assignment is unaffected.`,
+    link: "/athlete/dashboard",
+  };
+}
+
+export function buildCoachVideoAssigned(input: { coachName: string; videoTitle: string }): TemplateResult {
+  return {
+    title: "New video shared with you",
+    body: `${input.coachName} shared "${input.videoTitle}" with you.`,
+    link: "/athlete/dashboard",
+  };
+}
+
+export function buildNewReview(input: { athleteName: string; rating: number }): TemplateResult {
+  return {
+    title: "New review received",
+    body: `${input.athleteName} left you a ${input.rating}-star review.`,
+    link: "/coach/profile",
+  };
+}

@@ -116,7 +116,7 @@ describe("POST /athlete/coach/leave", () => {
 });
 
 describe("POST /athlete/coach-switch", () => {
-  test("ends the current relationship (user_switched) and starts checkout with the new coach", async () => {
+  test("starts a pending switch intent WITHOUT touching the current relationship (Phase 12 safety)", async () => {
     const oldCoach = await makeCoach("old-coach");
     const newCoach = await makeCoach("new-coach");
     const { user, profile } = await makeAthlete("switching-athlete");
@@ -128,19 +128,15 @@ describe("POST /athlete/coach-switch", () => {
       .set("Authorization", `Bearer ${tokenFor(user._id, "athlete")}`)
       .send({ newCoachId: newCoach._id.toString(), newPricingPlanId: newPlan._id.toString() });
     expect(res.status).toBe(201);
-    expect(res.body.subscription.status).toBe("pending");
-    expect(res.body.subscription.coachId).toBe(newCoach._id.toString());
+    expect(res.body.kind).toBe("switch");
+    expect(res.body.switchIntentId).toBeTruthy();
 
-    const oldUpdated = await CoachAthleteAssignment.findById(oldRelationship._id).lean();
-    expect(oldUpdated!.status).toBe("ended");
-    expect(oldUpdated!.endedReason).toBe("user_switched");
-
-    // Only one non-terminal subscription exists (the new pending one) — the
-    // one-active-coach index would reject a second active relationship, and
-    // since the old one is already ended, the new checkout's eventual
-    // activation won't conflict with it.
-    const activeRelationships = await CoachAthleteAssignment.countDocuments({ athleteId: profile._id, status: "active" });
-    expect(activeRelationships).toBe(0);
+    // The old relationship must NOT be touched yet — only completing the
+    // switch (payment webhook-verified) is allowed to end it. See
+    // phase12-coach-switch-safety.test.ts for the full webhook-driven flow.
+    const oldUnchanged = await CoachAthleteAssignment.findById(oldRelationship._id).lean();
+    expect(oldUnchanged!.status).toBe("active");
+    expect(oldUnchanged!.endedReason).toBeNull();
   });
 
   test("switching with NO current coach behaves like a plain fresh subscribe", async () => {
@@ -153,6 +149,8 @@ describe("POST /athlete/coach-switch", () => {
       .set("Authorization", `Bearer ${tokenFor(user._id, "athlete")}`)
       .send({ newCoachId: newCoach._id.toString(), newPricingPlanId: plan._id.toString() });
     expect(res.status).toBe(201);
+    expect(res.body.kind).toBe("subscribe");
+    expect(res.body.subscription.status).toBe("pending");
   });
 
   test("rejects switching to the coach you're already with", async () => {

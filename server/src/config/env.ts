@@ -85,6 +85,13 @@ function minuteOfDay(name: string, fallback: string): number {
 
 export const env = {
   nodeEnv,
+  // True when this deployment "looks production": NODE_ENV=production, or a
+  // remote (non-localhost) MongoDB — the same heuristic requiredSecretFrom
+  // uses to refuse placeholder JWT/sweep secrets. Reused by
+  // services/objectStorage.ts to warn (not block) when durable object
+  // storage isn't configured in a context where local-disk media loss would
+  // actually matter.
+  strictSecrets,
   port: Number(process.env.PORT ?? 4000),
   mongoUri,
   mongoDb,
@@ -123,7 +130,7 @@ export const env = {
   // services/workoutImageConverter.ts). GEMINI_MODEL overrides the default model.
   gemini: {
     apiKey: process.env.GEMINI_API_KEY ?? "",
-    model: process.env.GEMINI_MODEL ?? "gemini-2.5-flash",
+    model: process.env.GEMINI_MODEL ?? "gemini-3.6-flash",
   },
   // Push delivery (Firebase Cloud Messaging, HTTP v1). Empty values keep push
   // in no-op mode, while in-app notifications and decision rows still work.
@@ -173,10 +180,13 @@ export const env = {
     noteNeedsReplyHours: Number(process.env.NOTE_NEEDS_REPLY_HOURS ?? 24),
     weeklySummaryMinute: minuteOfDay("WEEKLY_SUMMARY_LOCAL_TIME", "09:00"),
     squadDigestMinute: minuteOfDay("SQUAD_DIGEST_LOCAL_TIME", "09:00"),
+    // Phase 12: how far ahead of a confirmed CoachSession's scheduledStart
+    // the sweep starts considering a "session starting soon" reminder due.
+    sessionStartingLeadMinutes: Number(process.env.SESSION_STARTING_LEAD_MINUTES ?? 30),
   },
   deepgram: {
     apiKey: process.env.DEEP_GRAM ?? process.env.DEEPGRAM_API_KEY ?? "",
-    sttModel: process.env.DEEPGRAM_STT_MODEL ?? "flux-general-multi",
+    sttModel: process.env.DEEPGRAM_STT_MODEL ?? process.env.DEEPGRAM_MODEL ?? "nova-3",
     ttsModel: process.env.DEEPGRAM_TTS_MODEL ?? "aura-2-thalia-en",
     streamEndpointingMs: Number(process.env.DEEPGRAM_STREAM_ENDPOINTING_MS ?? 400),
     streamUtteranceEndMs: Number(process.env.DEEPGRAM_STREAM_UTTERANCE_END_MS ?? 1000),

@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { Pressable, ScrollView, StyleSheet, View } from "react-native";
+import { useLocalSearchParams } from "expo-router";
 import { Text } from "../../components/AppText";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { apiFetch } from "../../lib/api";
@@ -24,10 +25,15 @@ const CATEGORIES = [
 ];
 
 export default function Rpe() {
-  const [session, setSession] = useState<(typeof SESSIONS)[number]>("AM");
+  const params = useLocalSearchParams<{ sessionType?: string; rpe?: string }>();
+  const initialSession = SESSIONS.includes(params.sessionType as (typeof SESSIONS)[number])
+    ? params.sessionType as (typeof SESSIONS)[number]
+    : "AM";
+  const initialRpe = Math.max(0, Math.min(10, Number(params.rpe ?? 6) || 6));
+  const [session, setSession] = useState<(typeof SESSIONS)[number]>(initialSession);
   const [category, setCategory] = useState<string>(CATEGORIES[0]);
   const [intensity, setIntensity] = useState(70);
-  const [rpe, setRpe] = useState(6);
+  const [rpe, setRpe] = useState(initialRpe);
   const [sleepQuality, setSleepQuality] = useState<number | null>(null);
   const [soreness, setSoreness] = useState<number | null>(null);
   const [fatigue, setFatigue] = useState<number | null>(null);

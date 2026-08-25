@@ -1,10 +1,12 @@
 /**
  * One-off manual verification against the REAL fitora Atlas database — proves
- * Phase 10's relationship-ending, coach-switching, and review lifecycle
- * persist correctly: ending a relationship immediately cancels a linked
- * subscription, switching atomically ends-old/starts-new, and a review is
- * only accepted once the relationship has ended, with the CoachProfile
- * rating aggregate recomputed server-side. Cleans up everything it creates.
+ * Phase 10's relationship-ending and review lifecycle, plus Phase 12's
+ * webhook-verified coach-switching, persist correctly: ending a relationship
+ * immediately cancels a linked subscription, switching leaves the OLD
+ * relationship untouched until the NEW coach's payment is webhook-verified
+ * (only then does it atomically end-old/activate-new), and a review is only
+ * accepted once the relationship has ended, with the CoachProfile rating
+ * aggregate recomputed server-side. Cleans up everything it creates.
  */
 import mongoose from "mongoose";
 import bcrypt from "bcryptjs";
@@ -14,9 +16,11 @@ import { AthleteProfile } from "../models/AthleteProfile";
 import { CoachAthleteAssignment } from "../models/CoachAthleteAssignment";
 import { CoachPricingPlan } from "../models/CoachPricingPlan";
 import { AthleteCoachSubscription } from "../models/AthleteCoachSubscription";
+import { CoachSwitchIntent } from "../models/CoachSwitchIntent";
 import { CoachProfile } from "../models/CoachProfile";
 import { CoachReview } from "../models/CoachReview";
 import { switchCoach } from "../services/coachRelationship";
+import { applyPaymentEvent } from "../services/subscription";
 import { createReview } from "../services/coachReview";
 import { setPaymentProviderForTests, MockPaymentProvider } from "../services/paymentProvider";
 
@@ -51,11 +55,37 @@ async function run() {
     subscriptionId: oldSubscription._id,
   });
 
-  const { subscription: newSubscription } = await switchCoach(profile._id, newCoach._id, newPlan._id);
-  console.log("[smoke-switching-reviews] new checkout status:", newSubscription.status, "(expect pending)");
+  const switchResult = await switchCoach(profile._id, newCoach._id, newPlan._id);
+  if (switchResult.kind !== "switch") throw new Error("expected a switch intent, got a plain subscribe");
+  console.log("[smoke-switching-reviews] switch intent status:", switchResult.intent.status, "(expect pending)");
+
+  // Phase 12 safety property: the OLD relationship must stay fully active
+  // while the new coach's checkout is merely pending — nothing should have
+  // ended yet.
+  const oldRelWhilePending = await CoachAthleteAssignment.findById(oldRelationship._id).lean();
+  console.log("[smoke-switching-reviews] old relationship status while pending:", oldRelWhilePending?.status, "(expect active — unchanged)");
+  if (oldRelWhilePending?.status !== "active") {
+    throw new Error("old relationship ended before new payment was verified — switch safety regression");
+  }
+
+  // Simulate the new coach's payment webhook actually arriving and verifying.
+  await applyPaymentEvent({
+    eventType: "subscription.activated",
+    providerSubscriptionId: switchResult.intent.providerSubscriptionId as string,
+    providerPaymentId: "smoke_switch_payment",
+    amount: newPlan.monthlyPrice,
+    currency: newPlan.currency,
+    periodStart: new Date(),
+    periodEnd: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000),
+    raw: { smoke: true },
+  });
 
   const oldRelAfterSwitch = await CoachAthleteAssignment.findById(oldRelationship._id).lean();
   const oldSubAfterSwitch = await AthleteCoachSubscription.findById(oldSubscription._id).lean();
+  const completedIntent = await CoachSwitchIntent.findById(switchResult.intent._id).lean();
+  const newSubscription = await AthleteCoachSubscription.findById(completedIntent?.resultingSubscriptionId).lean();
+  console.log("[smoke-switching-reviews] switch intent status after webhook:", completedIntent?.status, "(expect completed)");
+  console.log("[smoke-switching-reviews] new subscription status:", newSubscription?.status, "(expect active)");
   console.log("[smoke-switching-reviews] old relationship status:", oldRelAfterSwitch?.status, "reason:", oldRelAfterSwitch?.endedReason, "(expect ended / user_switched)");
   console.log("[smoke-switching-reviews] old subscription status:", oldSubAfterSwitch?.status, "(expect cancelled — immediate, not soft)");
 
@@ -69,7 +99,8 @@ async function run() {
   console.log("[smoke-switching-reviews] old coach's CoachProfile aggregate:", oldCoachProfile?.avgRating, oldCoachProfile?.reviewCount, "(expect 4 / 1)");
 
   const ok =
-    newSubscription.status === "pending" &&
+    completedIntent?.status === "completed" &&
+    newSubscription?.status === "active" &&
     oldRelAfterSwitch?.status === "ended" &&
     oldRelAfterSwitch?.endedReason === "user_switched" &&
     oldSubAfterSwitch?.status === "cancelled" &&
@@ -80,6 +111,7 @@ async function run() {
   await Promise.all([
     CoachReview.deleteOne({ _id: review._id }),
     CoachProfile.deleteOne({ userId: oldCoach._id }),
+    CoachSwitchIntent.deleteOne({ _id: switchResult.intent._id }),
     AthleteCoachSubscription.deleteMany({ athleteId: profile._id }),
     CoachAthleteAssignment.deleteMany({ athleteId: profile._id }),
     CoachPricingPlan.deleteMany({ _id: { $in: [oldPlan._id, newPlan._id] } }),

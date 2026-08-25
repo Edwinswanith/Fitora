@@ -23,7 +23,7 @@ router.post(
     if (!relationship) return void res.status(404).json({ error: "relationship_not_found" });
 
     try {
-      const ended = await endRelationship(relationship, "coach_ended");
+      const ended = await endRelationship(relationship, "coach_ended", req.actor!.userId);
       res.json({ relationship: { id: ended._id.toString(), status: ended.status, endedAt: ended.endedAt, endedReason: ended.endedReason } });
     } catch (err) {
       if (err instanceof CoachRelationshipError) return void res.status(err.status).json({ error: err.message });

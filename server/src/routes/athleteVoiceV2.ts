@@ -13,6 +13,9 @@ import { WaterIntake } from "../models/WaterIntake";
 import { Recovery } from "../models/Recovery";
 import { TrainingSession, SESSION_SLOTS, SESSION_STATUS, type SessionSlot } from "../models/TrainingSession";
 import { RpeMonitoring, type RpeSessionType } from "../models/RpeMonitoring";
+import { Meal } from "../models/Meal";
+import { MealFood } from "../models/MealFood";
+import { MEAL_TYPES, type MealType } from "../models/PlannedMeal";
 import { CoachAthleteAssignment } from "../models/CoachAthleteAssignment";
 import { TRAINING_CATEGORIES, deriveLoadAndRisk, dayOfWeek, parseDateOrNull } from "../lib/trainingCategories";
 import { dayRange } from "../services/dashboard";
@@ -537,5 +540,127 @@ router.post(
     res.status(200).json(outcome.result);
   }
 );
+
+/**
+ * POST /api/athlete/voice/log-meal
+ * body: { date?, mealType, name?, foodName, calories, proteinG?, carbsG?,
+ *         fatG?, clientActionId }
+ *
+ * Voice-specific consumed meal logger. Uses idempotency because meal logs are
+ * append-like writes and a retried voice confirmation must not create two
+ * meals. Nutrition values must be stated by the user/model and validated here;
+ * the assistant never estimates them from the food name.
+ */
+router.post("/log-meal", writeRateLimit({ windowMs: 60_000, max: 60 }), async (req: Request, res: Response) => {
+  if (!req.actor) {
+    res.status(401).json({ error: "unauthenticated" });
+    return;
+  }
+  const profileId = selfAthleteId(req);
+  if (!profileId) {
+    res.status(404).json({ error: "athlete_profile_not_found" });
+    return;
+  }
+
+  const b = req.body ?? {};
+  const clientActionId = typeof b.clientActionId === "string" ? b.clientActionId.trim() : "";
+  if (!clientActionId) {
+    res.status(400).json({ error: "missing_clientActionId" });
+    return;
+  }
+
+  const mealType = b.mealType as MealType;
+  if (!MEAL_TYPES.includes(mealType)) {
+    res.status(400).json({ error: "invalid_mealType" });
+    return;
+  }
+  const date = parseDateStrict(b.date, res);
+  if (!date) return;
+
+  const name = optionalStringField(b.name, 160);
+  if (name === false) {
+    res.status(400).json({ error: "invalid_mealName" });
+    return;
+  }
+  const foodName = optionalStringField(b.foodName ?? b.name, 160);
+  if (foodName === false || !foodName) {
+    res.status(400).json({ error: "invalid_foodName" });
+    return;
+  }
+  const calories = optNumInRange(b.calories, 0, 5000);
+  if (calories === false || calories === undefined) {
+    res.status(400).json({ error: "invalid_calories" });
+    return;
+  }
+  const proteinG = optNumInRange(b.proteinG, 0, 500);
+  if (proteinG === false) {
+    res.status(400).json({ error: "invalid_proteinG" });
+    return;
+  }
+  const carbsG = optNumInRange(b.carbsG, 0, 800);
+  if (carbsG === false) {
+    res.status(400).json({ error: "invalid_carbsG" });
+    return;
+  }
+  const fatG = optNumInRange(b.fatG, 0, 400);
+  if (fatG === false) {
+    res.status(400).json({ error: "invalid_fatG" });
+    return;
+  }
+
+  const outcome = await withIdempotency(req.actor.userId, clientActionId, "voice/log-meal", async () => {
+    const meal = await Meal.create({
+      athleteId: profileId,
+      date: dayRange(date).start,
+      mealType,
+      source: "ad_hoc",
+      name,
+    });
+    try {
+      const food = await MealFood.create({
+        mealId: meal._id,
+        name: foodName,
+        quantity: 1,
+        unit: "serving",
+        calories,
+        proteinG: proteinG ?? 0,
+        carbsG: carbsG ?? 0,
+        fatG: fatG ?? 0,
+      });
+      return {
+        meal: {
+          id: meal._id.toString(),
+          date: (meal.date as Date).toISOString().slice(0, 10),
+          mealType: meal.mealType,
+          source: meal.source,
+          name: meal.name ?? null,
+          foods: [
+            {
+              id: food._id.toString(),
+              name: food.name,
+              quantity: food.quantity,
+              unit: food.unit,
+              calories: food.calories,
+              proteinG: food.proteinG,
+              carbsG: food.carbsG,
+              fatG: food.fatG,
+            },
+          ],
+        },
+      };
+    } catch (err) {
+      await Meal.deleteOne({ _id: meal._id });
+      throw err;
+    }
+  });
+
+  if (!outcome.result) {
+    res.status(202).json({ pending: true });
+    return;
+  }
+
+  await VoicePendingState.deleteOne({ athleteProfileId: profileId });
+  res.status(outcome.duplicate ? 200 : 201).json(outcome.result);
+});
 
 export default router;

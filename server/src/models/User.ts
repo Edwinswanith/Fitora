@@ -6,7 +6,7 @@ export type UserRole = (typeof USER_ROLES)[number];
 // Profile-photo alternative: a small catalog of bundled badge icons the client
 // renders locally (no server-side image asset) — the server only stores which
 // one was picked. Distinct from an uploaded photo (avatarKind: "photo").
-export const AVATAR_DEFAULT_IDS = ["male-1", "male-2", "female-1", "female-2"] as const;
+export const AVATAR_DEFAULT_IDS = ["male-1", "male-2", "female-1", "female-2", "coach-1"] as const;
 export type AvatarDefaultId = (typeof AVATAR_DEFAULT_IDS)[number];
 
 export const AVATAR_KINDS = ["photo", "default"] as const;

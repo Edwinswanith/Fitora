@@ -7,8 +7,45 @@ import { WorkoutTemplate, type WorkoutTemplateDoc, type WorkoutExerciseDoc } fro
 import { ExerciseProgress, type ExerciseProgressDoc } from "../models/ExerciseProgress";
 import { TrainingSession } from "../models/TrainingSession";
 import { Attendance } from "../models/Attendance";
+import { AthleteProfile } from "../models/AthleteProfile";
+import { User } from "../models/User";
 import { dayRange } from "./dashboard";
 import type { SessionSlot } from "../models/TrainingSession";
+import { evaluateAndDispatch } from "./notificationEligibility";
+import { resolveTimezoneForUser } from "./timezone";
+import { categoryForType } from "../lib/notificationTypes";
+import { buildWorkoutAssigned, buildWorkoutUpdated } from "./notificationTemplates";
+
+/**
+ * Fires `workout_assigned` only for a COACH-authored assignment (never a
+ * User's own self-assignment, which needs no notification since they just
+ * did it themselves). Best-effort — never lets a notification failure fail
+ * the assignment creation itself.
+ */
+async function notifyWorkoutAssigned(assignment: HydratedDocument<WorkoutAssignmentDoc>): Promise<void> {
+  if (assignment.assignedByRole !== "coach") return;
+  try {
+    const [profile, coach] = await Promise.all([
+      AthleteProfile.findById(assignment.assignedTo).select("userId").lean(),
+      User.findById(assignment.assignedBy).select("name").lean(),
+    ]);
+    if (!profile?.userId) return;
+    const userId = profile.userId as Types.ObjectId;
+    const timezone = await resolveTimezoneForUser({ userId, role: "athlete" });
+    await evaluateAndDispatch({
+      userId,
+      type: "workout_assigned",
+      category: categoryForType("workout_assigned"),
+      priorityTier: 2,
+      dedupKey: `workout_assigned:${assignment._id.toString()}`,
+      timezone,
+      entityRef: { collection: "WorkoutAssignment", id: assignment._id },
+      ...buildWorkoutAssigned({ coachName: (coach?.name as string) || "your coach", workoutName: assignment.nameSnapshot as string }),
+    });
+  } catch (err) {
+    console.error("[workoutAssignment] notification dispatch failed (non-fatal)", (err as Error).message);
+  }
+}
 
 export class WorkoutAssignmentError extends Error {
   status: number;
@@ -34,7 +71,7 @@ export async function assignTemplateToAthlete(params: {
   slot?: SessionSlot | null;
 }): Promise<HydratedDocument<WorkoutAssignmentDoc>> {
   try {
-    return await WorkoutAssignment.create({
+    const created = await WorkoutAssignment.create({
       templateId: params.template._id,
       templateVersionSnapshot: params.template.version,
       nameSnapshot: params.template.name,
@@ -45,6 +82,8 @@ export async function assignTemplateToAthlete(params: {
       scheduledDate: params.scheduledDate,
       slot: params.slot ?? null,
     });
+    await notifyWorkoutAssigned(created);
+    return created;
   } catch (err) {
     if ((err as { code?: number }).code === 11000) {
       throw new WorkoutAssignmentError("slot_already_assigned", 409);
@@ -264,6 +303,54 @@ export async function buildWorkoutAssignmentsForDate(
       progressPercent: total > 0 ? Math.round((done / total) * 100) : 0,
     };
   });
+}
+
+/**
+ * Fires `workout_updated` to every athlete with a still-`scheduled`
+ * assignment of this template (Phase 12 §3) — informational only, since
+ * snapshotting means their actual assignment content is untouched; this just
+ * tells them a coach edited the template their upcoming workout came from.
+ * Never fired for an athlete's own self-authored template.
+ */
+export async function notifyWorkoutTemplateUpdated(
+  template: Pick<WorkoutTemplateDoc, "_id" | "name" | "ownerId" | "ownerRole" | "version">
+): Promise<void> {
+  if (template.ownerRole !== "coach") return;
+  try {
+    const affected = await WorkoutAssignment.find({ templateId: template._id, status: "scheduled" })
+      .select("assignedTo")
+      .lean();
+    const athleteIds = Array.from(new Set(affected.map((a) => (a.assignedTo as Types.ObjectId).toString())));
+    if (athleteIds.length === 0) return;
+
+    const [profiles, coach] = await Promise.all([
+      AthleteProfile.find({ _id: { $in: athleteIds } }).select("_id userId").lean(),
+      User.findById(template.ownerId).select("name").lean(),
+    ]);
+    const coachName = (coach?.name as string) || "your coach";
+    await Promise.all(
+      profiles.map(async (profile) => {
+        const userId = profile.userId as Types.ObjectId | undefined;
+        if (!userId) return;
+        const timezone = await resolveTimezoneForUser({ userId, role: "athlete" });
+        await evaluateAndDispatch({
+          userId,
+          type: "workout_updated",
+          category: categoryForType("workout_updated"),
+          priorityTier: 3,
+          // Keyed on the template's post-edit version, not the edit timestamp —
+          // stable across retries of THIS edit, but a distinct key for the
+          // next edit (version bumps again), so each real edit notifies once.
+          dedupKey: `workout_updated:${template._id.toString()}:v${template.version}:${(profile._id as Types.ObjectId).toString()}`,
+          timezone,
+          entityRef: { collection: "WorkoutTemplate", id: template._id as Types.ObjectId },
+          ...buildWorkoutUpdated({ coachName, workoutName: template.name as string }),
+        });
+      })
+    );
+  } catch (err) {
+    console.error("[workoutAssignment] template-updated notification failed (non-fatal)", (err as Error).message);
+  }
 }
 
 export async function loadTemplateOwnedBy(

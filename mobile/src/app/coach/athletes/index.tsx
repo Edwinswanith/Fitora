@@ -1,372 +1,259 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
-import { ActivityIndicator, Pressable, RefreshControl, ScrollView, StyleSheet, TextInput, View } from "react-native";
-import { Text } from "../../../components/AppText";
-import { SafeAreaView } from "react-native-safe-area-context";
+import { useMemo, useState } from "react";
+import { Pressable, StyleSheet, TextInput, View } from "react-native";
 import { useRouter } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
-import { apiJson } from "../../../lib/api";
-import { ROLE_THEMES, colors, radius } from "../../../lib/theme";
-import { Card, Muted } from "../../../components/ui";
-import { ScreenHeader } from "../../../components/ScreenHeader";
-import { Avatar, type AvatarInfo } from "../../../components/Avatar";
-import { useTourHighlight, useTourScrollView } from "../../../lib/tour/MobileTourProvider";
-import { SpotlightTarget } from "../../../lib/tour/SpotlightTarget";
+import { Text } from "../../../components/AppText";
+import {
+  ActionButton,
+  AppCard,
+  EmptyState,
+  ErrorState,
+  IconTile,
+  LoadingState,
+  ScreenContainer,
+  SegmentedControl,
+  StatusChip,
+} from "../../../components/fitora";
+import { Avatar } from "../../../components/Avatar";
+import { planVisual, workoutVisual, type FitoraIconName, type FitoraTone } from "../../../lib/fitoraIcons";
+import { colors } from "../../../lib/theme";
+import {
+  attentionRank,
+  attentionReason,
+  loadCoachHomeData,
+  titleCase,
+  useAsyncData,
+  type CoachHomeData,
+  type CoachRosterAthlete,
+  type CoachSession,
+  type DailyCard,
+} from "../../../lib/fitoraData";
 
-type Athlete = {
-  athleteId: string;
-  name: string;
-  email: string;
-  sport: string;
-  position: string | null;
-  avatar?: AvatarInfo;
-};
-type Response = { athletes: Athlete[] };
-type SummaryCard = {
-  athleteId: string;
-  attendance?: { status: string | null };
-  readinessScore: number | null;
-  injury?: { active: boolean; bodyPart: string | null };
-  rpe?: { calculatedTrainingLoad: number; riskFlag: "green" | "amber" | "red" } | null;
-};
-type RosterFilter = "all" | "attention" | "injury" | "nocheck";
+type Filter = "all" | "attention" | "active" | "membership";
 
-const ROSTER_FILTERS: { key: RosterFilter; label: string }[] = [
-  { key: "all", label: "All" },
-  { key: "attention", label: "Attention" },
-  { key: "injury", label: "Injury" },
-  { key: "nocheck", label: "No check-in" },
-];
+const ACTIVITY_WINDOW_MS = 7 * 24 * 60 * 60 * 1000;
 
-function today() {
-  return new Date().toISOString().slice(0, 10);
+function hasRecentOrUpcomingSession(sessions: CoachSession[]): boolean {
+  const now = Date.now();
+  return sessions.some((session) => {
+    if (session.status === "cancelled") return false;
+    const start = new Date(session.scheduledStart).getTime();
+    return Math.abs(start - now) <= ACTIVITY_WINDOW_MS;
+  });
 }
 
-function band(score: number | null | undefined): { label: string; color: string } {
-  if (score == null) return { label: "-", color: colors.inkFaint };
-  if (score >= 80) return { label: String(score), color: colors.ok };
-  if (score >= 60) return { label: String(score), color: colors.warn };
-  return { label: String(score), color: colors.bad };
-}
+export default function CoachClients() {
+  const state = useAsyncData(loadCoachHomeData, []);
 
-function riskColor(risk: "green" | "amber" | "red"): string {
-  if (risk === "green") return colors.ok;
-  if (risk === "amber") return colors.warn;
-  return colors.bad;
-}
+  if (state.loading && !state.data) {
+    return (
+      <ScreenContainer>
+        <LoadingState />
+      </ScreenContainer>
+    );
+  }
 
-function attentionRank(summary: SummaryCard | undefined): number {
-  if (!summary) return 3;
-  if (summary.rpe?.riskFlag === "red") return 0;
-  if (summary.injury?.active) return 0.5;
-  if (summary.readinessScore !== null && summary.readinessScore < 60) return 1;
-  if (summary.rpe?.riskFlag === "amber") return 1.5;
-  if (summary.readinessScore !== null && summary.readinessScore < 80) return 2;
-  return 3;
-}
+  if (state.error && !state.data) {
+    return (
+      <ScreenContainer>
+        <ErrorState message={state.error} onRetry={state.reload} />
+      </ScreenContainer>
+    );
+  }
 
-export default function Roster() {
-  const { highlightStyle: rosterHighlight } = useTourHighlight("mobile-coach-roster");
-  const tourScrollRef = useTourScrollView<ScrollView>();
-  const accent = ROLE_THEMES.coach.accent;
-  const router = useRouter();
-  const [athletes, setAthletes] = useState<Athlete[] | null>(null);
-  const [summary, setSummary] = useState<Record<string, SummaryCard>>({});
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
-  const [query, setQuery] = useState("");
-  const [filter, setFilter] = useState<RosterFilter>("all");
-
-  const load = useCallback(async () => {
-    setLoading(true);
-    setError(null);
-    try {
-      const [rosterResult, dashboardResult] = await Promise.allSettled([
-        apiJson<Response>("/api/coach/athletes"),
-        apiJson<{ cards: SummaryCard[] }>(`/api/coach/dashboard?date=${today()}`),
-      ]);
-      if (rosterResult.status !== "fulfilled") throw new Error("roster_failed");
-      setAthletes(rosterResult.value.athletes);
-      if (dashboardResult.status === "fulfilled") {
-        setSummary(
-          Object.fromEntries((dashboardResult.value.cards ?? []).map((card) => [card.athleteId, card]))
-        );
-      } else {
-        setSummary({});
-      }
-    } catch {
-      setError("Couldn't load your roster. Pull to retry.");
-    } finally {
-      setLoading(false);
-    }
-  }, []);
-
-  useEffect(() => {
-    load();
-  }, [load]);
-
-  const filtered = useMemo(() => {
-    const q = query.trim().toLowerCase();
-    return [...(athletes ?? [])]
-      .sort((a, b) => (a.name || "").localeCompare(b.name || ""))
-      .filter((athlete) => {
-        const item = summary[athlete.athleteId];
-        if (
-          q &&
-          !athlete.name.toLowerCase().includes(q) &&
-          !athlete.sport.toLowerCase().includes(q) &&
-          !(athlete.position ?? "").toLowerCase().includes(q)
-        ) {
-          return false;
-        }
-        if (filter === "attention") return attentionRank(item) < 2;
-        if (filter === "injury") return Boolean(item?.injury?.active);
-        if (filter === "nocheck") return !item || item.readinessScore === null;
-        return true;
-      });
-  }, [athletes, filter, query, summary]);
-
-  const counts = useMemo(
-    () => ({
-      attention: Object.values(summary).filter((item) => attentionRank(item) < 2).length,
-      injury: Object.values(summary).filter((item) => item.injury?.active).length,
-      nocheck: Object.values(summary).filter((item) => item.readinessScore === null).length,
-    }),
-    [summary]
-  );
-  const total = athletes?.length ?? 0;
+  if (!state.data) return null;
 
   return (
-    <SafeAreaView style={styles.safe} edges={["top"]}>
-      <ScrollView
-        ref={tourScrollRef}
-        contentContainerStyle={styles.content}
-        refreshControl={<RefreshControl refreshing={loading} onRefresh={load} tintColor={accent} />}
-      >
-        <ScreenHeader
-          title="Roster"
-          accent={accent}
-          roleLabel="Coach"
-          subtitle={`${total} assigned athlete${total === 1 ? "" : "s"}`}
-        />
-
-        {loading && !athletes ? (
-          <ActivityIndicator color={accent} style={{ marginTop: 40 }} />
-        ) : error ? (
-          <Card>
-            <Muted>{error}</Muted>
-          </Card>
-        ) : athletes && athletes.length > 0 ? (
-          <View style={{ gap: 10 }}>
-            <SpotlightTarget id="mobile-coach-roster" style={[styles.searchBlock, rosterHighlight]}>
-              <View style={styles.searchRow}>
-                <View style={styles.searchWrap}>
-                  <Ionicons name="search-outline" size={15} color={colors.inkFaint} />
-                  <TextInput
-                    value={query}
-                    onChangeText={setQuery}
-                    placeholder="Search by name, sport, position..."
-                    placeholderTextColor={colors.inkFaint}
-                    style={styles.searchInput}
-                    autoCapitalize="none"
-                    autoCorrect={false}
-                  />
-                </View>
-                <Pressable
-                  onPress={() => router.push("/coach/athletes/new" as never)}
-                  style={[styles.addButton, { backgroundColor: accent }]}
-                  hitSlop={8}
-                  accessibilityLabel="Add athlete"
-                >
-                  <Text style={styles.addButtonText}>+ Add</Text>
-                </Pressable>
-              </View>
-              <View style={styles.filterMetaRow}>
-                <ScrollView
-                  horizontal
-                  showsHorizontalScrollIndicator={false}
-                  style={styles.filterScroll}
-                  contentContainerStyle={styles.filterRow}
-                >
-                  {ROSTER_FILTERS.map((item) => {
-                    const active = item.key === filter;
-                    const count =
-                      item.key === "attention"
-                        ? counts.attention
-                        : item.key === "injury"
-                        ? counts.injury
-                        : item.key === "nocheck"
-                        ? counts.nocheck
-                        : 0;
-                    return (
-                      <Pressable
-                        key={item.key}
-                        onPress={() => setFilter(item.key)}
-                        style={[styles.filterChip, active ? { backgroundColor: accent, borderColor: accent } : null]}
-                      >
-                        <Text style={[styles.filterText, active ? { color: "#fff" } : null]}>
-                          {item.label}
-                          {item.key !== "all" && count > 0 ? ` ${count}` : ""}
-                        </Text>
-                      </Pressable>
-                    );
-                  })}
-                </ScrollView>
-                <Text style={styles.resultCount}>
-                  {filtered.length} of {athletes.length}
-                </Text>
-              </View>
-            </SpotlightTarget>
-
-            {filtered.length > 0 ? (
-              filtered.map((athlete) => (
-                <RosterRow
-                  key={athlete.athleteId}
-                  athlete={athlete}
-                  summary={summary[athlete.athleteId]}
-                  onPress={() =>
-                    router.push({
-                      pathname: "/coach/athletes/[athleteId]",
-                      params: { athleteId: athlete.athleteId, name: athlete.name },
-                    } as never)
-                  }
-                />
-              ))
-            ) : (
-              <Card>
-                <Muted>No athletes match the current search or filter.</Muted>
-              </Card>
-            )}
-          </View>
-        ) : (
-          <Card>
-            <Text style={styles.emptyTitle}>No athletes yet.</Text>
-            <Muted style={{ marginTop: 4 }}>Add athletes from the web app to build your roster.</Muted>
-          </Card>
-        )}
-      </ScrollView>
-    </SafeAreaView>
+    <ScreenContainer refreshing={state.refreshing} onRefresh={state.reload}>
+      <ClientsView data={state.data} />
+    </ScreenContainer>
   );
 }
 
-function RosterRow({
+function ClientsView({ data }: { data: CoachHomeData }) {
+  const router = useRouter();
+  const [query, setQuery] = useState("");
+  const [filter, setFilter] = useState<Filter>("all");
+  const summary = useMemo(() => Object.fromEntries(data.cards.map((card) => [card.athleteId, card])), [data.cards]);
+  const sessionsByAthlete = useMemo(() => {
+    const map = new Map<string, CoachSession[]>();
+    for (const session of data.sessions) {
+      const list = map.get(session.athleteId) ?? [];
+      list.push(session);
+      map.set(session.athleteId, list);
+    }
+    return map;
+  }, [data.sessions]);
+  const filtered = useMemo(() => {
+    const q = query.trim().toLowerCase();
+    return [...data.roster]
+      .sort((a, b) => a.name.localeCompare(b.name))
+      .filter((athlete) => {
+        const card = summary[athlete.athleteId];
+        if (q && !`${athlete.name} ${athlete.sport} ${athlete.position ?? ""}`.toLowerCase().includes(q)) return false;
+        if (filter === "attention") return card ? attentionRank(card) < 2.5 : false;
+        if (filter === "active") return hasRecentOrUpcomingSession(sessionsByAthlete.get(athlete.athleteId) ?? []);
+        if (filter === "membership") return Boolean(athlete.hasActiveMembership);
+        return true;
+      });
+  }, [data.roster, filter, query, summary, sessionsByAthlete]);
+
+  const attentionCount = data.cards.filter((card) => attentionRank(card) < 2.5).length;
+
+  return (
+    <>
+      <View style={styles.header}>
+        <Text style={styles.pageTitle}>Clients</Text>
+      </View>
+
+      <View style={styles.searchWrap}>
+        <Ionicons name="search-outline" size={23} color={colors.inkFaint} />
+        <TextInput
+          value={query}
+          onChangeText={setQuery}
+          placeholder="Search clients..."
+          placeholderTextColor={colors.inkFaint}
+          style={styles.searchInput}
+          autoCapitalize="none"
+          autoCorrect={false}
+        />
+      </View>
+
+      <SegmentedControl
+        value={filter}
+        onChange={setFilter}
+        options={[
+          { value: "all", label: "All" },
+          { value: "attention", label: "Attention" },
+          { value: "active", label: "Active" },
+          { value: "membership", label: "Membership" },
+        ]}
+      />
+
+      <Pressable onPress={() => router.push("/coach/athletes/new" as never)} style={styles.inviteLink}>
+        <Ionicons name="person-add-outline" size={22} color={colors.primary} />
+        <Text style={styles.inviteText}>Add / Invite Client</Text>
+      </Pressable>
+
+      <AppCard>
+        {filtered.length ? (
+          filtered.map((athlete, index) => (
+            <View key={athlete.athleteId}>
+              <ClientRow
+                athlete={athlete}
+                summary={summary[athlete.athleteId]}
+                onPress={() => router.push(`/coach/athletes/${encodeURIComponent(athlete.athleteId)}?name=${encodeURIComponent(athlete.name)}` as never)}
+              />
+              {index < filtered.length - 1 ? <Divider /> : null}
+            </View>
+          ))
+        ) : filter === "membership" ? (
+          <EmptyState title="No membership rows yet" body="Client membership status will appear here as plans become active." icon="card-outline" />
+        ) : (
+          <EmptyState title="No clients found" body="Try a different search or filter." icon="people-outline" />
+        )}
+      </AppCard>
+
+      <AppCard>
+        <View style={styles.summaryRow}>
+          <IconTile icon="people-outline" size={40} />
+          <View style={{ flex: 1 }}>
+            <Text style={styles.cardTitle}>{data.roster.length} Active Clients</Text>
+            <Text style={styles.attentionText}>{attentionCount} need your attention</Text>
+          </View>
+          <ActionButton label="View Insights" icon="bar-chart-outline" onPress={() => router.push("/coach/dashboard" as never)} />
+        </View>
+      </AppCard>
+    </>
+  );
+}
+
+function ClientRow({
   athlete,
   summary,
   onPress,
 }: {
-  athlete: Athlete;
-  summary?: SummaryCard;
+  athlete: CoachRosterAthlete;
+  summary?: DailyCard;
   onPress: () => void;
 }) {
-  const readiness = band(summary?.readinessScore);
+  const readiness = summary?.readinessScore;
+  const workoutSessions = Object.values(summary?.sessions ?? {});
+  const completed = workoutSessions.filter((session) => session?.status === "completed").length;
+  const planned = workoutSessions.filter((session) => session?.status).length;
+  const rank = summary ? attentionRank(summary) : 3;
+  const statusTone = rank <= 1 ? "danger" : rank < 2.5 ? "warning" : "success";
+  const statusLabel = rank < 2.5 ? attentionReason(summary!) : "ACTIVE";
+  const lastSession = workoutSessions.find((session) => session?.status);
+  const workoutIcon = workoutVisual(lastSession?.workoutType || lastSession?.type || "workout");
+  const sessionIcon = planVisual(lastSession?.type || "session", "session");
+
   return (
-    <Pressable onPress={onPress}>
-      <Card style={styles.row}>
-        <View style={styles.avatarWrap}>
-          <Avatar
-            avatar={athlete.avatar}
-            name={athlete.name || "Athlete"}
-            size={42}
-            photoPath={`/api/coach/athletes/${athlete.athleteId}/avatar/file`}
-          />
-          {summary?.readinessScore != null ? (
-            <View style={[styles.readinessBadge, { backgroundColor: readiness.color }]}>
-              <Text style={styles.readinessBadgeText}>{readiness.label}</Text>
-            </View>
-          ) : null}
+    <Pressable onPress={onPress} style={({ pressed }) => [styles.clientRow, pressed ? styles.pressed : null]}>
+      <View style={[styles.clientDot, { backgroundColor: statusTone === "danger" ? colors.bad : statusTone === "warning" ? colors.warn : colors.ok }]} />
+      <Avatar avatar={athlete.avatar} name={athlete.name || "Client"} size={58} photoPath={`/api/coach/athletes/${athlete.athleteId}/avatar/file`} />
+      <View style={styles.clientMain}>
+        <View style={styles.nameLine}>
+          <Text style={styles.clientName} numberOfLines={1}>{athlete.name || "Client"}</Text>
+          <StatusChip label={statusLabel} tone={statusTone} />
         </View>
-        <View style={{ flex: 1, minWidth: 0 }}>
-          <View style={styles.nameRow}>
-            <Text style={styles.name} numberOfLines={1}>{athlete.name || "Athlete"}</Text>
-            {summary?.injury?.active ? <Chip label="Injury" color={colors.bad} /> : null}
-            {summary?.rpe ? <Chip label={summary.rpe.riskFlag} color={riskColor(summary.rpe.riskFlag)} /> : null}
-          </View>
-          <Text style={styles.meta} numberOfLines={1}>
-            {[athlete.sport, athlete.position, summary?.attendance?.status].filter(Boolean).join(" / ") || "-"}
-          </Text>
+        <Text style={styles.goalText} numberOfLines={1}>{athlete.sport || "General Fitness"}</Text>
+        <View style={styles.clientMetrics}>
+          <SmallMetric icon="speedometer-outline" label="Readiness" value={readiness == null ? "--" : `${readiness} /100`} tone={statusTone} />
+          <SmallMetric icon={workoutIcon.icon} label="Workout" value={planned ? `${completed} / ${planned}` : "No plan"} tone={workoutIcon.tone} />
+          <SmallMetric icon={sessionIcon.icon} label="Next session" value={lastSession?.type ? titleCase(lastSession.type) : "None"} tone={sessionIcon.tone} />
         </View>
-        <View style={styles.loadBlock}>
-          {summary?.rpe ? (
-            <>
-              <Text style={styles.loadValue}>{summary.rpe.calculatedTrainingLoad}</Text>
-              <Text style={styles.loadLabel}>load</Text>
-            </>
-          ) : (
-            <Text style={styles.noRpe}>No RPE</Text>
-          )}
-        </View>
-        <Ionicons name="chevron-forward" size={18} color={colors.inkFaint} />
-      </Card>
+      </View>
+      <Ionicons name="chevron-forward" size={22} color={colors.ink} />
     </Pressable>
   );
 }
 
-function Chip({ label, color }: { label: string; color: string }) {
+function SmallMetric({
+  icon,
+  label,
+  value,
+  tone = "primary",
+}: {
+  icon: FitoraIconName;
+  label: string;
+  value: string;
+  tone?: FitoraTone;
+}) {
+  const color = tone === "success" ? colors.ok : tone === "warning" ? colors.warn : tone === "danger" ? colors.bad : colors.primary;
   return (
-    <View style={[styles.chip, { backgroundColor: color + "18" }]}>
-      <Text style={[styles.chipText, { color }]}>{label}</Text>
+    <View style={styles.smallMetric}>
+      <Ionicons name={icon} size={15} color={color} />
+      <Text style={styles.smallMetricLabel}>{label}</Text>
+      <Text style={styles.smallMetricValue}>{value}</Text>
     </View>
   );
 }
 
+function Divider() {
+  return <View style={styles.divider} />;
+}
+
 const styles = StyleSheet.create({
-  safe: { flex: 1, backgroundColor: colors.surface },
-  content: { padding: 20, paddingTop: 12, paddingBottom: 26 },
-  addButton: { height: 46, borderRadius: radius.md, paddingHorizontal: 16, alignItems: "center", justifyContent: "center" },
-  addButtonText: { color: "#fff", fontSize: 13, fontWeight: "900" },
-  searchBlock: { gap: 8, marginBottom: 4 },
-  searchRow: { flexDirection: "row", alignItems: "center", gap: 8 },
-  searchWrap: {
-    flex: 1,
-    height: 46,
-    borderRadius: radius.lg,
-    borderWidth: StyleSheet.hairlineWidth,
-    borderColor: colors.lineStrong,
-    backgroundColor: colors.surfaceInset,
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 8,
-    paddingHorizontal: 14,
-  },
-  searchInput: { flex: 1, minWidth: 0, color: colors.ink, fontSize: 14, paddingVertical: 0 },
-  filterMetaRow: { flexDirection: "row", alignItems: "center", gap: 8 },
-  filterScroll: { flex: 1 },
-  filterRow: { gap: 6, paddingRight: 2 },
-  filterChip: {
-    minHeight: 32,
-    borderRadius: radius.pill,
-    borderWidth: 1,
-    borderColor: colors.line,
-    backgroundColor: colors.surfaceRaised,
-    paddingHorizontal: 10,
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  filterText: { color: colors.inkMuted, fontSize: 10, fontWeight: "900", textTransform: "uppercase" },
-  resultCount: { color: colors.inkFaint, fontSize: 11, fontWeight: "700", textAlign: "right", minWidth: 38 },
-  row: { flexDirection: "row", alignItems: "center", gap: 12, paddingVertical: 14 },
-  avatarWrap: { width: 42, height: 42 },
-  readinessBadge: {
-    position: "absolute",
-    bottom: -3,
-    right: -3,
-    minWidth: 18,
-    height: 18,
-    borderRadius: 9,
-    borderWidth: 2,
-    borderColor: colors.surfaceRaised,
-    alignItems: "center",
-    justifyContent: "center",
-    paddingHorizontal: 2,
-  },
-  readinessBadgeText: { fontSize: 9, fontWeight: "900", color: "#fff" },
-  nameRow: { flexDirection: "row", alignItems: "center", gap: 6, minWidth: 0 },
-  name: { flexShrink: 1, minWidth: 0, fontSize: 16, fontWeight: "700", color: colors.ink },
-  meta: { fontSize: 13, color: colors.inkMuted, marginTop: 2, textTransform: "capitalize" },
-  chip: { borderRadius: radius.pill, paddingHorizontal: 8, paddingVertical: 4 },
-  chipText: { fontSize: 10, fontWeight: "900", textTransform: "uppercase" },
-  loadBlock: { minWidth: 48, alignItems: "flex-end" },
-  loadValue: { color: colors.ink, fontSize: 17, fontWeight: "900" },
-  loadLabel: { color: colors.inkFaint, fontSize: 10 },
-  noRpe: { color: colors.inkFaint, fontSize: 10, fontWeight: "800", textTransform: "uppercase" },
-  emptyTitle: { fontSize: 15, fontWeight: "700", color: colors.ink },
+  header: { minHeight: 58, flexDirection: "row", alignItems: "center", justifyContent: "space-between" },
+  pageTitle: { color: colors.ink, fontSize: 27, lineHeight: 33, fontWeight: "900" },
+  searchWrap: { minHeight: 48, borderRadius: 13, borderWidth: 1, borderColor: colors.lineStrong, backgroundColor: colors.surfaceRaised, paddingHorizontal: 13, flexDirection: "row", alignItems: "center", gap: 9 },
+  searchInput: { flex: 1, minWidth: 0, color: colors.ink, fontSize: 15, fontFamily: "Inter_400Regular" },
+  inviteLink: { minHeight: 38, flexDirection: "row", alignItems: "center", gap: 8, paddingHorizontal: 3 },
+  inviteText: { color: colors.primary, fontSize: 15, fontWeight: "900" },
+  clientRow: { minHeight: 104, flexDirection: "row", alignItems: "center", gap: 9, paddingVertical: 10 },
+  clientDot: { width: 10, height: 10, borderRadius: 5 },
+  clientMain: { flex: 1, minWidth: 0, gap: 4 },
+  nameLine: { flexDirection: "row", alignItems: "center", gap: 8 },
+  clientName: { flex: 1, color: colors.ink, fontSize: 17, lineHeight: 22, fontWeight: "900" },
+  goalText: { color: colors.inkMuted, fontSize: 12, lineHeight: 16 },
+  clientMetrics: { flexDirection: "row", gap: 6 },
+  smallMetric: { flex: 1, minWidth: 0, gap: 1 },
+  smallMetricLabel: { color: colors.inkMuted, fontSize: 10, lineHeight: 13 },
+  smallMetricValue: { color: colors.ink, fontSize: 12, lineHeight: 16, fontWeight: "800" },
+  divider: { height: 1, backgroundColor: colors.line },
+  summaryRow: { flexDirection: "row", alignItems: "center", gap: 12 },
+  cardTitle: { color: colors.ink, fontSize: 18, lineHeight: 23, fontWeight: "900" },
+  attentionText: { color: colors.warn, fontSize: 15, lineHeight: 20, marginTop: 2 },
+  pressed: { opacity: 0.72 },
 });

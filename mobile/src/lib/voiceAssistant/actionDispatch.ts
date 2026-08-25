@@ -10,6 +10,13 @@ export async function fetchAssignedCoaches(): Promise<CoachOption[]> {
 
 const API_ERROR_MESSAGES: Record<string, string> = {
   invalid_amountMl: "That water amount doesn't look right.",
+  invalid_mealType: "I need breakfast, lunch, dinner, or snack for that meal.",
+  invalid_mealName: "That meal name doesn't look right.",
+  invalid_foodName: "I need the food name to log that meal.",
+  invalid_calories: "I need a valid calorie amount to log that meal.",
+  invalid_proteinG: "That protein amount doesn't look right.",
+  invalid_carbsG: "That carbs amount doesn't look right.",
+  invalid_fatG: "That fat amount doesn't look right.",
   invalid_sessionType: "I didn't catch which session that was.",
   invalid_status: "I didn't catch the session status.",
   invalid_trainingCategory: "I need a valid training category to save that RPE.",

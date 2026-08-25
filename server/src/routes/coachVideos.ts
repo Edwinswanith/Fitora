@@ -5,7 +5,53 @@ import { requireRole } from "../middleware/role";
 import { writeRateLimit } from "../middleware/rateLimit";
 import { CoachVideo, COACH_VIDEO_CATEGORIES, COACH_VIDEO_VISIBILITIES } from "../models/CoachVideo";
 import { CoachVideoProgress } from "../models/CoachVideoProgress";
+import { AthleteProfile } from "../models/AthleteProfile";
+import { User } from "../models/User";
 import { coachVideoUpload, coachVideoFilePath, deleteCoachVideoFile, serializeCoachVideo } from "../services/coachVideo";
+import { evaluateAndDispatch } from "../services/notificationEligibility";
+import { resolveTimezoneForUser } from "../services/timezone";
+import { categoryForType } from "../lib/notificationTypes";
+import { buildCoachVideoAssigned } from "../services/notificationTemplates";
+
+/**
+ * Fires `coach_video_assigned` only to athletes NEWLY added to
+ * selectedClientIds (Phase 12 §3) — never for athletes already on the list
+ * (they were already notified when first added), and never for the broader
+ * `subscribers`/`public_preview` visibility tiers, which have no single
+ * "assignment" moment to notify about.
+ */
+async function notifyNewlySelectedClients(
+  video: { _id: Types.ObjectId; title: string; coachId: Types.ObjectId },
+  newlyAddedAthleteIds: Types.ObjectId[]
+): Promise<void> {
+  if (newlyAddedAthleteIds.length === 0) return;
+  try {
+    const [profiles, coach] = await Promise.all([
+      AthleteProfile.find({ _id: { $in: newlyAddedAthleteIds } }).select("_id userId").lean(),
+      User.findById(video.coachId).select("name").lean(),
+    ]);
+    const coachName = (coach?.name as string) || "your coach";
+    await Promise.all(
+      profiles.map(async (profile) => {
+        const userId = profile.userId as Types.ObjectId | undefined;
+        if (!userId) return;
+        const timezone = await resolveTimezoneForUser({ userId, role: "athlete" });
+        await evaluateAndDispatch({
+          userId,
+          type: "coach_video_assigned",
+          category: categoryForType("coach_video_assigned"),
+          priorityTier: 3,
+          dedupKey: `coach_video_assigned:${video._id.toString()}:${(profile._id as Types.ObjectId).toString()}`,
+          timezone,
+          entityRef: { collection: "CoachVideo", id: video._id },
+          ...buildCoachVideoAssigned({ coachName, videoTitle: video.title }),
+        });
+      })
+    );
+  } catch (err) {
+    console.error("[coachVideos] notification dispatch failed (non-fatal)", (err as Error).message);
+  }
+}
 
 const router = Router();
 router.use(requireAuth, requireRole("coach"));
@@ -98,15 +144,20 @@ router.patch("/videos/:videoId", writeRateLimit({ windowMs: 60_000, max: 40 }), 
     if (!COACH_VIDEO_VISIBILITIES.includes(req.body.visibility)) return void res.status(400).json({ error: "invalid_visibility" });
     video.visibility = req.body.visibility;
   }
+  let newlyAddedClientIds: Types.ObjectId[] = [];
   if (req.body?.selectedClientIds !== undefined) {
     const raw = req.body.selectedClientIds;
     if (!Array.isArray(raw) || raw.length > 500 || raw.some((id: unknown) => typeof id !== "string" || !Types.ObjectId.isValid(id))) {
       return void res.status(400).json({ error: "invalid_selectedClientIds" });
     }
-    video.selectedClientIds = raw.map((id: string) => new Types.ObjectId(id)) as never;
+    const previousIds = new Set((video.selectedClientIds as unknown as Types.ObjectId[]).map((id) => id.toString()));
+    const nextIds = raw.map((id: string) => new Types.ObjectId(id));
+    newlyAddedClientIds = nextIds.filter((id) => !previousIds.has(id.toString()));
+    video.selectedClientIds = nextIds as never;
   }
 
   await video.save();
+  await notifyNewlySelectedClients(video, newlyAddedClientIds);
   res.json({ video: serializeCoachVideo(video) });
 });
 

@@ -79,6 +79,33 @@ function rangesOverlap(aStart: Date, aEnd: Date, bStart: Date, bEnd: Date): bool
   return aStart < bEnd && bStart < aEnd;
 }
 
+/**
+ * The effective daily session cap for a coach on a given calendar date's day
+ * of week — the MINIMUM of every non-null `maxSessionsPerDay` set across that
+ * day's recurring CoachAvailability rules (conservative: a coach who sets a
+ * cap on any one of several same-day rules means it to apply day-wide). Null
+ * = uncapped (no rule sets one, the default and existing behavior).
+ * Deliberately scoped to the recurring rules only, not availability
+ * exceptions — an exception's `custom_hours` reuses "any rule" for its
+ * duration/buffer defaults the same way (see resolveWindowsForDate above).
+ */
+export async function resolveMaxSessionsPerDay(coachId: Types.ObjectId, dayStart: Date): Promise<number | null> {
+  const dayOfWeek = dayStart.getUTCDay();
+  const rules = await CoachAvailability.find({ coachId, dayOfWeek }).select("maxSessionsPerDay").lean();
+  const caps = rules.map((r) => r.maxSessionsPerDay).filter((n): n is number => typeof n === "number");
+  return caps.length > 0 ? Math.min(...caps) : null;
+}
+
+/** Count of the coach's active-status sessions scheduled on one calendar date. */
+export async function countSessionsForCoachOnDate(coachId: Types.ObjectId, dayStart: Date): Promise<number> {
+  const dayEnd = new Date(dayStart.getTime() + 24 * 60 * 60 * 1000);
+  return CoachSession.countDocuments({
+    coachId,
+    status: { $in: ACTIVE_SESSION_STATUSES },
+    scheduledStart: { $gte: dayStart, $lt: dayEnd },
+  });
+}
+
 /** Discretized bookable slot options for a given calendar date — for the athlete's "pick a time" UI. */
 export async function resolveAvailableSlots(coachId: Types.ObjectId, dayStart: Date): Promise<TimeRange[]> {
   const dateString = dayStart.toISOString().slice(0, 10);
@@ -110,7 +137,17 @@ export async function resolveAvailableSlots(coachId: Types.ObjectId, dayStart: D
       if (!conflicts) slots.push({ start: slotStart, end: slotEnd });
     }
   }
-  return slots.sort((a, b) => a.start.getTime() - b.start.getTime());
+  slots.sort((a, b) => a.start.getTime() - b.start.getTime());
+
+  // maxSessionsPerDay caps TOTAL bookable sessions that day, already-booked
+  // ones included — trim the remaining offerable slots to what's left.
+  const cap = await resolveMaxSessionsPerDay(coachId, dayStart);
+  if (cap != null) {
+    const alreadyBooked = await countSessionsForCoachOnDate(coachId, dayStart);
+    const remaining = Math.max(0, cap - alreadyBooked);
+    return slots.slice(0, remaining);
+  }
+  return slots;
 }
 
 /**

@@ -1,0 +1,126 @@
+{
+  "baseUrl": "http://10.0.2.2:8084",
+  "cdpBase": "http://localhost:9222",
+  "routes": [
+    {
+      "name": "athlete-today",
+      "role": "athlete",
+      "path": "/athlete/dashboard",
+      "text": "Today's Plan",
+      "url": "http://10.0.2.2:8084/athlete/dashboard",
+      "expectedTextFound": true,
+      "browserFile": "D:\\Fitora\\qa-artifacts\\fitora-emulator\\browser-athlete-today.png",
+      "deviceFile": "D:\\Fitora\\qa-artifacts\\fitora-emulator\\device-athlete-today.png"
+    },
+    {
+      "name": "athlete-workouts",
+      "role": "athlete",
+      "path": "/athlete/dashboard?section=workouts",
+      "text": "Exercise Preview",
+      "url": "http://10.0.2.2:8084/athlete/dashboard?section=workouts",
+      "expectedTextFound": true,
+      "browserFile": "D:\\Fitora\\qa-artifacts\\fitora-emulator\\browser-athlete-workouts.png",
+      "deviceFile": "D:\\Fitora\\qa-artifacts\\fitora-emulator\\device-athlete-workouts.png"
+    },
+    {
+      "name": "athlete-nutrition",
+      "role": "athlete",
+      "path": "/athlete/dashboard?section=nutrition",
+      "text": "Coach Meal Plan",
+      "url": "http://10.0.2.2:8084/athlete/dashboard?section=nutrition",
+      "expectedTextFound": true,
+      "browserFile": "D:\\Fitora\\qa-artifacts\\fitora-emulator\\browser-athlete-nutrition.png",
+      "deviceFile": "D:\\Fitora\\qa-artifacts\\fitora-emulator\\device-athlete-nutrition.png"
+    },
+    {
+      "name": "athlete-coach",
+      "role": "athlete",
+      "path": "/athlete/dashboard?section=coach",
+      "text": "My Coach",
+      "url": "http://10.0.2.2:8084/athlete/dashboard?section=coach",
+      "expectedTextFound": true,
+      "browserFile": "D:\\Fitora\\qa-artifacts\\fitora-emulator\\browser-athlete-coach.png",
+      "deviceFile": "D:\\Fitora\\qa-artifacts\\fitora-emulator\\device-athlete-coach.png"
+    },
+    {
+      "name": "athlete-progress",
+      "role": "athlete",
+      "path": "/athlete/dashboard?section=progress",
+      "text": "Goal Progress",
+      "url": "http://10.0.2.2:8084/athlete/dashboard?section=progress",
+      "expectedTextFound": true,
+      "browserFile": "D:\\Fitora\\qa-artifacts\\fitora-emulator\\browser-athlete-progress.png",
+      "deviceFile": "D:\\Fitora\\qa-artifacts\\fitora-emulator\\device-athlete-progress.png"
+    },
+    {
+      "name": "athlete-profile",
+      "role": "athlete",
+      "path": "/account",
+      "text": "Your Goal",
+      "url": "http://10.0.2.2:8084/account",
+      "expectedTextFound": true,
+      "browserFile": "D:\\Fitora\\qa-artifacts\\fitora-emulator\\browser-athlete-profile.png",
+      "deviceFile": "D:\\Fitora\\qa-artifacts\\fitora-emulator\\device-athlete-profile.png"
+    },
+    {
+      "name": "coach-home",
+      "role": "coach",
+      "path": "/coach/dashboard",
+      "text": "Needs Attention",
+      "url": "http://10.0.2.2:8084/coach/dashboard",
+      "expectedTextFound": true,
+      "browserFile": "D:\\Fitora\\qa-artifacts\\fitora-emulator\\browser-coach-home.png",
+      "deviceFile": "D:\\Fitora\\qa-artifacts\\fitora-emulator\\device-coach-home.png"
+    },
+    {
+      "name": "coach-clients",
+      "role": "coach",
+      "path": "/coach/athletes",
+      "text": "Search clients",
+      "url": "http://10.0.2.2:8084/coach/athletes",
+      "expectedTextFound": false,
+      "browserFile": "D:\\Fitora\\qa-artifacts\\fitora-emulator\\browser-coach-clients.png",
+      "deviceFile": "D:\\Fitora\\qa-artifacts\\fitora-emulator\\device-coach-clients.png"
+    },
+    {
+      "name": "coach-plan",
+      "role": "coach",
+      "path": "/coach/plan",
+      "text": "Assignments",
+      "url": "http://10.0.2.2:8084/coach/plan",
+      "expectedTextFound": true,
+      "browserFile": "D:\\Fitora\\qa-artifacts\\fitora-emulator\\browser-coach-plan.png",
+      "deviceFile": "D:\\Fitora\\qa-artifacts\\fitora-emulator\\device-coach-plan.png"
+    },
+    {
+      "name": "coach-content",
+      "role": "coach",
+      "path": "/coach/content",
+      "text": "Video Library",
+      "url": "http://10.0.2.2:8084/coach/content",
+      "expectedTextFound": true,
+      "browserFile": "D:\\Fitora\\qa-artifacts\\fitora-emulator\\browser-coach-content.png",
+      "deviceFile": "D:\\Fitora\\qa-artifacts\\fitora-emulator\\device-coach-content.png"
+    },
+    {
+      "name": "coach-profile",
+      "role": "coach",
+      "path": "/coach/profile",
+      "text": "Coaching Plans",
+      "url": "http://10.0.2.2:8084/coach/profile",
+      "expectedTextFound": true,
+      "browserFile": "D:\\Fitora\\qa-artifacts\\fitora-emulator\\browser-coach-profile.png",
+      "deviceFile": "D:\\Fitora\\qa-artifacts\\fitora-emulator\\device-coach-profile.png"
+    },
+    {
+      "name": "coach-account",
+      "role": "coach",
+      "path": "/account",
+      "text": "Coaching",
+      "url": "http://10.0.2.2:8084/account",
+      "expectedTextFound": true,
+      "browserFile": "D:\\Fitora\\qa-artifacts\\fitora-emulator\\browser-coach-account.png",
+      "deviceFile": "D:\\Fitora\\qa-artifacts\\fitora-emulator\\device-coach-account.png"
+    }
+  ]
+}

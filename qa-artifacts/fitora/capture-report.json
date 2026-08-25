@@ -1,0 +1,62 @@
+{
+  "baseUrl": "http://localhost:8082",
+  "viewport": {
+    "width": 430,
+    "height": 932,
+    "deviceScaleFactor": 2
+  },
+  "screenshots": [
+    {
+      "name": "athlete-today",
+      "file": "D:\\Fitora\\qa-artifacts\\fitora\\athlete-today.png"
+    },
+    {
+      "name": "athlete-workouts",
+      "file": "D:\\Fitora\\qa-artifacts\\fitora\\athlete-workouts.png"
+    },
+    {
+      "name": "athlete-nutrition",
+      "file": "D:\\Fitora\\qa-artifacts\\fitora\\athlete-nutrition.png"
+    },
+    {
+      "name": "athlete-coach",
+      "file": "D:\\Fitora\\qa-artifacts\\fitora\\athlete-coach.png"
+    },
+    {
+      "name": "athlete-progress",
+      "file": "D:\\Fitora\\qa-artifacts\\fitora\\athlete-progress.png"
+    },
+    {
+      "name": "athlete-profile",
+      "file": "D:\\Fitora\\qa-artifacts\\fitora\\athlete-profile.png"
+    },
+    {
+      "name": "coach-home",
+      "file": "D:\\Fitora\\qa-artifacts\\fitora\\coach-home.png"
+    },
+    {
+      "name": "coach-clients",
+      "file": "D:\\Fitora\\qa-artifacts\\fitora\\coach-clients.png"
+    },
+    {
+      "name": "coach-plan",
+      "file": "D:\\Fitora\\qa-artifacts\\fitora\\coach-plan.png"
+    },
+    {
+      "name": "coach-content",
+      "file": "D:\\Fitora\\qa-artifacts\\fitora\\coach-content.png"
+    },
+    {
+      "name": "coach-profile",
+      "file": "D:\\Fitora\\qa-artifacts\\fitora\\coach-profile.png"
+    },
+    {
+      "name": "coach-account",
+      "file": "D:\\Fitora\\qa-artifacts\\fitora\\coach-account.png"
+    }
+  ],
+  "consoleErrors": {
+    "athlete": [],
+    "coach": []
+  }
+}

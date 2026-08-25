@@ -186,6 +186,14 @@ router.patch("/pricing-plans/:pricingPlanId", writeRateLimit({ windowMs: 60_000,
   if (!plan) return;
   const body = req.body ?? {};
   let changed = false;
+  // Razorpay Plans are immutable once created (see paymentProvider.ts
+  // ensurePlan — it reuses razorpayPlanId forever if set). A price/currency
+  // edit here must invalidate the cached id so the NEXT new subscriber's
+  // checkout creates a fresh provider plan at the new amount, rather than
+  // silently billing them the stale pre-edit price. Existing subscribers are
+  // unaffected either way — their pricingPlanSnapshot was already copied at
+  // subscribe time (see subscription.ts) and never re-reads this document.
+  let billingChanged = false;
 
   if (body.name !== undefined) {
     const name = reqStr(body.name);
@@ -196,12 +204,14 @@ router.patch("/pricing-plans/:pricingPlanId", writeRateLimit({ windowMs: 60_000,
   if (body.monthlyPrice !== undefined) {
     const monthlyPrice = Number(body.monthlyPrice);
     if (!Number.isFinite(monthlyPrice) || monthlyPrice < 0 || monthlyPrice > 100000) return void res.status(400).json({ error: "invalid_monthlyPrice" });
+    if (monthlyPrice !== plan.monthlyPrice) billingChanged = true;
     plan.monthlyPrice = monthlyPrice;
     changed = true;
   }
   if (body.currency !== undefined) {
     const currency = reqStr(body.currency).toUpperCase();
     if (!CURRENCY_RE.test(currency)) return void res.status(400).json({ error: "invalid_currency" });
+    if (currency !== plan.currency) billingChanged = true;
     plan.currency = currency;
     changed = true;
   }
@@ -228,6 +238,7 @@ router.patch("/pricing-plans/:pricingPlanId", writeRateLimit({ windowMs: 60_000,
   if (body.priority !== undefined && Number.isFinite(Number(body.priority))) { plan.priority = Number(body.priority); }
 
   if (changed) plan.version = (plan.version ?? 1) + 1;
+  if (billingChanged) plan.razorpayPlanId = null;
   await plan.save();
   res.json({ pricingPlan: serializePricingPlan(plan) });
 });

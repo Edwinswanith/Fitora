@@ -10,6 +10,7 @@ import {
   type WorkoutTemplateDoc,
 } from "../models/WorkoutTemplate";
 import { ExerciseMedia } from "../models/ExerciseMedia";
+import { notifyWorkoutTemplateUpdated } from "../services/workoutAssignment";
 import type { HydratedDocument } from "mongoose";
 
 // Shared across coach and athlete (self-authored templates) — same pattern
@@ -242,6 +243,7 @@ router.patch(
     if (exercisesChanged) template.version = (template.version ?? 1) + 1;
 
     await template.save();
+    if (exercisesChanged) await notifyWorkoutTemplateUpdated(template);
     res.json({ template: serializeTemplate(template) });
   }
 );

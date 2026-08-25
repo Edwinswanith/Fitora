@@ -105,6 +105,31 @@ describe("buildVoiceAction — hydration", () => {
   });
 });
 
+describe("buildVoiceAction - log_meal", () => {
+  test("maps a confirmed meal log to the idempotent voice meal endpoint", () => {
+    const result = buildVoiceAction(
+      "log_meal",
+      { mealType: "lunch", mealName: "Chicken rice bowl", foodName: "Chicken rice bowl", calories: 650, proteinG: 45 },
+      { clientActionId: "meal-1" }
+    );
+    expect(result).toMatchObject({
+      kind: "http",
+      method: "POST",
+      path: "/api/athlete/voice/log-meal",
+      body: {
+        mealType: "lunch",
+        name: "Chicken rice bowl",
+        foodName: "Chicken rice bowl",
+        calories: 650,
+        proteinG: 45,
+        carbsG: 0,
+        fatG: 0,
+        clientActionId: "meal-1",
+      },
+    });
+  });
+});
+
 describe("buildVoiceAction — log_recovery", () => {
   test("a skipped recovery synthesizes an empty, noted entry (the endpoint has no skipped field)", () => {
     const result = buildVoiceAction("log_recovery", { skipped: true }, { clientActionId: "x" });

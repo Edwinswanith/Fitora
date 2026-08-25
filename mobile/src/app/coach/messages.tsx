@@ -684,9 +684,6 @@ function MessagesHome({
             autoCorrect={false}
           />
         </View>
-        <View style={styles.filterButton}>
-          <Ionicons name="options-outline" size={17} color={colors.inkMuted} />
-        </View>
       </View>
 
       <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.homeFilterRow}>
@@ -813,16 +810,6 @@ const styles = StyleSheet.create({
     paddingHorizontal: 14,
   },
   searchInput: { flex: 1, minWidth: 0, color: colors.ink, fontSize: 14, paddingVertical: 0 },
-  filterButton: {
-    height: 46,
-    width: 46,
-    borderRadius: radius.lg,
-    borderWidth: StyleSheet.hairlineWidth,
-    borderColor: colors.lineStrong,
-    backgroundColor: colors.surfaceInset,
-    alignItems: "center",
-    justifyContent: "center",
-  },
   homeFilterRow: { gap: 6, paddingRight: 2 },
   homeFilterChip: {
     flexDirection: "row",

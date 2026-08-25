@@ -13,6 +13,14 @@ export const AVATAR_DEFAULTS = [
   { id: "female-2", label: "Female badge 2" },
 ] as const;
 
+const DEFAULT_PHOTO_ASSETS: Record<string, number> = {
+  "male-1": require("../../assets/fitora/avatar-male-1.png"),
+  "male-2": require("../../assets/fitora/avatar-male-2.png"),
+  "female-1": require("../../assets/fitora/avatar-female-1.png"),
+  "female-2": require("../../assets/fitora/avatar-female-1.png"),
+  "coach-1": require("../../assets/fitora/avatar-coach.png"),
+};
+
 type HairStyle = "short-side" | "buzz" | "ponytail" | "buns";
 
 type MascotRecipe = {
@@ -154,6 +162,20 @@ export function Avatar({
     );
   }
   if (avatar?.kind === "default" && avatar.defaultId) {
+    const photoAsset = DEFAULT_PHOTO_ASSETS[avatar.defaultId];
+    if (photoAsset) {
+      return (
+        <Image
+          source={photoAsset}
+          style={
+            [
+              { width: size, height: size, borderRadius: size / 2, backgroundColor: colors.surfaceInset },
+              style,
+            ] as StyleProp<ImageStyle>
+          }
+        />
+      );
+    }
     return (
       <View style={[{ width: size, height: size, borderRadius: size / 2, overflow: "hidden" }, style]}>
         <BadgeIcon id={avatar.defaultId} size={size} />

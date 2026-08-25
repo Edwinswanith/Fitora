@@ -6,8 +6,13 @@ import {
   formatProgressAnswer,
   formatCoachFeedbackAnswer,
   formatHydrationAnswer,
+  formatNutritionAnswer,
+  formatUpcomingSessionAnswer,
   formatDailyChecklistAnswer,
   type DailyCardForAnswers,
+  type CoachSessionForAnswers,
+  type NutritionTargetForAnswers,
+  type NutritionTotalsForAnswers,
 } from "./answerFormatting";
 
 async function fetchDailyCard(): Promise<DailyCardForAnswers> {
@@ -38,6 +43,29 @@ async function answerHydration(): Promise<string> {
   return formatHydrationAnswer(res.totalMl, res.goalMl);
 }
 
+async function answerNutrition(): Promise<string> {
+  if (__DEV__ && process.env.EXPO_PUBLIC_FITORA_QA_DATE) {
+    const date = process.env.EXPO_PUBLIC_FITORA_QA_DATE;
+    const [targetRes, mealsRes] = await Promise.all([
+      apiJson<{ target: NutritionTargetForAnswers }>(`/api/athlete/nutrition/target?date=${date}`),
+      apiJson<{ totals: NutritionTotalsForAnswers }>(`/api/athlete/nutrition/meals?date=${date}`),
+    ]);
+    return formatNutritionAnswer(targetRes.target, mealsRes.totals);
+  }
+  const today = new Date();
+  const date = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, "0")}-${String(today.getDate()).padStart(2, "0")}`;
+  const [targetRes, mealsRes] = await Promise.all([
+    apiJson<{ target: NutritionTargetForAnswers }>(`/api/athlete/nutrition/target?date=${date}`),
+    apiJson<{ totals: NutritionTotalsForAnswers }>(`/api/athlete/nutrition/meals?date=${date}`),
+  ]);
+  return formatNutritionAnswer(targetRes.target, mealsRes.totals);
+}
+
+async function answerUpcomingSession(): Promise<string> {
+  const res = await apiJson<{ sessions: CoachSessionForAnswers[] }>("/api/athlete/sessions");
+  return formatUpcomingSessionAnswer(res.sessions);
+}
+
 async function answerDailyChecklist(): Promise<string> {
   const res = await apiJson<{ missing: string[] }>("/api/athlete/voice/today-checklist");
   return formatDailyChecklistAnswer(res.missing);
@@ -61,6 +89,10 @@ export async function fetchAnswerFor(intent: VoiceIntentNameV2, fallback: string
       return answerCoachFeedback();
     case "show_hydration":
       return answerHydration();
+    case "show_nutrition":
+      return answerNutrition();
+    case "show_upcoming_session":
+      return answerUpcomingSession();
     case "show_daily_checklist":
       return answerDailyChecklist();
     default:

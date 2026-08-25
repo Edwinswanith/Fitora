@@ -12,9 +12,9 @@ import { SESSION_SLOTS, SLOT_LABEL, type SessionSlot } from "../lib/sessions";
 import { TRAINING_CATEGORIES } from "../lib/trainingCategories";
 import { athleteNavigationReply, parseAthleteNavigationCommand, type AthleteNavigationCommand } from "../lib/athleteAskNavigation";
 
-// Off by default — the current (V1) assistant keeps running unchanged for
-// everyone until this is explicitly turned on for a build (plan §13).
-const VOICE_ASSISTANT_V2 = process.env.EXPO_PUBLIC_VOICE_ASSISTANT_V2 === "true";
+// V2 is the default Fitora assistant. Set EXPO_PUBLIC_VOICE_ASSISTANT_V2=false
+// only if a build needs to fall back to the older athlete assistant.
+const VOICE_ASSISTANT_V2 = process.env.EXPO_PUBLIC_VOICE_ASSISTANT_V2 !== "false";
 
 type AgentRow = {
   id: string;
@@ -70,6 +70,12 @@ type CoachAgentMemory = {
   lastReportDate?: string;
   lastSummary?: string;
   turns: { role: "user" | "agent"; text: string; at: string }[];
+};
+type PendingCoachAction = {
+  kind: "client_note";
+  athleteId: string;
+  athleteName: string;
+  body: string;
 };
 
 const LINK_COACH_BEFORE_MESSAGE = "First link with coach then you can enable to send message.";
@@ -203,6 +209,36 @@ function extractAnnouncementBody(command: string): string | null {
     if (body) return body.replace(/^(?:to\s+)?all\s+(?:athlete|athletes|players|team|squad)\s+(?:of|that|saying)\s+/i, "").trim();
   }
   return null;
+}
+
+function escapeRegExp(value: string): string {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
+function isCoachClientNoteIntent(command: string): boolean {
+  const lower = command.toLowerCase();
+  return /\b(add|save|write|record|create)\b/.test(lower) && /\b(client\s+)?(notes?|comments?|feedback)\b/.test(lower);
+}
+
+function cleanCoachClientNoteBody(command: string, athleteName?: string | null): string | null {
+  let body = command
+    .trim()
+    .replace(/^["'`]+|["'`]+$/g, "")
+    .replace(/^(?:please\s+)?(?:add|save|write|record|create)\s+(?:a\s+)?(?:client\s+)?(?:notes?|comments?|feedback)\s*/i, "")
+    .replace(/^(?:for|to|about)\s+(?:client|athlete|player)?\s*/i, "")
+    .trim();
+  if (athleteName) {
+    const names = [athleteName, athleteName.split(/\s+/)[0]].filter(Boolean);
+    for (const name of names) {
+      body = body.replace(new RegExp(`^${escapeRegExp(name)}\\b\\s*`, "i"), "").trim();
+    }
+  }
+  body = body
+    .replace(/^(?:that|saying|says|:|-)\s*/i, "")
+    .replace(/\s+/g, " ")
+    .trim();
+  if (!body || /^(?:for|to|about|client|athlete|player|note|comment|feedback)$/i.test(body)) return null;
+  return body.slice(0, 2000);
 }
 
 function parseWaterAmountMl(command: string): number | null {
@@ -456,6 +492,7 @@ export function CoachAskAgentOverlay() {
   const [memory, setMemory] = useState<CoachAgentMemory>(() => ({ date: today(), turns: [] }));
   const chatSeqRef = useRef(0);
   const memoryRef = useRef<CoachAgentMemory>({ date: today(), turns: [] });
+  const pendingCoachActionRef = useRef<PendingCoachAction | null>(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -505,6 +542,11 @@ export function CoachAskAgentOverlay() {
     return apiJson<CoachDashboardResponse>(`/api/coach/dashboard?date=${date}`);
   }
 
+  function openCoachAthlete(athleteId: string, name?: string | null) {
+    const suffix = name ? `?name=${encodeURIComponent(name)}` : "";
+    router.push(`/coach/athletes/${encodeURIComponent(athleteId)}${suffix}` as never);
+  }
+
   function athleteRows(cards: CoachCard[], empty: string): AgentRow[] {
     if (!cards.length) {
       return [{ id: "empty", icon: "checkmark-done-outline", label: empty, status: "0", detail: "No matching athletes found.", tone: "ok" }];
@@ -516,7 +558,7 @@ export function CoachAskAgentOverlay() {
       status: card.readinessScore == null ? "-" : String(card.readinessScore),
       detail: [card.sport, card.position, card.attendance?.status, attentionReason(card)].filter(Boolean).join(" · "),
       tone: card.injury?.active || card.attendance?.status === "absent" ? "bad" : attentionRank(card) < 2 ? "warn" : "ok",
-      onPress: () => router.push({ pathname: "/coach/athletes/[athleteId]", params: { athleteId: card.athleteId, name: card.name } } as never),
+      onPress: () => openCoachAthlete(card.athleteId, card.name),
     }));
   }
 
@@ -540,6 +582,85 @@ export function CoachAskAgentOverlay() {
     return null;
   }
 
+  function resolveCoachNoteAthlete(command: string, cards: CoachCard[]): CoachCard | null {
+    const explicit = resolveRequestedAthlete(command, cards);
+    if (explicit) return explicit;
+    const lower = command.toLowerCase();
+    if (memory.lastAthleteId && /\b(him|her|them|same|that athlete|last athlete)\b/.test(lower)) {
+      return cards.find((card) => card.athleteId === memory.lastAthleteId) ?? null;
+    }
+    return null;
+  }
+
+  async function sendClientNote(action: PendingCoachAction): Promise<string> {
+    pendingCoachActionRef.current = null;
+    const res = await apiFetch(`/api/coach/athletes/${action.athleteId}/comment`, {
+      method: "POST",
+      body: JSON.stringify({ date: today(), body: action.body }),
+    });
+    if (!res.ok) throw new Error("client_note_failed");
+    setResult({
+      title: "Client Note Sent",
+      subtitle: action.athleteName,
+      summary: action.body,
+      rows: [
+        {
+          id: "client-note",
+          icon: "document-text-outline",
+          label: action.athleteName,
+          status: "Sent",
+          detail: "Visible as coach feedback for the client.",
+          tone: "ok",
+          onPress: () => openCoachAthlete(action.athleteId, action.athleteName),
+        },
+      ],
+    });
+    updateMemory({
+      lastAthleteId: action.athleteId,
+      lastAthleteName: action.athleteName,
+      lastReportKind: "client-note",
+      lastReportDate: today(),
+      lastSummary: action.body,
+    });
+    return `Note sent to ${action.athleteName}.`;
+  }
+
+  async function prepareClientNote(command: string): Promise<string | null> {
+    if (!isCoachClientNoteIntent(command)) return null;
+    const data = await loadDashboard(reportDateFromCommand(command));
+    const cards = data.cards ?? [];
+    const athlete = resolveCoachNoteAthlete(command, cards);
+    if (!athlete) {
+      const summary = "Which client should I attach the note to?";
+      setResult({ title: "Client Note", subtitle: "Client required", summary, rows: athleteRows(cards.slice(0, 6), "No clients found") });
+      return summary;
+    }
+    const body = cleanCoachClientNoteBody(command, athlete.name);
+    if (!body) {
+      const summary = `What note should I save for ${athlete.name}?`;
+      setResult({ title: "Client Note", subtitle: athlete.name, summary, rows: [] });
+      return summary;
+    }
+    pendingCoachActionRef.current = { kind: "client_note", athleteId: athlete.athleteId, athleteName: athlete.name, body };
+    setResult({
+      title: "Confirm Client Note",
+      subtitle: athlete.name,
+      summary: body,
+      rows: [
+        {
+          id: "confirm-note",
+          icon: "help-circle-outline",
+          label: "Confirmation required",
+          status: "Say yes",
+          detail: "Say yes to send this as coach feedback, or no to cancel.",
+          tone: "warn",
+        },
+      ],
+    });
+    updateMemory({ lastAthleteId: athlete.athleteId, lastAthleteName: athlete.name });
+    return `Send this note to ${athlete.name}: ${body}? Say yes to confirm.`;
+  }
+
   async function showIndividualAthleteReport(command: string): Promise<string | null> {
     const data = await loadDashboard(reportDateFromCommand(command));
     const cards = data.cards ?? [];
@@ -553,7 +674,7 @@ export function CoachAskAgentOverlay() {
     const metric = requestedCoachMetric(command);
     const latestWellness = wellnessResult.series?.slice().reverse().find((point) => point.wakeHr != null || point.bedHr != null || point.sleepQuality != null);
     const rows: AgentRow[] = [];
-    const push = (row: AgentRow) => rows.push({ ...row, onPress: () => router.push({ pathname: "/coach/athletes/[athleteId]", params: { athleteId: athlete.athleteId, name: athlete.name } } as never) });
+    const push = (row: AgentRow) => rows.push({ ...row, onPress: () => openCoachAthlete(athlete.athleteId, athlete.name) });
 
     if (metric === "status" || metric === "all") {
       push({ id: "attendance", icon: "calendar-outline", label: "Attendance", status: card.attendance?.status ?? "--", detail: `Attendance status on ${data.date}.`, tone: card.attendance?.status === "absent" ? "bad" : "neutral" });
@@ -611,7 +732,7 @@ export function CoachAskAgentOverlay() {
           status: note.needsReply ? "Reply" : "Read",
           detail: note.body || `Note from ${note.date.slice(0, 10)}.`,
           tone: note.needsReply ? "warn" : "ok",
-          onPress: () => router.push({ pathname: "/coach/athletes/[athleteId]", params: { athleteId: note.athleteId, name: note.athleteName } } as never),
+          onPress: () => openCoachAthlete(note.athleteId, note.athleteName),
         }))
       : [{ id: "empty", icon: "checkmark-done-outline", label: "Athlete notes", status: "0", detail: "No athlete notes in the last 14 days.", tone: "ok" }];
     const summary = `${inbox.openCount} athlete note${inbox.openCount === 1 ? "" : "s"} need reply.`;
@@ -682,19 +803,36 @@ export function CoachAskAgentOverlay() {
 
   async function runCoachCommand(command: string): Promise<string> {
     const lower = normalizeCommand(command);
-    setResult(null);
     try {
+      const pending = pendingCoachActionRef.current;
+      if (pending) {
+        if (/^(yes|yeah|yep|confirm|send|send it|do it|save it)\b/.test(lower)) {
+          setResult(null);
+          return sendClientNote(pending);
+        }
+        if (/^(no|nope|cancel|stop|never mind|dont|don't)\b/.test(lower)) {
+          pendingCoachActionRef.current = null;
+          const summary = "Okay, cancelled.";
+          setResult({ title: "Client Note Cancelled", subtitle: pending.athleteName, summary, rows: [] });
+          return summary;
+        }
+        return "Please say yes to send the client note, or no to cancel.";
+      }
+
+      setResult(null);
       const announcementBody = extractAnnouncementBody(command);
       if (announcementBody) {
         return sendAnnouncement(announcementBody);
       }
+      const clientNote = await prepareClientNote(command);
+      if (clientNote) return clientNote;
       if (/\b(notification|notifications|bell|alerts?)\b/.test(lower)) {
         router.push("/notifications" as never);
         return "Opening notifications.";
       }
       if (/\b(calendar|calender|date picker|pick date)\b/.test(lower)) {
-        router.push({ pathname: "/coach/dashboard", params: { ask: "calendar", t: String(Date.now()) } } as never);
-        return "Opening calendar.";
+        router.push("/coach/dashboard" as never);
+        return "There's no calendar view yet - showing your upcoming sessions instead.";
       }
       if (/\b(message|messages|chat|inbox|dm|direct)\b/.test(lower)) {
         router.push("/coach/messages" as never);
@@ -785,7 +923,7 @@ function AthleteAskAgentOverlayV1() {
       return;
     }
     if (command.kind === "calendar") {
-      openDashboard("today");
+      openDashboard("coach");
       return;
     }
     openDashboard(command.section, command.slot);

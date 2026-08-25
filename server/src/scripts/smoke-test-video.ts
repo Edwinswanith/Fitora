@@ -47,7 +47,7 @@ async function run() {
   const window = await findMatchingWindow(coach._id, scheduledStart);
   if (!window) throw new Error("smoke setup failed: no matching availability window");
 
-  const session = await requestSession({
+  const { session } = await requestSession({
     coachId: coach._id,
     athleteId: profile._id,
     relationshipId: relationship._id,

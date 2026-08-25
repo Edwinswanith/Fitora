@@ -13,6 +13,7 @@ import {
   cancelMealPlanAssignment,
   validatePlanForAthlete,
   serializeMealPlanAssignment,
+  notifyMealPlanTemplateUpdated,
   MealPlanAssignmentError,
 } from "../services/mealPlanAssignment";
 import { checkFeatureEntitlement } from "../services/subscription";
@@ -187,6 +188,7 @@ router.patch("/meal-plans/:mealPlanId", writeRateLimit({ windowMs: 60_000, max: 
   if (daysChanged) plan.version = (plan.version ?? 1) + 1;
 
   await plan.save();
+  if (daysChanged) await notifyMealPlanTemplateUpdated(plan);
   res.json({ mealPlan: serializePlan(plan) });
 });
 
