@@ -235,6 +235,7 @@ export async function cancelMealPlanAssignment(
 
 export function serializeMealPlanAssignment(a: MealPlanAssignmentDoc | HydratedDocument<MealPlanAssignmentDoc>) {
   const endDate = new Date((a.startDate as Date).getTime() + (a.durationDays - 1) * 24 * 60 * 60 * 1000);
+  const endDateExclusive = new Date(endDate.getTime() + 24 * 60 * 60 * 1000);
   return {
     id: a._id.toString(),
     mealPlanId: (a.mealPlanId as Types.ObjectId).toString(),
@@ -246,7 +247,7 @@ export function serializeMealPlanAssignment(a: MealPlanAssignmentDoc | HydratedD
     endDate: endDate.toISOString().slice(0, 10),
     durationDays: a.durationDays,
     status: a.status,
-    isPast: a.status === "active" && endDate.getTime() < Date.now(),
+    isPast: a.status === "active" && endDateExclusive.getTime() < Date.now(),
     plannedMealIds: (a.plannedMealIds as Types.ObjectId[]).map((id) => id.toString()),
     cancelledAt: a.cancelledAt ? (a.cancelledAt as Date).toISOString() : null,
   };

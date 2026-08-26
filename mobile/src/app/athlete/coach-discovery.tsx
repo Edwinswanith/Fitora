@@ -137,7 +137,7 @@ function CoachCard({ coach }: { coach: MarketplaceCoach }) {
   async function startSubscription(planId: string) {
     setMessage(null);
     try {
-      const res = await apiFetch("/api/coach-subscriptions", {
+      const res = await apiFetch("/api/athlete/coach-subscriptions", {
         method: "POST",
         body: JSON.stringify({ coachId: coach.coachId, pricingPlanId: planId }),
       });

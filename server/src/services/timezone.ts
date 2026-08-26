@@ -101,9 +101,16 @@ export function zonedMinuteToUtc(dateString: string, minuteOfDay: number, timeZo
   let guessMs = Date.UTC(y, mo - 1, d, hour, minute, 0, 0);
   for (let i = 0; i < 2; i++) {
     const seen = partsInZone(new Date(guessMs), timeZone);
+    // Converged once `guessMs`, read back through the zone, reproduces the exact
+    // target wall-clock reading — check that directly rather than re-deriving a
+    // "drift" from a guess that (after the first correction) is no longer a
+    // naive UTC-labelled value, which previously caused the offset to be
+    // applied twice and land exactly one zone-offset away from the correct instant.
+    if (Number(seen.y) === y && Number(seen.mo) === mo && Number(seen.d) === d && Number(seen.h) === hour && Number(seen.mi) === minute) {
+      break;
+    }
     const seenAsUtcMs = Date.UTC(Number(seen.y), Number(seen.mo) - 1, Number(seen.d), Number(seen.h), Number(seen.mi), 0, 0);
     const drift = seenAsUtcMs - guessMs;
-    if (drift === 0) break;
     guessMs -= drift;
   }
   return new Date(guessMs);
