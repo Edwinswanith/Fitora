@@ -2,6 +2,7 @@ import { useMemo, useState } from "react";
 import { Pressable, StyleSheet, View } from "react-native";
 import { useRouter } from "expo-router";
 import * as DocumentPicker from "expo-document-picker";
+import { File } from "expo-file-system";
 import { Ionicons } from "@expo/vector-icons";
 import { Text } from "../../components/AppText";
 import {
@@ -67,11 +68,7 @@ export default function MealScanScreen() {
     if (picked.canceled || !picked.assets?.[0]) return;
     const asset = picked.assets[0];
     const form = new FormData();
-    form.append("file", {
-      uri: asset.uri,
-      name: asset.name || "meal.jpg",
-      type: asset.mimeType || "image/jpeg",
-    } as unknown as Blob);
+    form.append("file", new File(asset.uri), asset.name || "meal.jpg");
     setBusy("upload");
     try {
       const res = await apiFetch("/api/athlete/nutrition/meal-scan", { method: "POST", body: form });

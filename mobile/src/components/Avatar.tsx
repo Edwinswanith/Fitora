@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { ActivityIndicator, Image, ImageStyle, Pressable, StyleProp, StyleSheet, View, ViewStyle } from "react-native";
 import * as ImagePicker from "expo-image-picker";
+import { File } from "expo-file-system";
 import { Text } from "./AppText";
 import Svg, { Circle, Ellipse, Path, Rect } from "react-native-svg";
 import { API_BASE, apiFetch, getAccessToken } from "../lib/api";
@@ -270,11 +271,7 @@ export function AvatarEditorPanel({
     setBusy("photo");
     try {
       const body = new FormData();
-      body.append("file", {
-        uri: asset.uri,
-        name: asset.fileName ?? "avatar.jpg",
-        type: asset.mimeType ?? "image/jpeg",
-      } as unknown as Blob);
+      body.append("file", new File(asset.uri), asset.fileName ?? "avatar.jpg");
       const res = await apiFetch("/api/me/avatar", { method: "POST", body });
       const json = await res.json().catch(() => ({}));
       if (!res.ok) {

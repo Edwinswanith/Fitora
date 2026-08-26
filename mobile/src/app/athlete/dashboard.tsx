@@ -1314,7 +1314,7 @@ function MealStatusList({
   onLogPlanned: (meal: PlannedMeal) => void;
   onAddMeal: () => void;
 }) {
-  const mealTypes = ["breakfast", "lunch", "snack"];
+  const mealTypes = ["breakfast", "lunch", "dinner", "snack"];
   return (
     <View style={styles.consumedList}>
       {mealTypes.map((type) => {

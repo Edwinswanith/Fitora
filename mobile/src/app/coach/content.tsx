@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { ActivityIndicator, Pressable, StyleSheet, TextInput, View } from "react-native";
 import * as DocumentPicker from "expo-document-picker";
+import { File } from "expo-file-system";
 import { Ionicons } from "@expo/vector-icons";
 import { Text } from "../../components/AppText";
 import {
@@ -112,11 +113,7 @@ export default function CoachContent() {
     setMessage(null);
     try {
       const body = new FormData();
-      body.append("file", {
-        uri: draft.uri,
-        name: draft.name,
-        type: draft.mimeType,
-      } as unknown as Blob);
+      body.append("file", new File(draft.uri), draft.name);
       body.append("title", draft.title.trim());
       body.append("category", draft.category);
       body.append("visibility", draft.visibility);

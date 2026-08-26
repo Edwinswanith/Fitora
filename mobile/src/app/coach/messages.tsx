@@ -15,6 +15,7 @@ import { SafeAreaView } from "react-native-safe-area-context";
 import { useLocalSearchParams } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
 import * as DocumentPicker from "expo-document-picker";
+import { File } from "expo-file-system";
 import { apiFetch, apiJson } from "../../lib/api";
 import { ROLE_THEMES, colors, radius } from "../../lib/theme";
 import { Card, Muted } from "../../components/ui";
@@ -245,18 +246,14 @@ export default function CoachMessages() {
 
   async function pickAndUploadImage() {
     if (!selectedId || pending) return;
-    const result = await DocumentPicker.getDocumentAsync({ type: "image/*" });
+    const result = await DocumentPicker.getDocumentAsync({ type: "image/*", copyToCacheDirectory: true });
     if (result.canceled || !result.assets?.[0]) return;
     const asset = result.assets[0];
     setMediaBusy(true);
     setThreadError(null);
     try {
       const form = new FormData();
-      form.append("file", {
-        uri: asset.uri,
-        name: asset.name ?? "workout.jpg",
-        type: asset.mimeType ?? "image/jpeg",
-      } as unknown as Blob);
+      form.append("file", new File(asset.uri), asset.name ?? "workout.jpg");
       form.append("context", "workout");
       const res = await apiFetch(`/api/coach/athletes/${selectedId}/media`, { method: "POST", body: form });
       const json = (await res.json().catch(() => ({}))) as { media?: ChatMedia; error?: string };
