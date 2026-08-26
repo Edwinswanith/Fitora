@@ -7,7 +7,7 @@ import * as SecureStore from "expo-secure-store";
 import { Platform } from "react-native";
 
 const LOCAL_API_BASE = "http://localhost:4000";
-const PRODUCTION_API_BASE = "https://sports-coaching-server.vercel.app";
+const PRODUCTION_API_BASE = "https://fitora-psi.vercel.app";
 
 function resolveApiBase(): string {
   const configuredBase = process.env.EXPO_PUBLIC_API_URL || process.env.EXPO_PUBLIC_API_BASE_URL;

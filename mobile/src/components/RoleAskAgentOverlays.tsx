@@ -1,8 +1,8 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Pressable, ScrollView, StyleSheet, View } from "react-native";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { Ionicons } from "@expo/vector-icons";
-import { usePathname, useRouter } from "expo-router";
+import { useRouter } from "expo-router";
 import { Text } from "./AppText";
 import { AskAgentControl } from "./AskAgentControl";
 import { AthleteAskAgentOverlayV2 } from "./voiceAssistant/AthleteAskAgentOverlayV2";
@@ -904,14 +904,12 @@ export function AthleteAskAgentOverlay() {
 
 function AthleteAskAgentOverlayV1() {
   const router = useRouter();
-  const pathname = usePathname();
   const accent = ROLE_THEMES.athlete.accent;
   const accentInk = ROLE_THEMES.athlete.accentInk;
   const [result, setResult] = useState<AgentResult | null>(null);
   const [inputOpen, setInputOpen] = useState(false);
   const pendingCoachMessageRef = useRef(false);
   const pendingGeminiRef = useRef<AskPendingGeminiIntent | null>(null);
-  const hidden = useMemo(() => pathname === "/athlete/dashboard", [pathname]);
 
   function openDashboard(section: string, slot?: "AM" | "AFT" | "PM") {
     router.push({ pathname: "/athlete/dashboard", params: { section, ...(slot ? { slot } : {}) } } as never);
@@ -1291,7 +1289,6 @@ function AthleteAskAgentOverlayV1() {
     }
   }
 
-  if (hidden) return null;
   return (
     <>
       <AskAgentControl accent={accent} accentInk={accentInk} onCommand={handleCommand} onInputOpenChange={setInputOpen} onListeningChange={(listening) => listening && setResult(null)} />

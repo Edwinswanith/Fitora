@@ -1,6 +1,6 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { StyleSheet, View } from "react-native";
-import { usePathname, useRouter } from "expo-router";
+import { useRouter } from "expo-router";
 import { AskAgentControl } from "../AskAgentControl";
 import { Banner } from "../ui";
 import { ROLE_THEMES, space } from "../../lib/theme";
@@ -16,11 +16,9 @@ import { ConfirmationCard } from "./ConfirmationCard";
  */
 export function AthleteAskAgentOverlayV2() {
   const router = useRouter();
-  const pathname = usePathname();
   const accent = ROLE_THEMES.athlete.accent;
   const accentInk = ROLE_THEMES.athlete.accentInk;
   const [inputOpen, setInputOpen] = useState(false);
-  const hidden = useMemo(() => pathname === "/athlete/dashboard", [pathname]);
 
   function handleNavigate(screen: string) {
     if (screen === "notifications") {
@@ -58,8 +56,6 @@ export function AthleteAskAgentOverlayV2() {
     const timer = setTimeout(() => reset(), state.answerText ? 7000 : 4000);
     return () => clearTimeout(timer);
   }, [state.phase, state.answerText, reset]);
-
-  if (hidden) return null;
 
   return (
     <>
