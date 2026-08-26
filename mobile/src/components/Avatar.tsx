@@ -1,7 +1,9 @@
-import { Image, ImageStyle, Pressable, StyleProp, StyleSheet, View, ViewStyle } from "react-native";
+import { useState } from "react";
+import { ActivityIndicator, Image, ImageStyle, Pressable, StyleProp, StyleSheet, View, ViewStyle } from "react-native";
+import * as ImagePicker from "expo-image-picker";
 import { Text } from "./AppText";
 import Svg, { Circle, Ellipse, Path, Rect } from "react-native-svg";
-import { API_BASE, getAccessToken } from "../lib/api";
+import { API_BASE, apiFetch, getAccessToken } from "../lib/api";
 import { colors } from "../lib/theme";
 
 export type AvatarInfo = { kind: "photo" | "default" | null; defaultId: string | null } | null | undefined;
@@ -231,9 +233,138 @@ export function AvatarBadgePicker({
   );
 }
 
+/**
+ * Shared upload panel for both the athlete Account screen and the coach
+ * Profile screen — pick a photo, pick a bundled badge, or revert to
+ * initials. Wired to `/api/me/avatar*` (server/src/routes/avatar.ts). Callers
+ * pass `onChanged` to update whatever they use to render `<Avatar>` (the
+ * cached auth user via `useAuth().setUser`, plus their own screen data).
+ */
+export function AvatarEditorPanel({
+  avatar,
+  name,
+  onChanged,
+}: {
+  avatar: AvatarInfo;
+  name: string;
+  onChanged: (avatar: AvatarInfo) => void;
+}) {
+  const [busy, setBusy] = useState<"photo" | "badge" | "remove" | null>(null);
+  const [error, setError] = useState<string | null>(null);
+
+  async function pickPhoto() {
+    setError(null);
+    const permission = await ImagePicker.requestMediaLibraryPermissionsAsync();
+    if (!permission.granted) {
+      setError("Photo library access is required to set a profile picture.");
+      return;
+    }
+    const result = await ImagePicker.launchImageLibraryAsync({
+      mediaTypes: ImagePicker.MediaTypeOptions.Images,
+      allowsEditing: true,
+      aspect: [1, 1],
+      quality: 0.8,
+    });
+    if (result.canceled || !result.assets?.[0]) return;
+    const asset = result.assets[0];
+    setBusy("photo");
+    try {
+      const body = new FormData();
+      body.append("file", {
+        uri: asset.uri,
+        name: asset.fileName ?? "avatar.jpg",
+        type: asset.mimeType ?? "image/jpeg",
+      } as unknown as Blob);
+      const res = await apiFetch("/api/me/avatar", { method: "POST", body });
+      const json = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        setError(json.error === "file_too_large" ? "That photo is too large." : json.error === "unsupported_file_type" ? "Choose a JPEG, PNG, or WebP photo." : "Could not upload this photo.");
+        return;
+      }
+      onChanged(json.avatar as AvatarInfo);
+    } catch {
+      setError("Network error while uploading your photo.");
+    } finally {
+      setBusy(null);
+    }
+  }
+
+  async function pickBadge(defaultId: string) {
+    setError(null);
+    setBusy("badge");
+    try {
+      const res = await apiFetch("/api/me/avatar/default", { method: "POST", body: JSON.stringify({ defaultId }) });
+      const json = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        setError("Could not set this avatar.");
+        return;
+      }
+      onChanged(json.avatar as AvatarInfo);
+    } catch {
+      setError("Network error while setting your avatar.");
+    } finally {
+      setBusy(null);
+    }
+  }
+
+  async function removePhoto() {
+    setError(null);
+    setBusy("remove");
+    try {
+      const res = await apiFetch("/api/me/avatar", { method: "DELETE" });
+      const json = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        setError("Could not remove your photo.");
+        return;
+      }
+      onChanged(json.avatar as AvatarInfo);
+    } catch {
+      setError("Network error while removing your photo.");
+    } finally {
+      setBusy(null);
+    }
+  }
+
+  return (
+    <View style={styles.editorPanel}>
+      <View style={styles.editorTop}>
+        <Avatar avatar={avatar} name={name} size={64} accentSoft={colors.primarySoft} accentStrong={colors.primary} />
+        <View style={{ flex: 1, gap: 6 }}>
+          <Pressable onPress={pickPhoto} disabled={busy !== null} style={styles.editorButton}>
+            {busy === "photo" ? <ActivityIndicator color={colors.primary} /> : <Text style={styles.editorButtonText}>Choose Photo</Text>}
+          </Pressable>
+          {avatar?.kind ? (
+            <Pressable onPress={removePhoto} disabled={busy !== null} hitSlop={8}>
+              <Text style={styles.editorRemoveText}>{busy === "remove" ? "Removing..." : "Remove Photo"}</Text>
+            </Pressable>
+          ) : null}
+        </View>
+      </View>
+      <Text style={styles.editorLabel}>Or choose a badge</Text>
+      <AvatarBadgePicker selectedId={avatar?.kind === "default" ? avatar.defaultId : null} onSelect={pickBadge} accentColor={colors.primary} />
+      {error ? <Text style={styles.editorError}>{error}</Text> : null}
+    </View>
+  );
+}
+
 const styles = StyleSheet.create({
   fallback: { alignItems: "center", justifyContent: "center" },
   fallbackText: { fontWeight: "900" },
   pickerRow: { flexDirection: "row", flexWrap: "wrap", gap: 12 },
   pickerItem: { borderRadius: 26, padding: 2 },
+  editorPanel: { gap: 12 },
+  editorTop: { flexDirection: "row", alignItems: "center", gap: 14 },
+  editorButton: {
+    minHeight: 38,
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: colors.primary,
+    alignItems: "center",
+    justifyContent: "center",
+    paddingHorizontal: 14,
+  },
+  editorButtonText: { color: colors.primary, fontSize: 13, fontWeight: "800" },
+  editorRemoveText: { color: colors.bad, fontSize: 12, fontWeight: "800" },
+  editorLabel: { color: colors.inkMuted, fontSize: 11, fontWeight: "800", textTransform: "uppercase", letterSpacing: 0.3 },
+  editorError: { color: colors.bad, fontSize: 12, fontWeight: "800" },
 });

@@ -58,6 +58,29 @@ async function coachNameOf(coachId: Types.ObjectId): Promise<string> {
   return (coach?.name as string) || "your coach";
 }
 
+/** Best-effort — never lets a notification failure fail the switch/webhook write that triggered it. */
+async function notifyCoachAthleteLeft(coachId: Types.ObjectId, athleteId: Types.ObjectId, dedupSuffix: string): Promise<void> {
+  try {
+    const athleteProfile = await AthleteProfile.findById(athleteId).select("userId").lean();
+    const athleteUser = athleteProfile?.userId
+      ? await User.findById(athleteProfile.userId).select("name").lean()
+      : null;
+    const timezone = await resolveTimezoneForUser({ userId: coachId, role: "coach" });
+    await evaluateAndDispatch({
+      userId: coachId,
+      type: "coach_athlete_left",
+      category: categoryForType("coach_athlete_left"),
+      priorityTier: 3,
+      dedupKey: `coach_athlete_left:${athleteId.toString()}:${dedupSuffix}`,
+      timezone,
+      entityRef: { collection: "CoachAthleteAssignment", id: athleteId },
+      ...templates.buildAthleteLeftForCoach({ athleteName: (athleteUser?.name as string) || "An athlete", initiatedByCoach: false }),
+    });
+  } catch (err) {
+    console.error("[subscription] notification dispatch failed (non-fatal)", (err as Error).message);
+  }
+}
+
 export class SubscriptionError extends Error {
   status: number;
   constructor(status: number, message: string) {
@@ -335,6 +358,13 @@ async function endSubscriptionFromWebhook(
       "subscription_expired",
       templates.buildSubscriptionExpired()
     );
+  } else {
+    await notifyAthleteSubscriptionEvent(
+      subscription,
+      `cancelled:${subscription._id.toString()}`,
+      "subscription_cancelled",
+      templates.buildSubscriptionCancelled()
+    );
   }
 }
 
@@ -357,6 +387,7 @@ async function completeSwitchIntent(
   const periodStart = event.periodStart ?? new Date();
   const periodEnd = event.periodEnd ?? new Date(periodStart.getTime() + DEFAULT_PERIOD_MS);
   let oldRelationshipId: Types.ObjectId | null = null;
+  let oldCoachId: Types.ObjectId | null = null;
 
   const newSubscription = await withOptionalTransaction(async (txnSession) => {
     const opts = txnSession ? { session: txnSession } : undefined;
@@ -379,6 +410,7 @@ async function completeSwitchIntent(
         txnSession
       );
       oldRelationshipId = oldRelationship._id;
+      oldCoachId = oldRelationship.coachId as Types.ObjectId;
     }
 
     const [createdSubscription] = await AthleteCoachSubscription.create(
@@ -443,6 +475,10 @@ async function completeSwitchIntent(
         error: (err as Error).message,
       });
     });
+  }
+
+  if (oldCoachId) {
+    await notifyCoachAthleteLeft(oldCoachId, intent.athleteId as Types.ObjectId, `switch:${intent._id.toString()}`);
   }
 }
 

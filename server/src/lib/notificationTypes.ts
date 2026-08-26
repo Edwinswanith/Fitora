@@ -76,6 +76,9 @@ export const NOTIFICATION_TYPES = {
 
   // --- Reviews (Phase 10) ---
   new_review: "milestones",
+
+  // --- Coach switching (Phase 13 hardening) ---
+  coach_athlete_left: "alerts",
 } as const satisfies Record<string, NotificationCategory>;
 
 export type NotificationType = keyof typeof NOTIFICATION_TYPES;

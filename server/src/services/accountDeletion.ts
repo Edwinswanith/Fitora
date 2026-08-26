@@ -32,9 +32,12 @@ import { CoachVideoProgress } from "../models/CoachVideoProgress";
 import { CoachReview } from "../models/CoachReview";
 import { CoachPricingPlan } from "../models/CoachPricingPlan";
 import { CoachProfile } from "../models/CoachProfile";
+import { ExerciseMedia } from "../models/ExerciseMedia";
+import { WorkoutTemplate } from "../models/WorkoutTemplate";
 import { deletePriorAvatarFile } from "./avatar";
 import { mediaFilePath } from "./media";
 import { coachVideoFilePath } from "./coachVideo";
+import { exerciseMediaFilePath } from "./exerciseMedia";
 
 async function deleteMediaFiles(filter: Record<string, unknown>): Promise<void> {
   const media = await WorkoutMedia.find(filter).select("storedFilename").lean();
@@ -102,6 +105,8 @@ export async function permanentlyDeleteAccount(user: UserDoc): Promise<void> {
     await deleteMediaFiles({ coachId: userId });
     const coachVideos = await CoachVideo.find({ coachId: userId }).select("storedFilename").lean();
     await Promise.all(coachVideos.map((v) => fs.promises.unlink(coachVideoFilePath(v)).catch(() => undefined)));
+    const exerciseMedia = await ExerciseMedia.find({ coachId: userId }).select("storedFilename").lean();
+    await Promise.all(exerciseMedia.map((m) => fs.promises.unlink(exerciseMediaFilePath(m)).catch(() => undefined)));
     await Promise.all([
       Announcement.deleteMany({ coachId: userId }),
       CoachAthleteAssignment.deleteMany({
@@ -122,6 +127,8 @@ export async function permanentlyDeleteAccount(user: UserDoc): Promise<void> {
       CoachReview.deleteMany({ coachId: userId }),
       CoachPricingPlan.deleteMany({ coachId: userId }),
       CoachProfile.deleteOne({ userId }),
+      ExerciseMedia.deleteMany({ coachId: userId }),
+      WorkoutTemplate.deleteMany({ ownerId: userId }),
     ]);
   }
 

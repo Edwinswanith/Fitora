@@ -1,5 +1,5 @@
-import { useCallback, useEffect, type ReactNode } from "react";
-import { ActivityIndicator, View } from "react-native";
+import { useCallback, useEffect, useRef, type ReactNode } from "react";
+import { ActivityIndicator, AppState, type AppStateStatus, View } from "react-native";
 import { Stack, useRouter, useSegments } from "expo-router";
 import { StatusBar } from "expo-status-bar";
 import { SafeAreaProvider } from "react-native-safe-area-context";
@@ -19,6 +19,9 @@ import { dashboardPathForRole } from "../lib/roles";
 import { colors } from "../lib/theme";
 import { MobileTourProvider, useTourRootView } from "../lib/tour/MobileTourProvider";
 import { subscribeToPushMessages } from "../lib/push";
+import { apiFetch } from "../lib/api";
+
+const PRESENCE_HEARTBEAT_MS = 90_000;
 
 SplashScreen.preventAutoHideAsync().catch(() => undefined);
 
@@ -57,6 +60,40 @@ function Gate() {
       router.push(dest as never);
     });
   }, [status, user, router]);
+
+  const heartbeatTimer = useRef<ReturnType<typeof setInterval> | null>(null);
+  useEffect(() => {
+    if (status !== "authed") return;
+
+    function sendHeartbeat() {
+      apiFetch("/api/presence/heartbeat", { method: "POST" }).catch(() => undefined);
+    }
+
+    function startHeartbeat() {
+      if (heartbeatTimer.current) return;
+      sendHeartbeat();
+      heartbeatTimer.current = setInterval(sendHeartbeat, PRESENCE_HEARTBEAT_MS);
+    }
+
+    function stopHeartbeat() {
+      if (heartbeatTimer.current) {
+        clearInterval(heartbeatTimer.current);
+        heartbeatTimer.current = null;
+      }
+    }
+
+    function onAppStateChange(next: AppStateStatus) {
+      if (next === "active") startHeartbeat();
+      else stopHeartbeat();
+    }
+
+    if (AppState.currentState === "active") startHeartbeat();
+    const subscription = AppState.addEventListener("change", onAppStateChange);
+    return () => {
+      subscription.remove();
+      stopHeartbeat();
+    };
+  }, [status]);
 
   if (status === "loading") {
     return (

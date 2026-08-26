@@ -17,7 +17,7 @@ import {
 import { apiFetch } from "../../lib/api";
 import { planVisual, workoutVisual, type FitoraIconName, type FitoraTone } from "../../lib/fitoraIcons";
 import { colors } from "../../lib/theme";
-import { addDays, firstName, loadCoachPlanData, titleCase, todayKey, useAsyncData, type CoachPlanData } from "../../lib/fitoraData";
+import { addDays, loadCoachPlanData, titleCase, todayKey, useAsyncData, type CoachPlanData } from "../../lib/fitoraData";
 
 type Tab = "assignments" | "templates" | "routines";
 type PlanMode = "workout" | "tasks" | "meal" | "routine";
@@ -177,13 +177,13 @@ function Assignments({
 
       <SectionHeader title="Upcoming Routines" />
       <AppCard>
-        {data.roster.length ? (
-          data.roster.slice(0, 2).map((client, index) => {
+        {data.routineStatus.length ? (
+          data.routineStatus.slice(0, 2).map((status, index) => {
             const visual = planVisual("routine");
             return (
-              <View key={client.athleteId}>
-                <PlanRow icon={visual.icon} tone={visual.tone} title={client.name} subtitle={`${firstName(client.name, "Client")}'s routine status will appear after a routine is assigned.`} />
-                {index < Math.min(data.roster.length, 2) - 1 ? <Divider /> : null}
+              <View key={status.athleteId}>
+                <PlanRow icon={visual.icon} tone={visual.tone} title={status.athleteName} subtitle={routineStatusSubtitle(status)} />
+                {index < Math.min(data.routineStatus.length, 2) - 1 ? <Divider /> : null}
               </View>
             );
           })
@@ -249,13 +249,13 @@ function Routines({ data, openMode }: { data: CoachPlanData; openMode: (mode: Pl
     <>
       <ActionButton label="Assign Routine" icon="repeat-outline" variant="filled" onPress={() => openMode("routine")} />
       <AppCard>
-        {data.roster.length ? (
-          data.roster.map((client, index) => {
+        {data.routineStatus.length ? (
+          data.routineStatus.map((status, index) => {
             const visual = planVisual("routine");
             return (
-              <View key={client.athleteId}>
-                <PlanRow icon={visual.icon} tone={visual.tone} title={client.name} subtitle="Assign a combined workout and meal plan routine." />
-                {index < data.roster.length - 1 ? <Divider /> : null}
+              <View key={status.athleteId}>
+                <PlanRow icon={visual.icon} tone={visual.tone} title={status.athleteName} subtitle={routineStatusSubtitle(status)} />
+                {index < data.routineStatus.length - 1 ? <Divider /> : null}
               </View>
             );
           })
@@ -265,6 +265,13 @@ function Routines({ data, openMode }: { data: CoachPlanData; openMode: (mode: Pl
       </AppCard>
     </>
   );
+}
+
+function routineStatusSubtitle(status: CoachPlanData["routineStatus"][number]): string {
+  const parts: string[] = [];
+  parts.push(status.workoutName ? `Workout: ${status.workoutName} (${titleCase(status.workoutStatus ?? "")})` : "No workout assigned today");
+  parts.push(status.mealPlanName ? `Meal plan: ${status.mealPlanName}${status.mealPlanActive ? "" : " (inactive)"}` : "No meal plan assigned");
+  return parts.join(" - ");
 }
 
 function PlanComposer({

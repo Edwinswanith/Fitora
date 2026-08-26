@@ -1,9 +1,66 @@
 import { Types, type HydratedDocument } from "mongoose";
 import { CoachAthleteAssignment, type CoachAthleteAssignmentDoc, type CoachRelationshipEndedReason } from "../models/CoachAthleteAssignment";
 import { AthleteCoachSubscription } from "../models/AthleteCoachSubscription";
+import { AthleteProfile } from "../models/AthleteProfile";
+import { User } from "../models/User";
 import { withOptionalTransaction, cancelOpenSessionsAndVideoRoomsForRelationship } from "./bookingConcurrency";
 import { cancelOpenCoachContentForRelationship } from "./relationshipCleanup";
 import { terminateSubscriptionForEndedRelationship, initiateSubscription, initiateSwitchIntent } from "./subscription";
+import { evaluateAndDispatch } from "./notificationEligibility";
+import { resolveTimezoneForUser } from "./timezone";
+import { categoryForType } from "../lib/notificationTypes";
+import { buildCoachRelationshipEndedForAthlete, buildAthleteLeftForCoach } from "./notificationTemplates";
+
+/**
+ * Best-effort, both-directions notification for a relationship ending —
+ * previously missing entirely (confirmed during the Phase 12 validation
+ * pass: zero NotificationDecision rows were created for either party on a
+ * real end-relationship action). Never lets a notification failure fail the
+ * relationship-ending write that triggered it.
+ */
+async function notifyRelationshipEnded(
+  relationship: Pick<CoachAthleteAssignmentDoc, "_id" | "coachId" | "athleteId">,
+  initiatedByCoach: boolean
+): Promise<void> {
+  try {
+    const [athleteProfile, coachUser] = await Promise.all([
+      AthleteProfile.findById(relationship.athleteId).select("userId").lean(),
+      User.findById(relationship.coachId as Types.ObjectId).select("name").lean(),
+    ]);
+    const coachName = (coachUser?.name as string) || "your coach";
+    if (athleteProfile?.userId) {
+      const athleteUserId = athleteProfile.userId as Types.ObjectId;
+      const timezone = await resolveTimezoneForUser({ userId: athleteUserId, role: "athlete" });
+      await evaluateAndDispatch({
+        userId: athleteUserId,
+        type: "subscription_cancelled",
+        category: categoryForType("subscription_cancelled"),
+        priorityTier: 2,
+        dedupKey: `relationship_ended:${relationship._id.toString()}:athlete`,
+        timezone,
+        entityRef: { collection: "CoachAthleteAssignment", id: relationship._id as Types.ObjectId },
+        ...buildCoachRelationshipEndedForAthlete({ coachName, initiatedByCoach }),
+      });
+    }
+
+    const athleteUser = athleteProfile?.userId
+      ? await User.findById(athleteProfile.userId).select("name").lean()
+      : null;
+    const timezone = await resolveTimezoneForUser({ userId: relationship.coachId as Types.ObjectId, role: "coach" });
+    await evaluateAndDispatch({
+      userId: relationship.coachId as Types.ObjectId,
+      type: "coach_athlete_left",
+      category: categoryForType("coach_athlete_left"),
+      priorityTier: 3,
+      dedupKey: `relationship_ended:${relationship._id.toString()}:coach`,
+      timezone,
+      entityRef: { collection: "CoachAthleteAssignment", id: relationship._id as Types.ObjectId },
+      ...buildAthleteLeftForCoach({ athleteName: (athleteUser?.name as string) || "An athlete", initiatedByCoach }),
+    });
+  } catch (err) {
+    console.error("[coachRelationship] notification dispatch failed (non-fatal)", (err as Error).message);
+  }
+}
 
 export class CoachRelationshipError extends Error {
   status: number;
@@ -62,6 +119,8 @@ export async function endRelationship(
   // directly is idempotent — see cancelOpenSessionsForRelationship's own
   // idempotency note).
   await cancelOpenSessionsAndVideoRoomsForRelationship(relationship._id, actorId, `Relationship ended (${endedReason})`);
+
+  await notifyRelationshipEnded(relationship, endedReason === "coach_ended");
 
   return relationship;
 }

@@ -93,6 +93,13 @@
           "modes": ["central"],
           "bluetoothAlwaysPermission": "Allow Fitora to connect to heart-rate and fitness sensors."
         }
+      ],
+      [
+        "expo-image-picker",
+        {
+          "photosPermission": "Allow Fitora to access your photos to set a profile picture.",
+          "cameraPermission": "Allow Fitora to use the camera to take a profile picture."
+        }
       ]
     ],
     "experiments": {

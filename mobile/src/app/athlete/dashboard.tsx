@@ -1,5 +1,5 @@
 import { Fragment, useEffect, useState, type ReactNode } from "react";
-import { Image, Pressable, StyleSheet, TextInput, View } from "react-native";
+import { Alert, Image, Pressable, StyleSheet, TextInput, View } from "react-native";
 import type { ImageSourcePropType } from "react-native";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
@@ -259,7 +259,7 @@ export default function AthleteDashboard() {
       {activeTab === "today" ? <TodayView data={data} onLogWater={logWater} loggingWater={loggingWater} /> : null}
       {activeTab === "workouts" ? <WorkoutsView data={data} /> : null}
       {activeTab === "nutrition" ? <NutritionView data={data} onLogWater={logWater} loggingWater={loggingWater} onReload={state.reload} /> : null}
-      {activeTab === "coach" ? <CoachView data={data} /> : null}
+      {activeTab === "coach" ? <CoachView data={data} onReload={state.reload} /> : null}
       {activeTab === "progress" ? <ProgressView data={data} /> : null}
       {data.partialIssues.length > 0 ? (
         <Text style={styles.partialNote}>
@@ -531,8 +531,8 @@ function ReadinessFactor({
   return (
     <View style={styles.factorRow}>
       <Ionicons name={icon} size={15} color={colors.ink} />
-      <Text style={styles.factorLabel}>{label}</Text>
-      <Text style={[styles.factorValue, { color }]}>{value}</Text>
+      <Text style={styles.factorLabel} numberOfLines={1}>{label}</Text>
+      <Text style={[styles.factorValue, { color }]} numberOfLines={1}>{value}</Text>
     </View>
   );
 }
@@ -1354,7 +1354,7 @@ function MealStatusList({
   );
 }
 
-function CoachView({ data }: { data: AthleteDashboardData }) {
+function CoachView({ data, onReload }: { data: AthleteDashboardData; onReload: () => void }) {
   const router = useRouter();
   const coachName = data.coachProfile?.name || data.coaches[0]?.name || "";
   const coachId = data.coaches[0]?.coachId ?? data.subscription?.coachId ?? data.coachProfile?.coachId ?? null;
@@ -1368,6 +1368,38 @@ function CoachView({ data }: { data: AthleteDashboardData }) {
   const [coachActionMessage, setCoachActionMessage] = useState<string | null>(null);
   const [reviews, setReviews] = useState<CoachReview[] | null>(null);
   const [reviewsLoading, setReviewsLoading] = useState(false);
+  const [leaving, setLeaving] = useState(false);
+  const [justEnded, setJustEnded] = useState<{ relationshipId: string; coachName: string } | null>(null);
+
+  async function leaveCoach() {
+    setLeaving(true);
+    setCoachActionMessage(null);
+    try {
+      const res = await apiFetch("/api/athlete/coach/leave", { method: "POST" });
+      const json = (await res.json().catch(() => ({}))) as { error?: string; relationship?: { id: string } };
+      if (!res.ok || !json.relationship) {
+        setCoachActionMessage(json.error === "no_active_coach" ? "You don't have an active coach right now." : "Could not leave this coach.");
+        return;
+      }
+      setJustEnded({ relationshipId: json.relationship.id, coachName });
+      setPanel(null);
+    } catch {
+      setCoachActionMessage("Network error while leaving your coach.");
+    } finally {
+      setLeaving(false);
+    }
+  }
+
+  function confirmLeaveCoach() {
+    Alert.alert(
+      `Leave ${coachName}?`,
+      "You'll lose access to their workouts, meal plans, and sessions. Any active membership will be cancelled immediately.",
+      [
+        { text: "Cancel", style: "cancel" },
+        { text: "Leave Coach", style: "destructive", onPress: leaveCoach },
+      ]
+    );
+  }
 
   useEffect(() => {
     if (panel !== "reviews" || !coachId || reviews !== null) return;
@@ -1407,6 +1439,10 @@ function CoachView({ data }: { data: AthleteDashboardData }) {
     } finally {
       setSendingMessage(false);
     }
+  }
+
+  if (justEnded) {
+    return <PostLeaveReview relationshipId={justEnded.relationshipId} coachName={justEnded.coachName} onDone={onReload} />;
   }
 
   return (
@@ -1557,7 +1593,8 @@ function CoachView({ data }: { data: AthleteDashboardData }) {
             <SettingsRow icon="card-outline" label="Membership & Payments" value="Manage" onPress={() => setPanel(panel === "membership" ? null : "membership")} />
             <SettingsRow icon="play-circle-outline" label="Coach Videos" onPress={() => setPanel(panel === "videos" ? null : "videos")} />
             <SettingsRow icon="star-outline" label="Reviews" onPress={() => setPanel(panel === "reviews" ? null : "reviews")} />
-            <SettingsRow icon="person-remove-outline" label="Change Coach" onPress={() => router.push("/athlete/coach-discovery" as never)} />
+            <SettingsRow icon="swap-horizontal-outline" label="Switch Coach" onPress={() => router.push("/athlete/coach-discovery" as never)} />
+            <SettingsRow icon="person-remove-outline" label="Leave Coach" value={leaving ? "Leaving..." : undefined} danger onPress={leaving ? undefined : confirmLeaveCoach} />
           </AppCard>
 
           {panel === "reviews" ? (
@@ -1599,6 +1636,120 @@ function CoachView({ data }: { data: AthleteDashboardData }) {
         </>
       )}
       {!coachName ? <ActionButton label="Find a Coach" icon="search-outline" variant="filled" onPress={() => router.push("/athlete/coach-discovery" as never)} /> : null}
+    </>
+  );
+}
+
+const REVIEW_SUB_RATING_KEYS = ["trainingQuality", "communication", "knowledge", "responsiveness", "valueForMoney"] as const;
+const REVIEW_SUB_RATING_LABELS: Record<(typeof REVIEW_SUB_RATING_KEYS)[number], string> = {
+  trainingQuality: "Training Quality",
+  communication: "Communication",
+  knowledge: "Knowledge",
+  responsiveness: "Responsiveness",
+  valueForMoney: "Value for Money",
+};
+
+/** Shown right after a relationship ends — the only point in the app where the "reviewable only once ended" rule (server/src/services/coachReview.ts) is naturally satisfiable. */
+function PostLeaveReview({ relationshipId, coachName, onDone }: { relationshipId: string; coachName: string; onDone: () => void }) {
+  const router = useRouter();
+  const [overallRating, setOverallRating] = useState(0);
+  const [subRatings, setSubRatings] = useState<Record<string, number>>({});
+  const [body, setBody] = useState("");
+  const [saving, setSaving] = useState(false);
+  const [message, setMessage] = useState<string | null>(null);
+  const [submitted, setSubmitted] = useState(false);
+
+  async function submitReview() {
+    if (overallRating < 1) {
+      setMessage("Pick an overall rating before submitting.");
+      return;
+    }
+    setSaving(true);
+    setMessage(null);
+    try {
+      const res = await apiFetch("/api/athlete/coach-reviews", {
+        method: "POST",
+        body: JSON.stringify({
+          relationshipId,
+          overallRating,
+          subRatings: Object.keys(subRatings).length ? subRatings : undefined,
+          body: body.trim() || undefined,
+        }),
+      });
+      if (!res.ok) {
+        const json = (await res.json().catch(() => ({}))) as { error?: string };
+        setMessage(json.error === "already_reviewed" ? "You've already reviewed this coach." : "Could not submit your review.");
+        return;
+      }
+      setSubmitted(true);
+    } catch {
+      setMessage("Network error while submitting your review.");
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  return (
+    <>
+      <PrimaryAppBar title="My Coach" />
+      <AppCard>
+        <Text style={styles.cardTitle}>You&apos;ve left {coachName}</Text>
+        <Text style={styles.muted}>Your membership has been cancelled. You can find a new coach any time.</Text>
+      </AppCard>
+
+      <AppCard>
+        {submitted ? (
+          <>
+            <Text style={styles.cardTitle}>Thanks for your feedback</Text>
+            <Text style={styles.muted}>Your review of {coachName} has been submitted.</Text>
+          </>
+        ) : (
+          <>
+            <Text style={styles.cardTitle}>Rate your experience</Text>
+            <View style={styles.starRow}>
+              {[1, 2, 3, 4, 5].map((value) => (
+                <Pressable key={value} onPress={() => setOverallRating(value)} hitSlop={6}>
+                  <Ionicons name={value <= overallRating ? "star" : "star-outline"} size={32} color={colors.warn} />
+                </Pressable>
+              ))}
+            </View>
+            {REVIEW_SUB_RATING_KEYS.map((key) => (
+              <View key={key} style={styles.subRatingRow}>
+                <Text style={styles.subRatingLabel}>{REVIEW_SUB_RATING_LABELS[key]}</Text>
+                <View style={styles.starRowSmall}>
+                  {[1, 2, 3, 4, 5].map((value) => (
+                    <Pressable key={value} onPress={() => setSubRatings((current) => ({ ...current, [key]: value }))} hitSlop={4}>
+                      <Ionicons name={value <= (subRatings[key] ?? 0) ? "star" : "star-outline"} size={18} color={colors.warn} />
+                    </Pressable>
+                  ))}
+                </View>
+              </View>
+            ))}
+            <TextInput
+              value={body}
+              onChangeText={setBody}
+              placeholder="Share more about your experience (optional)"
+              placeholderTextColor={colors.inkFaint}
+              style={styles.inlineTextInput}
+              multiline
+            />
+            {message ? <Text style={styles.errorText}>{message}</Text> : null}
+            <ActionButton label={saving ? "Submitting..." : "Submit Review"} variant="filled" onPress={submitReview} disabled={saving} />
+          </>
+        )}
+      </AppCard>
+
+      <View style={styles.actionRow}>
+        <ActionButton label={submitted ? "Done" : "Skip"} onPress={onDone} />
+        <ActionButton
+          label="Find a New Coach"
+          variant="filled"
+          onPress={() => {
+            onDone();
+            router.push("/athlete/coach-discovery" as never);
+          }}
+        />
+      </View>
     </>
   );
 }
@@ -2215,6 +2366,10 @@ const styles = StyleSheet.create({
   successText: { color: colors.ok, fontSize: 11, lineHeight: 15, fontWeight: "800", textAlign: "center" },
   errorText: { color: colors.bad, fontSize: 11, lineHeight: 15, fontWeight: "800", textAlign: "center" },
   inlineActionPanel: { gap: 9 },
+  starRow: { flexDirection: "row", gap: 8, marginVertical: 8 },
+  starRowSmall: { flexDirection: "row", gap: 4 },
+  subRatingRow: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", paddingVertical: 6 },
+  subRatingLabel: { color: colors.inkMuted, fontSize: 12, fontWeight: "700" },
   inlineTextInput: {
     minHeight: 78,
     borderRadius: 8,
@@ -2232,7 +2387,7 @@ const styles = StyleSheet.create({
   verticalDivider: { width: 1, backgroundColor: colors.line, alignSelf: "stretch" },
   readinessCard: { paddingVertical: 8, paddingHorizontal: 11 },
   readinessRow: { minHeight: 72, flexDirection: "row", alignItems: "center", gap: 12 },
-  readinessLeft: { width: 174, flexDirection: "row", alignItems: "center", gap: 12 },
+  readinessLeft: { width: 148, flexDirection: "row", alignItems: "center", gap: 12 },
   readinessCopy: { minWidth: 0, gap: 2 },
   readinessTitle: { color: colors.ink, fontSize: 10, lineHeight: 13, fontWeight: "900" },
   readinessStatus: { fontSize: 11, lineHeight: 14, fontWeight: "900" },
@@ -2455,27 +2610,27 @@ const styles = StyleSheet.create({
     overflow: "hidden",
   },
   progressRangeTab: { flex: 1, alignItems: "center", justifyContent: "center" },
-  progressRangeText: { color: colors.ink, fontSize: 11, lineHeight: 14, fontWeight: "700" },
+  progressRangeText: { color: colors.ink, fontSize: 12.5, lineHeight: 16, fontWeight: "700" },
   progressRangeTextActive: { color: colors.primary, fontWeight: "900" },
   progressRangeUnderline: { position: "absolute", left: 20, right: 20, bottom: 0, height: 2, backgroundColor: "transparent" },
   progressRangeUnderlineActive: { backgroundColor: colors.primary },
-  progressCard: { paddingHorizontal: 11, paddingVertical: 6 },
+  progressCard: { paddingHorizontal: 11, paddingVertical: 8 },
   progressEmptyChart: { alignItems: "center", justifyContent: "center", borderRadius: 8, backgroundColor: colors.surfaceInset },
-  progressEmptyChartText: { color: colors.inkMuted, fontSize: 10, lineHeight: 13, fontWeight: "800" },
-  progressEmptyText: { color: colors.inkMuted, fontSize: 10.5, lineHeight: 14, fontWeight: "700", marginTop: 6 },
-  progressMiniCard: { minHeight: 33, paddingHorizontal: 10, paddingVertical: 5, flexDirection: "row", alignItems: "center", gap: 8 },
+  progressEmptyChartText: { color: colors.inkMuted, fontSize: 11.5, lineHeight: 15, fontWeight: "800" },
+  progressEmptyText: { color: colors.inkMuted, fontSize: 12, lineHeight: 16, fontWeight: "700", marginTop: 6 },
+  progressMiniCard: { minHeight: 37, paddingHorizontal: 10, paddingVertical: 5, flexDirection: "row", alignItems: "center", gap: 8 },
   progressCardHeader: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: 8 },
-  progressCardTitle: { color: colors.ink, fontSize: 11.5, lineHeight: 15, fontWeight: "900" },
-  onTrackPill: { minHeight: 17, borderRadius: 9, backgroundColor: colors.okSoft, paddingHorizontal: 9, alignItems: "center", justifyContent: "center" },
-  onTrackText: { color: "#137a2a", fontSize: 9, lineHeight: 12, fontWeight: "800" },
-  progressGoalMetrics: { flexDirection: "row", alignItems: "center", marginTop: 6 },
-  progressGoalMetric: { flex: 1, gap: 1 },
+  progressCardTitle: { color: colors.ink, fontSize: 13, lineHeight: 17, fontWeight: "900" },
+  onTrackPill: { minHeight: 19, borderRadius: 9, backgroundColor: colors.okSoft, paddingHorizontal: 9, alignItems: "center", justifyContent: "center" },
+  onTrackText: { color: "#137a2a", fontSize: 10.5, lineHeight: 14, fontWeight: "800" },
+  progressGoalMetrics: { flexDirection: "row", alignItems: "center", marginTop: 8 },
+  progressGoalMetric: { flex: 1, gap: 2 },
   progressMetricDivider: { width: 1, alignSelf: "stretch", backgroundColor: colors.line, marginHorizontal: 8 },
-  progressGoalLabel: { color: colors.inkMuted, fontSize: 9.5, lineHeight: 12, fontWeight: "600" },
-  progressGoalValue: { color: colors.ink, fontSize: 13.5, lineHeight: 17, fontWeight: "900" },
+  progressGoalLabel: { color: colors.inkMuted, fontSize: 11, lineHeight: 14, fontWeight: "600" },
+  progressGoalValue: { color: colors.ink, fontSize: 16, lineHeight: 20, fontWeight: "900" },
   progressGoalValueActive: { color: colors.primary },
-  progressGoalSuffix: { color: colors.ink, fontSize: 9.5, fontWeight: "600" },
-  goalScaleTrack: { height: 5, borderRadius: 3, backgroundColor: "#dfe4ed", marginTop: 7, overflow: "visible" },
+  progressGoalSuffix: { color: colors.ink, fontSize: 11, fontWeight: "600" },
+  goalScaleTrack: { height: 5, borderRadius: 3, backgroundColor: "#dfe4ed", marginTop: 9, overflow: "visible" },
   goalScaleFill: { position: "absolute", left: 0, top: 0, bottom: 0, borderRadius: 4, backgroundColor: colors.primary },
   goalScaleThumb: {
     position: "absolute",
@@ -2488,19 +2643,19 @@ const styles = StyleSheet.create({
     borderWidth: 1.5,
     borderColor: "#ffffff",
   },
-  goalScaleLabels: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", marginTop: 4 },
-  goalScaleText: { color: colors.ink, fontSize: 10, lineHeight: 13, fontWeight: "800" },
-  progressWeekGrid: { position: "relative", flexDirection: "row", flexWrap: "wrap", marginTop: 5, rowGap: 3 },
+  goalScaleLabels: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", marginTop: 5 },
+  goalScaleText: { color: colors.ink, fontSize: 11.5, lineHeight: 15, fontWeight: "800" },
+  progressWeekGrid: { position: "relative", flexDirection: "row", flexWrap: "wrap", marginTop: 6, rowGap: 4 },
   progressWeekVerticalDivider: { position: "absolute", top: 2, bottom: 2, left: "50%", width: 1, backgroundColor: colors.line },
   progressWeekHorizontalDivider: { position: "absolute", left: 0, right: 0, top: "50%", height: 1, backgroundColor: colors.line },
-  progressWeekMetric: { width: "50%", minHeight: 30, flexDirection: "row", alignItems: "center", gap: 7, paddingRight: 8 },
+  progressWeekMetric: { width: "50%", minHeight: 36, flexDirection: "row", alignItems: "center", gap: 7, paddingRight: 8 },
   progressWeekCopy: { flex: 1, minWidth: 0, gap: 2 },
-  progressMetricTitle: { color: colors.ink, fontSize: 10.5, lineHeight: 13, fontWeight: "900" },
-  progressMetricValue: { color: colors.ink, fontSize: 10, lineHeight: 12, fontWeight: "700" },
+  progressMetricTitle: { color: colors.ink, fontSize: 12, lineHeight: 15, fontWeight: "900" },
+  progressMetricValue: { color: colors.ink, fontSize: 11.5, lineHeight: 14, fontWeight: "700" },
   progressTinyTrack: { height: 3, borderRadius: 2, backgroundColor: "#dfe4ed", overflow: "hidden", marginTop: 0 },
   progressTinyFill: { height: "100%", borderRadius: 2 },
   unitPicker: {
-    minHeight: 24,
+    minHeight: 26,
     borderRadius: 5,
     borderWidth: 1,
     borderColor: colors.line,
@@ -2510,41 +2665,41 @@ const styles = StyleSheet.create({
     gap: 4,
     backgroundColor: "#ffffff",
   },
-  unitText: { color: colors.ink, fontSize: 10, lineHeight: 13, fontWeight: "700" },
-  progressChartTabs: { minHeight: 23, borderBottomWidth: 1, borderBottomColor: colors.line, flexDirection: "row", marginBottom: 4 },
+  unitText: { color: colors.ink, fontSize: 11.5, lineHeight: 15, fontWeight: "700" },
+  progressChartTabs: { minHeight: 27, borderBottomWidth: 1, borderBottomColor: colors.line, flexDirection: "row", marginBottom: 5 },
   progressChartTab: { flex: 1, alignItems: "center", justifyContent: "center" },
-  progressChartTabText: { color: colors.inkMuted, fontSize: 10, lineHeight: 13, fontWeight: "700" },
+  progressChartTabText: { color: colors.inkMuted, fontSize: 11.5, lineHeight: 15, fontWeight: "700" },
   progressChartTabTextActive: { color: colors.primary, fontWeight: "900" },
   progressChartUnderline: { position: "absolute", left: 8, right: 8, bottom: -1, height: 2, backgroundColor: "transparent" },
   progressChartUnderlineActive: { backgroundColor: colors.primary },
-  readinessChartBody: { minHeight: 62, flexDirection: "row", alignItems: "center", gap: 7 },
-  readinessScoreBlock: { width: 86, gap: 2 },
-  readinessScoreLabel: { color: colors.ink, fontSize: 9.5, lineHeight: 12, fontWeight: "900" },
-  readinessScoreValue: { color: colors.ink, fontSize: 12, lineHeight: 15, fontWeight: "600" },
-  readinessScoreNumber: { color: colors.primary, fontSize: 20, lineHeight: 24, fontWeight: "900" },
+  readinessChartBody: { minHeight: 66, flexDirection: "row", alignItems: "center", gap: 7 },
+  readinessScoreBlock: { width: 90, gap: 3 },
+  readinessScoreLabel: { color: colors.ink, fontSize: 11, lineHeight: 14, fontWeight: "900" },
+  readinessScoreValue: { color: colors.ink, fontSize: 13.5, lineHeight: 17, fontWeight: "600" },
+  readinessScoreNumber: { color: colors.primary, fontSize: 21, lineHeight: 25, fontWeight: "900" },
   goodRow: { flexDirection: "row", alignItems: "center", gap: 5 },
   goodDot: { width: 8, height: 8, borderRadius: 4, backgroundColor: colors.ok, borderWidth: 1, borderColor: "#c8f0d2" },
-  goodText: { color: "#137a2a", fontSize: 10, lineHeight: 13, fontWeight: "800" },
+  goodText: { color: "#137a2a", fontSize: 11.5, lineHeight: 15, fontWeight: "800" },
   readinessChartPane: { flex: 1, minWidth: 0 },
-  nutritionAdherenceRow: { minHeight: 36, flexDirection: "row", alignItems: "center", marginTop: 6 },
+  nutritionAdherenceRow: { minHeight: 42, flexDirection: "row", alignItems: "center", marginTop: 8 },
   nutritionAdherenceMetric: { flex: 1, minWidth: 0, flexDirection: "row", alignItems: "center", gap: 5 },
   nutritionAdherenceCopy: { flex: 1, minWidth: 0, gap: 2 },
-  nutritionAdherenceLabel: { color: colors.ink, fontSize: 9, lineHeight: 11, fontWeight: "700" },
-  nutritionAdherenceValue: { color: colors.ink, fontSize: 11.5, lineHeight: 14, fontWeight: "900" },
-  progressInsightRow: { minHeight: 23, flexDirection: "row", alignItems: "center", gap: 8 },
+  nutritionAdherenceLabel: { color: colors.ink, fontSize: 10.5, lineHeight: 13, fontWeight: "700" },
+  nutritionAdherenceValue: { color: colors.ink, fontSize: 13, lineHeight: 16, fontWeight: "900" },
+  progressInsightRow: { minHeight: 27, flexDirection: "row", alignItems: "center", gap: 8 },
   progressInsightIcon: { width: 22, height: 22, borderRadius: 11, alignItems: "center", justifyContent: "center" },
   progressInsightIconUp: { backgroundColor: colors.okSoft },
   progressInsightIconDown: { backgroundColor: "#fff1e5" },
-  progressInsightText: { flex: 1, color: colors.ink, fontSize: 10.5, lineHeight: 14, fontWeight: "700" },
+  progressInsightText: { flex: 1, color: colors.ink, fontSize: 12, lineHeight: 16, fontWeight: "700" },
   greenText: { color: colors.ok, fontWeight: "900" },
   orangeText: { color: "#f97316", fontWeight: "900" },
-  streakTitle: { color: colors.ink, fontSize: 11.5, lineHeight: 15, fontWeight: "800" },
-  streakSub: { color: colors.ink, fontSize: 9.5, lineHeight: 12, marginTop: 1 },
-  feedbackProgressCard: { minHeight: 45, paddingHorizontal: 10, paddingVertical: 7, flexDirection: "row", alignItems: "center", gap: 9 },
+  streakTitle: { color: colors.ink, fontSize: 13, lineHeight: 17, fontWeight: "800" },
+  streakSub: { color: colors.ink, fontSize: 11, lineHeight: 14, marginTop: 1 },
+  feedbackProgressCard: { minHeight: 50, paddingHorizontal: 10, paddingVertical: 8, flexDirection: "row", alignItems: "center", gap: 9 },
   feedbackProgressCopy: { flex: 1, minWidth: 0 },
-  feedbackProgressText: { color: colors.ink, fontSize: 10, lineHeight: 13, marginTop: 2 },
-  feedbackProgressButton: { flex: 0, width: 112, minHeight: 27, borderRadius: 5 },
-  feedbackProgressButtonText: { fontSize: 10, lineHeight: 13 },
+  feedbackProgressText: { color: colors.ink, fontSize: 11.5, lineHeight: 15, marginTop: 2 },
+  feedbackProgressButton: { flex: 0, width: 118, minHeight: 30, borderRadius: 5 },
+  feedbackProgressButtonText: { fontSize: 11.5, lineHeight: 15 },
   metricGrid: { flexDirection: "row", gap: 8, marginTop: 12 },
   goalGrid: { flexDirection: "row", gap: 12, marginTop: 12 },
   goalMetric: { flex: 1, borderRightWidth: 1, borderRightColor: colors.line, paddingRight: 10 },

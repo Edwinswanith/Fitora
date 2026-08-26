@@ -25,6 +25,9 @@ import {
   deleteExerciseMediaFile,
 } from "../services/exerciseMedia";
 import { checkFeatureEntitlement } from "../services/subscription";
+import { Meal } from "../models/Meal";
+import { MealFood } from "../models/MealFood";
+import { getCurrentTarget, serializeTarget } from "../services/nutritionTarget";
 
 const router = Router();
 router.use(requireAuth, requireRole("coach"), loadScope);
@@ -160,6 +163,44 @@ router.get(
     const date = parseDateOrNull(req.query.date) ?? new Date();
     const summaries = await buildWorkoutAssignmentsForDate(new Types.ObjectId(req.params.athleteId), date, req.actor!.userId);
     res.json({ assignments: summaries });
+  }
+);
+
+/**
+ * GET /athletes/:athleteId/nutrition?date= — coach-scoped read-only view of an
+ * assigned athlete's nutrition target plus that day's logged meals/totals.
+ * Mirrors routes/nutrition.ts's athlete-self "/target" + "/meals" shape, just
+ * re-scoped through requireAthleteAccess instead of req.actor.athleteProfileId.
+ * No coach-side write path exists for meals — logging stays athlete-only.
+ */
+router.get(
+  "/athletes/:athleteId/nutrition",
+  requireAthleteAccess("athleteId"),
+  async (req: Request, res: Response) => {
+    const athleteId = new Types.ObjectId(req.params.athleteId);
+    const date = parseDateOrNull(req.query.date) ?? new Date();
+    const { start, end } = dayRange(date);
+
+    const [target, meals] = await Promise.all([
+      getCurrentTarget(athleteId),
+      Meal.find({ athleteId, date: { $gte: start, $lt: end } }).sort({ loggedAt: 1 }).lean(),
+    ]);
+    const foods = await MealFood.find({ mealId: { $in: meals.map((m) => m._id) } }).lean();
+    const totals = foods.reduce(
+      (acc, f) => ({
+        calories: acc.calories + f.calories,
+        proteinG: acc.proteinG + f.proteinG,
+        carbsG: acc.carbsG + f.carbsG,
+        fatG: acc.fatG + f.fatG,
+      }),
+      { calories: 0, proteinG: 0, carbsG: 0, fatG: 0 }
+    );
+
+    res.json({
+      target: target ? serializeTarget(target) : null,
+      mealsLoggedCount: meals.length,
+      totals,
+    });
   }
 );
 

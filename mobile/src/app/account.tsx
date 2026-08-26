@@ -3,7 +3,7 @@ import { ActivityIndicator, Alert, KeyboardAvoidingView, Platform, Pressable, St
 import { useRouter } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
 import { Text } from "../components/AppText";
-import { Avatar } from "../components/Avatar";
+import { Avatar, AvatarEditorPanel } from "../components/Avatar";
 import {
   ActionButton,
   AppCard,
@@ -166,12 +166,13 @@ function ProfileShell({
 }
 
 function AthleteProfileContent({ data, onManageGoal }: { data: AthleteDashboardData; onManageGoal: () => void }) {
-  const { user } = useAuth();
+  const { user, setUser } = useAuth();
   const router = useRouter();
   const profile = data.profile;
   const target = data.target;
   const coachName = data.coachProfile?.name || data.coaches[0]?.name;
   const consumed = data.mealTotals?.calories ?? data.meals.reduce((sum, meal) => sum + mealCalories(meal), 0);
+  const [avatarEditorOpen, setAvatarEditorOpen] = useState(false);
 
   return (
     <>
@@ -182,8 +183,20 @@ function AthleteProfileContent({ data, onManageGoal }: { data: AthleteDashboardD
             <Text style={styles.identityName} numberOfLines={1}>{profile?.name || user?.name}</Text>
             <Text style={styles.identityRole}>{titleCase(profile?.fitnessGoal) || profile?.sport || "Fitness"}</Text>
             <Text style={styles.muted} numberOfLines={1}>{profile?.email || user?.email}</Text>
+            <Pressable onPress={() => setAvatarEditorOpen((value) => !value)} hitSlop={8}>
+              <Text style={styles.avatarEditLink}>{avatarEditorOpen ? "Close" : "Change Photo"}</Text>
+            </Pressable>
           </View>
         </View>
+        {avatarEditorOpen && user ? (
+          <View style={styles.avatarEditor}>
+            <AvatarEditorPanel
+              avatar={user.avatar}
+              name={profile?.name || user.name}
+              onChanged={(avatar) => setUser({ ...user, avatar: avatar ?? undefined })}
+            />
+          </View>
+        ) : null}
       </AppCard>
 
       <AppCard>
@@ -254,8 +267,9 @@ function AthleteProfileContent({ data, onManageGoal }: { data: AthleteDashboardD
 }
 
 function CoachProfileContent({ data }: { data: CoachProfileData }) {
-  const { user } = useAuth();
+  const { user, setUser } = useAuth();
   const profile = data.profile;
+  const [avatarEditorOpen, setAvatarEditorOpen] = useState(false);
   return (
     <>
       <AppCard>
@@ -265,8 +279,20 @@ function CoachProfileContent({ data }: { data: CoachProfileData }) {
             <Text style={styles.identityName} numberOfLines={1}>{profile?.name || user?.name}</Text>
             <Text style={styles.identityRole}>Fitness Coach</Text>
             <Text style={styles.muted}>{profile?.active ? "Marketplace profile active" : "Marketplace profile hidden"}</Text>
+            <Pressable onPress={() => setAvatarEditorOpen((value) => !value)} hitSlop={8}>
+              <Text style={styles.avatarEditLink}>{avatarEditorOpen ? "Close" : "Change Photo"}</Text>
+            </Pressable>
           </View>
         </View>
+        {avatarEditorOpen && user ? (
+          <View style={styles.avatarEditor}>
+            <AvatarEditorPanel
+              avatar={user.avatar}
+              name={profile?.name || user.name}
+              onChanged={(avatar) => setUser({ ...user, avatar: avatar ?? undefined })}
+            />
+          </View>
+        ) : null}
       </AppCard>
 
       <AppCard>
@@ -686,8 +712,8 @@ const styles = StyleSheet.create({
   goalRow: { flexDirection: "row", alignItems: "center", gap: 12, marginTop: 10 },
   coachRow: { flexDirection: "row", alignItems: "center", gap: 12 },
   statusText: { fontSize: 14, lineHeight: 19, fontWeight: "800", marginTop: 2 },
-  avatarEditor: { gap: 12, marginTop: 16 },
-  avatarButtons: { flexDirection: "row", gap: 12 },
+  avatarEditLink: { color: colors.primary, fontSize: 13, fontWeight: "800", marginTop: 6 },
+  avatarEditor: { gap: 12, marginTop: 16, borderTopWidth: 1, borderTopColor: colors.line, paddingTop: 16 },
   switchRow: { minHeight: 62, flexDirection: "row", alignItems: "center", gap: 14 },
   switchLabel: { flex: 1, color: colors.ink, fontSize: 15, fontWeight: "800" },
   securityHeader: { minHeight: 56, flexDirection: "row", alignItems: "center", gap: 12 },

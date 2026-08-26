@@ -20,7 +20,16 @@ import { colors, radius } from "../../lib/theme";
 import { formatCurrency, titleCase, useAsyncData, type MarketplaceCoach, type PublicCoachProfile } from "../../lib/fitoraData";
 
 async function loadCoaches() {
-  return apiJson<{ coaches: MarketplaceCoach[] }>("/api/marketplace/coaches?limit=50");
+  const [coaches, assigned] = await Promise.all([
+    apiJson<{ coaches: MarketplaceCoach[] }>("/api/marketplace/coaches?limit=50"),
+    // Reflects the real CoachAthleteAssignment (active relationship), not just a paid
+    // subscription — an athlete can have an active coach with no linked subscription
+    // (e.g. added directly by the coach), and that still must route through the
+    // coach-switch endpoint rather than a plain subscribe (which 409s otherwise).
+    apiJson<{ coaches: { coachId: string; name: string }[] }>("/api/athlete/coaches").catch(() => ({ coaches: [] })),
+  ]);
+  const currentCoachId = assigned.coaches[0]?.coachId ?? null;
+  return { coaches: coaches.coaches, currentCoachId };
 }
 
 export default function CoachDiscovery() {
@@ -104,7 +113,7 @@ export default function CoachDiscovery() {
 
       <SectionHeader title={`${coaches.length} Coaches`} />
       {coaches.length ? (
-        coaches.map((coach) => <CoachCard key={coach.coachId} coach={coach} />)
+        coaches.map((coach) => <CoachCard key={coach.coachId} coach={coach} currentCoachId={state.data?.currentCoachId ?? null} onSwitched={state.reload} />)
       ) : (
         <EmptyState title="No coaches found" body="Try a different specialization, language, or rating filter." icon="search-outline" />
       )}
@@ -112,7 +121,15 @@ export default function CoachDiscovery() {
   );
 }
 
-function CoachCard({ coach }: { coach: MarketplaceCoach }) {
+function CoachCard({
+  coach,
+  currentCoachId,
+  onSwitched,
+}: {
+  coach: MarketplaceCoach;
+  currentCoachId: string | null;
+  onSwitched: () => void;
+}) {
   const [expanded, setExpanded] = useState(false);
   const [profile, setProfile] = useState<PublicCoachProfile | null>(null);
   const [loadingProfile, setLoadingProfile] = useState(false);
@@ -136,17 +153,26 @@ function CoachCard({ coach }: { coach: MarketplaceCoach }) {
 
   async function startSubscription(planId: string) {
     setMessage(null);
+    const isSwitch = Boolean(currentCoachId) && currentCoachId !== coach.coachId;
     try {
-      const res = await apiFetch("/api/athlete/coach-subscriptions", {
-        method: "POST",
-        body: JSON.stringify({ coachId: coach.coachId, pricingPlanId: planId }),
-      });
-      const body = (await res.json().catch(() => ({}))) as { error?: string; checkoutRef?: string };
+      const res = await apiFetch(
+        isSwitch ? "/api/athlete/coach-switch" : "/api/athlete/coach-subscriptions",
+        {
+          method: "POST",
+          body: JSON.stringify(
+            isSwitch
+              ? { newCoachId: coach.coachId, newPricingPlanId: planId }
+              : { coachId: coach.coachId, pricingPlanId: planId }
+          ),
+        }
+      );
+      const body = (await res.json().catch(() => ({}))) as { error?: string; checkoutRef?: string; kind?: string };
       if (!res.ok) {
-        setMessage(body.error ?? "Could not start this membership.");
+        setMessage(body.error === "already_your_coach" ? "This coach is already your current coach." : body.error ?? "Could not start this membership.");
         return;
       }
-      setMessage(body.checkoutRef ? "Membership checkout started." : "Membership request created.");
+      setMessage(body.checkoutRef ? (isSwitch ? "Coach switch checkout started." : "Membership checkout started.") : "Membership request created.");
+      onSwitched();
     } catch {
       setMessage("Network failed while starting membership.");
     }
@@ -205,7 +231,11 @@ function CoachCard({ coach }: { coach: MarketplaceCoach }) {
                     <Text style={styles.planTitle}>{plan.name}</Text>
                     <Text style={styles.muted}>{formatCurrency(plan.monthlyPrice, plan.currency)} / month</Text>
                   </View>
-                  <ActionButton label="Choose" variant="filled" onPress={() => startSubscription(plan.id)} />
+                  <ActionButton
+                    label={currentCoachId && currentCoachId !== coach.coachId ? "Switch to This Plan" : "Choose"}
+                    variant="filled"
+                    onPress={() => startSubscription(plan.id)}
+                  />
                 </View>
               ))}
             </>

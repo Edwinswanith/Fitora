@@ -289,3 +289,33 @@ export function buildNewReview(input: { athleteName: string; rating: number }): 
     link: "/coach/profile",
   };
 }
+
+// --- Phase 13: coach relationship end/switch (previously fired no notification at all) ---
+
+export function buildSubscriptionCancelled(): TemplateResult {
+  return {
+    title: "Your coaching membership was cancelled",
+    body: "Your subscription has ended. You can subscribe again any time.",
+    link: "/athlete/dashboard?section=coach",
+  };
+}
+
+export function buildCoachRelationshipEndedForAthlete(input: { coachName: string; initiatedByCoach: boolean }): TemplateResult {
+  return {
+    title: input.initiatedByCoach ? "Your coach ended your relationship" : "You left your coach",
+    body: input.initiatedByCoach
+      ? `${input.coachName} is no longer your coach. Find a new coach any time.`
+      : `You're no longer training with ${input.coachName}. Find a new coach any time.`,
+    link: "/athlete/coach-discovery",
+  };
+}
+
+export function buildAthleteLeftForCoach(input: { athleteName: string; initiatedByCoach: boolean }): TemplateResult {
+  return {
+    title: input.initiatedByCoach ? "Athlete removed from your roster" : "An athlete left your roster",
+    body: input.initiatedByCoach
+      ? `You removed ${input.athleteName} from your roster.`
+      : `${input.athleteName} ended their coaching relationship with you.`,
+    link: "/coach/athletes",
+  };
+}

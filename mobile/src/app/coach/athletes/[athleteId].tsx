@@ -152,7 +152,7 @@ function ClientDetailView({ data }: { data: CoachClientDetailData }) {
         <View style={styles.metricGrid}>
           <ClientMetric icon="speedometer-outline" label="Readiness" value={card?.readinessScore == null ? "--" : String(card.readinessScore)} />
           <ClientMetric icon="barbell-outline" label="Workout" value={workout ? `${workout.completedCount} / ${workout.exerciseCount}` : "--"} />
-          <ClientMetric icon="restaurant-outline" label="Nutrition" value="Not logged" />
+          <ClientMetric icon="restaurant-outline" label="Nutrition" value={data.nutrition && data.nutrition.mealsLoggedCount > 0 ? `${data.nutrition.mealsLoggedCount} meal${data.nutrition.mealsLoggedCount === 1 ? "" : "s"}` : "Not logged"} />
           <ClientMetric icon="checkbox-outline" label="Tasks" value={completedSessions.length ? `${completedSessions.length} done` : "--"} />
         </View>
       </AppCard>
@@ -174,8 +174,25 @@ function ClientDetailView({ data }: { data: CoachClientDetailData }) {
 
       <AppCard>
         <Text style={styles.cardTitle}>Nutrition</Text>
-        <Text style={styles.muted}>Meal logs are not included in this client detail feed yet. Review nutrition adherence from the main dashboard data.</Text>
-        <StatusChip label="No meal data" tone="neutral" />
+        {data.nutrition?.target ? (
+          <>
+            <View style={styles.metricGrid}>
+              <ClientMetric icon="flame-outline" label="Calories" value={`${data.nutrition.totals.calories} / ${data.nutrition.target.calories}`} />
+              <ClientMetric icon="fitness-outline" label="Protein" value={`${data.nutrition.totals.proteinG}g`} />
+              <ClientMetric icon="nutrition-outline" label="Carbs" value={`${data.nutrition.totals.carbsG}g`} />
+              <ClientMetric icon="water-outline" label="Fat" value={`${data.nutrition.totals.fatG}g`} />
+            </View>
+            <StatusChip
+              label={data.nutrition.mealsLoggedCount > 0 ? `${data.nutrition.mealsLoggedCount} meal${data.nutrition.mealsLoggedCount === 1 ? "" : "s"} logged today` : "No meals logged today"}
+              tone={data.nutrition.mealsLoggedCount > 0 ? "success" : "neutral"}
+            />
+          </>
+        ) : (
+          <>
+            <Text style={styles.muted}>This athlete has no active nutrition target yet.</Text>
+            <StatusChip label="No target set" tone="neutral" />
+          </>
+        )}
       </AppCard>
 
       <AppCard>

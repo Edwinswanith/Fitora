@@ -25,6 +25,7 @@ import {
   loadCoachProfileData,
   titleCase,
   useAsyncData,
+  type CoachAvailabilityException,
   type CoachAvailabilityRule,
   type CoachOwnProfile,
   type PricingPlan,
@@ -43,6 +44,7 @@ export default function CoachProfile() {
   const [pricingOpen, setPricingOpen] = useState(false);
   const [editingPlan, setEditingPlan] = useState<PricingPlan | null>(null);
   const [availabilityOpen, setAvailabilityOpen] = useState(false);
+  const [exceptionsOpen, setExceptionsOpen] = useState(false);
   const [actionMessage, setActionMessage] = useState<string | null>(null);
   const [reviewsOpen, setReviewsOpen] = useState(false);
 
@@ -205,6 +207,15 @@ export default function CoachProfile() {
           <SectionHeader title="Availability" action="Manage" onAction={() => setAvailabilityOpen((value) => !value)} />
           {availabilityOpen ? <AvailabilityEditor rules={data.availabilityRules} onSaved={() => { setActionMessage("Availability updated."); state.reload(); }} /> : null}
           <AvailabilityList rules={data.availabilityRules} />
+          <Pressable onPress={() => setExceptionsOpen((value) => !value)} style={styles.exceptionsToggle}>
+            <Text style={styles.linkText}>{exceptionsOpen ? "Hide date overrides" : "Manage date overrides"}</Text>
+          </Pressable>
+          {exceptionsOpen ? (
+            <AvailabilityExceptionsEditor
+              exceptions={data.availabilityExceptions}
+              onChanged={(message) => { setActionMessage(message); state.reload(); }}
+            />
+          ) : null}
         </AppCard>
         <AppCard style={styles.splitCard}>
           <SectionHeader title="Reviews" action={data.reviews.length ? (reviewsOpen ? "Hide" : "View") : undefined} onAction={() => setReviewsOpen((value) => !value)} />
@@ -525,6 +536,123 @@ function AvailabilityList({ rules }: { rules: CoachAvailabilityRule[] }) {
   );
 }
 
+function AvailabilityExceptionsEditor({
+  exceptions,
+  onChanged,
+}: {
+  exceptions: CoachAvailabilityException[];
+  onChanged: (message: string) => void;
+}) {
+  const [date, setDate] = useState("");
+  const [type, setType] = useState<"unavailable" | "custom_hours">("unavailable");
+  const [startTime, setStartTime] = useState("09:00");
+  const [endTime, setEndTime] = useState("17:00");
+  const [reason, setReason] = useState("");
+  const [saving, setSaving] = useState(false);
+  const [deletingId, setDeletingId] = useState<string | null>(null);
+  const [message, setMessage] = useState<string | null>(null);
+
+  function timeToMinute(value: string): number | null {
+    const match = /^(\d{2}):(\d{2})$/.exec(value.trim());
+    if (!match) return null;
+    const hour = Number(match[1]);
+    const minute = Number(match[2]);
+    if (hour < 0 || hour > 23 || minute < 0 || minute > 59) return null;
+    return hour * 60 + minute;
+  }
+
+  async function addException() {
+    setMessage(null);
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(date.trim())) {
+      setMessage("Enter the date as YYYY-MM-DD.");
+      return;
+    }
+    const body: Record<string, unknown> = { date: date.trim(), type, reason: reason.trim() || undefined };
+    if (type === "custom_hours") {
+      const startMinute = timeToMinute(startTime);
+      const endMinute = timeToMinute(endTime);
+      if (startMinute == null || endMinute == null || endMinute <= startMinute) {
+        setMessage("Enter valid start/end times (HH:MM), with end after start.");
+        return;
+      }
+      body.startMinute = startMinute;
+      body.endMinute = endMinute;
+    }
+    setSaving(true);
+    try {
+      const res = await apiFetch("/api/coach/availability/exceptions", { method: "POST", body: JSON.stringify(body) });
+      if (!res.ok) {
+        setMessage("Could not save this override.");
+        return;
+      }
+      setDate("");
+      setReason("");
+      onChanged("Availability override saved.");
+    } catch {
+      setMessage("Network error while saving override.");
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  async function removeException(id: string) {
+    setDeletingId(id);
+    setMessage(null);
+    try {
+      const res = await apiFetch(`/api/coach/availability/exceptions/${id}`, { method: "DELETE" });
+      if (!res.ok) {
+        setMessage("Could not remove this override.");
+        return;
+      }
+      onChanged("Availability override removed.");
+    } catch {
+      setMessage("Network error while removing override.");
+    } finally {
+      setDeletingId(null);
+    }
+  }
+
+  return (
+    <View style={styles.editorBlock}>
+      <Text style={styles.editorTitle}>Date Overrides</Text>
+      {exceptions.length ? (
+        exceptions.map((exception) => (
+          <View key={exception.id} style={styles.exceptionRow}>
+            <View style={{ flex: 1, minWidth: 0 }}>
+              <Text style={styles.dayValue} numberOfLines={1}>
+                {exception.date} - {exception.type === "unavailable" ? "Unavailable" : `Custom ${minuteClock(exception.startMinute ?? 0)} - ${minuteClock(exception.endMinute ?? 0)}`}
+              </Text>
+              {exception.reason ? <Text style={styles.muted} numberOfLines={1}>{exception.reason}</Text> : null}
+            </View>
+            <Pressable onPress={() => removeException(exception.id)} disabled={deletingId === exception.id} hitSlop={8}>
+              <Text style={styles.linkText}>{deletingId === exception.id ? "..." : "Remove"}</Text>
+            </Pressable>
+          </View>
+        ))
+      ) : (
+        <Text style={styles.muted}>No date overrides in the next 60 days.</Text>
+      )}
+
+      <FormInput label="Date" value={date} onChangeText={setDate} />
+      <View style={styles.toggleRow}>
+        <ToggleChip label="Unavailable" active={type === "unavailable"} onPress={() => setType("unavailable")} />
+        <ToggleChip label="Custom Hours" active={type === "custom_hours"} onPress={() => setType("custom_hours")} />
+      </View>
+      {type === "custom_hours" ? (
+        <View style={styles.formGrid}>
+          <FormInput label="Start (HH:MM)" value={startTime} onChangeText={setStartTime} />
+          <FormInput label="End (HH:MM)" value={endTime} onChangeText={setEndTime} />
+        </View>
+      ) : null}
+      <FormInput label="Reason (optional)" value={reason} onChangeText={setReason} />
+      {message ? <Text style={styles.errorText}>{message}</Text> : null}
+      <Pressable onPress={addException} disabled={saving} style={[styles.saveButton, saving ? styles.disabled : null]}>
+        {saving ? <ActivityIndicator color="#fff" /> : <Text style={styles.saveText}>Add Override</Text>}
+      </Pressable>
+    </View>
+  );
+}
+
 function minuteClock(minutes: number) {
   const hour24 = Math.floor(minutes / 60);
   const mins = minutes % 60;
@@ -558,6 +686,8 @@ const styles = StyleSheet.create({
   dayValue: { flex: 1, minWidth: 0, color: colors.ink, fontSize: 12, lineHeight: 17 },
   availabilityDot: { width: 9, height: 9, borderRadius: 5, backgroundColor: colors.inkFaint },
   availabilityDotOn: { backgroundColor: colors.ok },
+  exceptionsToggle: { marginTop: 10, alignSelf: "flex-start" },
+  exceptionRow: { flexDirection: "row", alignItems: "center", gap: 8, paddingVertical: 7, borderBottomWidth: 1, borderBottomColor: colors.line },
   partialText: { color: colors.inkMuted, fontSize: 12, lineHeight: 17 },
   editorCard: { gap: 10 },
   editorHeader: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: 12 },

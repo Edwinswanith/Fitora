@@ -1,5 +1,5 @@
 import { useMemo, useState } from "react";
-import { Pressable, StyleSheet, View } from "react-native";
+import { Pressable, StyleSheet, TextInput, View } from "react-native";
 import { useRouter } from "expo-router";
 import { Text } from "../../components/AppText";
 import {
@@ -67,6 +67,12 @@ function CoachHomeView({ data }: { data: CoachHomeData }) {
   const [sessionPanel, setSessionPanel] = useState(false);
   const [sessionMessage, setSessionMessage] = useState<string | null>(null);
   const [sessionBusy, setSessionBusy] = useState<string | null>(null);
+  const [rescheduleDate, setRescheduleDate] = useState("");
+  const [rescheduleTime, setRescheduleTime] = useState("");
+  const [rescheduleNote, setRescheduleNote] = useState("");
+  const [cancelNote, setCancelNote] = useState("");
+  const [completeSummary, setCompleteSummary] = useState("");
+  const [completeNotes, setCompleteNotes] = useState("");
   const attention = useMemo(
     () => [...data.cards].filter((card) => attentionRank(card) < 2.5).sort((a, b) => attentionRank(a) - attentionRank(b)).slice(0, 4),
     [data.cards]
@@ -104,6 +110,46 @@ function CoachHomeView({ data }: { data: CoachHomeData }) {
     }
   }
 
+  async function confirmSession() {
+    if (!nextSession) return;
+    setSessionBusy("confirm");
+    setSessionMessage(null);
+    try {
+      const res = await apiFetch(`/api/coach/sessions/${nextSession.id}/confirm`, { method: "POST" });
+      if (!res.ok) {
+        setSessionMessage("Could not confirm this session.");
+        return;
+      }
+      setSessionMessage("Session confirmed.");
+    } catch {
+      setSessionMessage("Network error while confirming session.");
+    } finally {
+      setSessionBusy(null);
+    }
+  }
+
+  async function cancelSession() {
+    if (!nextSession) return;
+    setSessionBusy("cancel");
+    setSessionMessage(null);
+    try {
+      const res = await apiFetch(`/api/coach/sessions/${nextSession.id}/cancel`, {
+        method: "POST",
+        body: JSON.stringify({ note: cancelNote.trim() || undefined }),
+      });
+      if (!res.ok) {
+        setSessionMessage("Could not cancel this session.");
+        return;
+      }
+      setCancelNote("");
+      setSessionMessage("Session cancelled.");
+    } catch {
+      setSessionMessage("Network error while cancelling session.");
+    } finally {
+      setSessionBusy(null);
+    }
+  }
+
   async function completeSession() {
     if (!nextSession) return;
     setSessionBusy("complete");
@@ -111,7 +157,10 @@ function CoachHomeView({ data }: { data: CoachHomeData }) {
     try {
       const res = await apiFetch(`/api/coach/sessions/${nextSession.id}/complete`, {
         method: "POST",
-        body: JSON.stringify({ summary: "Completed from Fitora mobile.", coachNotes: "Session marked complete in coach dashboard." }),
+        body: JSON.stringify({
+          summary: completeSummary.trim() || undefined,
+          coachNotes: completeNotes.trim() || undefined,
+        }),
       });
       if (!res.ok) {
         setSessionMessage("Could not complete this session.");
@@ -125,16 +174,29 @@ function CoachHomeView({ data }: { data: CoachHomeData }) {
     }
   }
 
-  async function rescheduleSession(days: number) {
+  async function rescheduleSession() {
     if (!nextSession) return;
+    const trimmedDate = rescheduleDate.trim();
+    const trimmedTime = rescheduleTime.trim() || "09:00";
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(trimmedDate)) {
+      setSessionMessage("Enter the new date as YYYY-MM-DD.");
+      return;
+    }
+    if (!/^\d{2}:\d{2}$/.test(trimmedTime)) {
+      setSessionMessage("Enter the new time as HH:MM (24-hour).");
+      return;
+    }
+    const nextStart = new Date(`${trimmedDate}T${trimmedTime}:00`);
+    if (Number.isNaN(nextStart.getTime())) {
+      setSessionMessage("That date and time aren't valid.");
+      return;
+    }
     setSessionBusy("reschedule");
     setSessionMessage(null);
     try {
-      const nextStart = new Date(nextSession.scheduledStart);
-      nextStart.setDate(nextStart.getDate() + days);
       const res = await apiFetch(`/api/coach/sessions/${nextSession.id}/reschedule`, {
         method: "POST",
-        body: JSON.stringify({ scheduledStart: nextStart.toISOString(), note: "Rescheduled from Fitora mobile." }),
+        body: JSON.stringify({ scheduledStart: nextStart.toISOString(), note: rescheduleNote.trim() || undefined }),
       });
       if (!res.ok) {
         setSessionMessage("Could not reschedule this session.");
@@ -146,6 +208,18 @@ function CoachHomeView({ data }: { data: CoachHomeData }) {
     } finally {
       setSessionBusy(null);
     }
+  }
+
+  function toggleSessionPanel() {
+    setSessionPanel((value) => {
+      const next = !value;
+      if (next && nextSession) {
+        const start = new Date(nextSession.scheduledStart);
+        setRescheduleDate(start.toISOString().slice(0, 10));
+        setRescheduleTime(start.toISOString().slice(11, 16));
+      }
+      return next;
+    });
   }
 
   return (
@@ -169,7 +243,7 @@ function CoachHomeView({ data }: { data: CoachHomeData }) {
           </View>
           <View style={styles.actionRow}>
             <ActionButton label={sessionBusy === "start" ? "Starting..." : "Start Session"} icon="videocam" variant="filled" onPress={startSession} />
-            <ActionButton label="View Details" onPress={() => setSessionPanel((value) => !value)} />
+            <ActionButton label="View Details" onPress={toggleSessionPanel} />
           </View>
           {sessionPanel ? (
             <View style={styles.sessionPanel}>
@@ -177,13 +251,55 @@ function CoachHomeView({ data }: { data: CoachHomeData }) {
               <Text style={styles.muted}>{nextSession.athleteName || "Client"} - {titleCase(nextSession.type)}</Text>
               <Text style={styles.muted}>{new Date(nextSession.scheduledStart).toLocaleString()} to {new Date(nextSession.scheduledEnd).toLocaleTimeString(undefined, { hour: "numeric", minute: "2-digit" })}</Text>
               <Text style={styles.muted}>Status: {titleCase(nextSession.status)}</Text>
+
               <View style={styles.actionRow}>
-                <ActionButton label={sessionBusy === "reschedule" ? "Moving..." : "+1 Day"} onPress={() => rescheduleSession(1)} />
-                <ActionButton label={sessionBusy === "complete" ? "Saving..." : "Complete"} variant="filled" onPress={completeSession} />
+                <ActionButton label={sessionBusy === "confirm" ? "Confirming..." : "Confirm"} variant="filled" onPress={confirmSession} />
+                <ActionButton
+                  label={sessionBusy === "cancel" ? "Cancelling..." : "Cancel"}
+                  onPress={cancelSession}
+                  style={styles.cancelButton}
+                  textStyle={styles.cancelButtonText}
+                />
               </View>
+              <TextInput
+                value={cancelNote}
+                onChangeText={setCancelNote}
+                style={styles.input}
+                placeholder="Reason for cancelling (optional)"
+                placeholderTextColor={colors.inkFaint}
+              />
+
+              <View style={styles.sessionDivider} />
+              <Text style={styles.formLabel}>Reschedule</Text>
+              <View style={styles.actionRow}>
+                <TextInput value={rescheduleDate} onChangeText={setRescheduleDate} style={[styles.input, styles.inputHalf]} placeholder="YYYY-MM-DD" placeholderTextColor={colors.inkFaint} />
+                <TextInput value={rescheduleTime} onChangeText={setRescheduleTime} style={[styles.input, styles.inputHalf]} placeholder="HH:MM" placeholderTextColor={colors.inkFaint} />
+              </View>
+              <TextInput value={rescheduleNote} onChangeText={setRescheduleNote} style={styles.input} placeholder="Note to athlete (optional)" placeholderTextColor={colors.inkFaint} />
+              <ActionButton label={sessionBusy === "reschedule" ? "Moving..." : "Reschedule"} onPress={rescheduleSession} />
+
+              <View style={styles.sessionDivider} />
+              <Text style={styles.formLabel}>Mark Complete</Text>
+              <TextInput value={completeSummary} onChangeText={setCompleteSummary} style={styles.input} placeholder="Summary (visible to athlete)" placeholderTextColor={colors.inkFaint} />
+              <TextInput value={completeNotes} onChangeText={setCompleteNotes} style={styles.input} placeholder="Private coach notes" placeholderTextColor={colors.inkFaint} />
+              <ActionButton label={sessionBusy === "complete" ? "Saving..." : "Complete"} variant="filled" onPress={completeSession} />
             </View>
           ) : null}
-          {sessionMessage ? <Text style={sessionMessage.includes("ready") || sessionMessage.includes("complete") || sessionMessage.includes("rescheduled") ? styles.successText : styles.errorText}>{sessionMessage}</Text> : null}
+          {sessionMessage ? (
+            <Text
+              style={
+                sessionMessage.includes("ready") ||
+                sessionMessage.includes("complete") ||
+                sessionMessage.includes("rescheduled") ||
+                sessionMessage.includes("confirmed") ||
+                sessionMessage.includes("cancelled")
+                  ? styles.successText
+                  : styles.errorText
+              }
+            >
+              {sessionMessage}
+            </Text>
+          ) : null}
         </AppCard>
       ) : null}
 
@@ -358,7 +474,22 @@ const styles = StyleSheet.create({
   activityRow: { minHeight: 42, flexDirection: "row", alignItems: "center", gap: 9 },
   timeText: { width: 48, color: colors.inkMuted, fontSize: 11, fontWeight: "700" },
   activityText: { flex: 1, color: colors.ink, fontSize: 12, lineHeight: 16, fontWeight: "700" },
-  sessionPanel: { marginTop: 10, borderTopWidth: 1, borderTopColor: colors.line, paddingTop: 9, gap: 5 },
+  sessionPanel: { marginTop: 10, borderTopWidth: 1, borderTopColor: colors.line, paddingTop: 9, gap: 8 },
+  sessionDivider: { height: 1, backgroundColor: colors.line, marginVertical: 2 },
+  formLabel: { color: colors.inkMuted, fontSize: 11, fontWeight: "800", textTransform: "uppercase", letterSpacing: 0.3 },
+  input: {
+    minHeight: 40,
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: colors.lineStrong,
+    backgroundColor: colors.surfaceRaised,
+    paddingHorizontal: 12,
+    color: colors.ink,
+    fontSize: 13,
+  },
+  inputHalf: { flex: 1 },
+  cancelButton: { borderColor: colors.bad },
+  cancelButtonText: { color: colors.bad },
   successText: { color: colors.ok, fontSize: 12, fontWeight: "800", marginTop: 6 },
   errorText: { color: colors.bad, fontSize: 12, fontWeight: "800", marginTop: 6 },
   divider: { height: 1, backgroundColor: colors.line },

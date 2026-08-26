@@ -239,6 +239,15 @@ export type CoachAvailabilityRule = {
   bufferMin: number;
 };
 
+export type CoachAvailabilityException = {
+  id: string;
+  date: string;
+  type: "unavailable" | "custom_hours";
+  startMinute?: number | null;
+  endMinute?: number | null;
+  reason?: string | null;
+};
+
 export type CoachReview = {
   id: string;
   athleteName?: string | null;
@@ -341,6 +350,14 @@ export type CoachPlanData = CoachHomeData & {
   templates: { id: string; name: string; exercises?: unknown[]; estimatedDurationMin?: number | null; version?: number }[];
   mealPlans: { id: string; name: string; durationDays?: number; days?: unknown[]; status?: string }[];
   tomorrowWorkouts: (WorkoutAssignmentSummary & { athleteId: string; athleteName: string })[];
+  routineStatus: {
+    athleteId: string;
+    athleteName: string;
+    workoutName: string | null;
+    workoutStatus: string | null;
+    mealPlanName: string | null;
+    mealPlanActive: boolean;
+  }[];
 };
 
 export type CoachContentData = {
@@ -354,8 +371,20 @@ export type CoachProfileData = {
   profile: CoachOwnProfile | null;
   pricingPlans: PricingPlan[];
   availabilityRules: CoachAvailabilityRule[];
+  availabilityExceptions: CoachAvailabilityException[];
   reviews: CoachReview[];
   partialIssues: string[];
+};
+
+export type CoachClientNutrition = {
+  target: {
+    calories: number;
+    proteinG: number;
+    carbsG: number;
+    fatG: number;
+  } | null;
+  mealsLoggedCount: number;
+  totals: { calories: number; proteinG: number; carbsG: number; fatG: number };
 };
 
 export type CoachClientDetailData = {
@@ -364,6 +393,7 @@ export type CoachClientDetailData = {
   workouts: WorkoutAssignmentSummary[];
   trends: TrendPoint[];
   activity: ActivityItem[];
+  nutrition: CoachClientNutrition | null;
   partialIssues: string[];
 };
 
@@ -703,11 +733,32 @@ export async function loadCoachPlanData(): Promise<CoachPlanData> {
       })
     ),
   ]);
+
+  const routineStatus = await Promise.all(
+    base.roster.slice(0, 20).map(async (athlete) => {
+      const [todayWorkout, mealPlanAssignments] = await Promise.all([
+        apiJson<{ assignments: WorkoutAssignmentSummary[] }>(`/api/coach/athletes/${athlete.athleteId}/workout-assignments?date=${base.date}`).catch(() => null),
+        apiJson<{ assignments: { name: string; status: string; isPast: boolean }[] }>(`/api/coach/athletes/${athlete.athleteId}/meal-plan-assignments`).catch(() => null),
+      ]);
+      const workout = todayWorkout?.assignments?.[0] ?? null;
+      const mealPlan = mealPlanAssignments?.assignments?.find((a) => a.status === "active") ?? mealPlanAssignments?.assignments?.[0] ?? null;
+      return {
+        athleteId: athlete.athleteId,
+        athleteName: athlete.name,
+        workoutName: workout?.name ?? null,
+        workoutStatus: workout?.status ?? null,
+        mealPlanName: mealPlan?.name ?? null,
+        mealPlanActive: mealPlan ? mealPlan.status === "active" && !mealPlan.isPast : false,
+      };
+    })
+  );
+
   return {
     ...base,
     templates: templates?.templates ?? [],
     mealPlans: mealPlans?.mealPlans ?? [],
     tomorrowWorkouts: tomorrowGroups.flat(),
+    routineStatus,
     partialIssues: issues,
   };
 }
@@ -729,10 +780,17 @@ export async function loadCoachContentData(): Promise<CoachContentData> {
 
 export async function loadCoachProfileData(): Promise<CoachProfileData> {
   const issues: string[] = [];
-  const [profile, pricingPlans, availability] = await Promise.all([
+  const exceptionsFrom = todayKey();
+  const exceptionsTo = new Date(Date.now() + 60 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
+  const [profile, pricingPlans, availability, exceptions] = await Promise.all([
     optional("profile", apiJson<{ profile: CoachOwnProfile }>("/api/coach/profile"), issues),
     optional("pricing plans", apiJson<{ pricingPlans: PricingPlan[] }>("/api/coach/pricing-plans"), issues),
     optional("availability", apiJson<{ rules: CoachAvailabilityRule[] }>("/api/coach/availability"), issues),
+    optional(
+      "availability exceptions",
+      apiJson<{ exceptions: CoachAvailabilityException[] }>(`/api/coach/availability/exceptions?from=${exceptionsFrom}&to=${exceptionsTo}`),
+      issues
+    ),
   ]);
   const publicCoachId = profile?.profile?.coachId ?? profile?.profile?.id;
   const reviews = profile?.profile?.active && publicCoachId
@@ -742,6 +800,7 @@ export async function loadCoachProfileData(): Promise<CoachProfileData> {
     profile: profile?.profile ?? null,
     pricingPlans: pricingPlans?.pricingPlans ?? [],
     availabilityRules: availability?.rules ?? [],
+    availabilityExceptions: exceptions?.exceptions ?? [],
     reviews: reviews?.reviews ?? [],
     partialIssues: issues,
   };
@@ -750,11 +809,12 @@ export async function loadCoachProfileData(): Promise<CoachProfileData> {
 export async function loadCoachClientDetailData(athleteId: string): Promise<CoachClientDetailData> {
   const date = todayKey();
   const issues: string[] = [];
-  const [daily, workouts, trends, activity] = await Promise.all([
+  const [daily, workouts, trends, activity, nutrition] = await Promise.all([
     optional("daily card", apiJson<{ card: DailyCard; workoutAssignments?: WorkoutAssignmentSummary[] }>(`/api/coach/athletes/${athleteId}/daily-card?date=${date}`), issues),
     optional("workouts", apiJson<{ assignments: WorkoutAssignmentSummary[] }>(`/api/coach/athletes/${athleteId}/workout-assignments?date=${date}`), issues),
     optional("trends", apiJson<{ series: TrendPoint[] }>(`/api/coach/athletes/${athleteId}/trends?days=28`), issues),
     optional("activity", apiJson<{ items: ActivityItem[] }>(`/api/coach/athletes/${athleteId}/activity?limit=20`), issues),
+    optional("nutrition", apiJson<CoachClientNutrition>(`/api/coach/athletes/${athleteId}/nutrition?date=${date}`), issues),
   ]);
   return {
     athleteId,
@@ -762,6 +822,7 @@ export async function loadCoachClientDetailData(athleteId: string): Promise<Coac
     workouts: workouts?.assignments ?? daily?.workoutAssignments ?? [],
     trends: trends?.series ?? [],
     activity: activity?.items ?? [],
+    nutrition: nutrition ?? null,
     partialIssues: issues,
   };
 }
