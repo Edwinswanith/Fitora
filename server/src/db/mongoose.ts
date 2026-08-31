@@ -18,8 +18,12 @@ async function ensureIndexesReady(): Promise<void> {
 
 async function attemptConnect(): Promise<boolean> {
   try {
+    const connectStartedAt = Date.now();
     await mongoose.connect(env.mongoUri, { dbName: env.mongoDb, serverSelectionTimeoutMS: 3000 });
+    console.log(`[coldstart] mongoose.connect (TLS + auth handshake): ${Date.now() - connectStartedAt}ms`);
+    const indexStartedAt = Date.now();
     await ensureIndexesReady();
+    console.log(`[coldstart] ensureIndexesReady (${Object.keys(mongoose.models).length} models): ${Date.now() - indexStartedAt}ms`);
     console.log(`[mongo] connected: ${env.mongoUri.replace(/\/\/[^@]+@/, "//***@")}`);
     return true;
   } catch (err) {

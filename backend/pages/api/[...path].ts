@@ -25,15 +25,24 @@ function startupErrorDetails(err: unknown): { name: string; message: string } {
 
 async function ensureApp(): Promise<ExpressApp> {
   if (app) return app;
+  const startedAt = Date.now();
   const { createApp } = await import("../../../server/src/app");
   app = createApp();
+  console.log(`[coldstart] app import + createApp: ${Date.now() - startedAt}ms`);
   return app;
 }
 
 async function ensureMongo(): Promise<void> {
+  // Only the FIRST cold-start invocation on a fresh container logs this —
+  // every warm invocation after it hits the `mongoConnection ??=` short
+  // circuit below and skips straight to expressApp(req, res), so this timing
+  // never runs on the hot path.
+  const isColdStart = mongoConnection === null;
+  const startedAt = Date.now();
   const { connectMongo } = await import("../../../server/src/db/mongoose");
   mongoConnection ??= connectMongo();
-  return mongoConnection;
+  await mongoConnection;
+  if (isColdStart) console.log(`[coldstart] mongo connect + index verification: ${Date.now() - startedAt}ms`);
 }
 
 export default async function handler(req: NextApiRequest, res: NextApiResponse): Promise<void> {
