@@ -40,9 +40,14 @@ async function ensureMongo(): Promise<void> {
   const isColdStart = mongoConnection === null;
   const startedAt = Date.now();
   const { connectMongo } = await import("../../../server/src/db/mongoose");
-  mongoConnection ??= connectMongo();
+  // waitForIndexes: false — measured at 6.6s of a 9.1s cold start (50 models,
+  // each needing an index-confirmation round trip to Atlas), almost always
+  // just re-confirming indexes that already exist. See connectMongo's doc
+  // comment for the full trade-off; scripts/verify-indexes.ts is the
+  // deliberate, manual check to run once after a deploy that changes a schema.
+  mongoConnection ??= connectMongo({ waitForIndexes: false });
   await mongoConnection;
-  if (isColdStart) console.log(`[coldstart] mongo connect + index verification: ${Date.now() - startedAt}ms`);
+  if (isColdStart) console.log(`[coldstart] mongo connect (not waiting on index verification): ${Date.now() - startedAt}ms`);
 }
 
 export default async function handler(req: NextApiRequest, res: NextApiResponse): Promise<void> {
