@@ -218,6 +218,21 @@ export default function CoachMessages() {
     requestAnimationFrame(() => scrollRef.current?.scrollToEnd({ animated: true }));
   }, [messages]);
 
+  // Patches the thread list's preview locally from a message we already
+  // have, instead of re-fetching the whole roster + all threads just to
+  // update one row's "last message" preview — and, unlike `load()`, never
+  // blocks the composer's busy state on an unrelated network round trip.
+  function patchThreadPreview(athleteId: string, message: MessageView) {
+    setThreads((prev) => {
+      const preview = message.body.trim() || (message.media ? "Photo" : "");
+      const existingIndex = prev.findIndex((t) => t.partyId === athleteId);
+      if (existingIndex === -1) return prev;
+      const next = [...prev];
+      next[existingIndex] = { ...next[existingIndex], lastMessage: preview, lastAt: message.createdAt, lastSenderRole: "coach" };
+      return next;
+    });
+  }
+
   async function send() {
     const athleteId = selectedId;
     const body = draft.trim();
@@ -236,7 +251,7 @@ export default function CoachMessages() {
       }
       setDraft("");
       setMessages((prev) => [...prev, payload.message!]);
-      await load();
+      patchThreadPreview(athleteId, payload.message);
     } catch {
       setThreadError("Network error. Try again.");
     } finally {
@@ -327,11 +342,11 @@ export default function CoachMessages() {
         return;
       }
       setMessages((prev) => [...prev, json.message!]);
+      if (selectedId) patchThreadPreview(selectedId, json.message);
       setPending(null);
       setTableDraft(null);
       setTableDirty(false);
       setDraft("");
-      await load();
     } catch {
       setThreadError("Network error sending.");
     } finally {

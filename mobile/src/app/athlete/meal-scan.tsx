@@ -17,7 +17,7 @@ import {
 } from "../../components/fitora";
 import { apiFetch } from "../../lib/api";
 import { colors } from "../../lib/theme";
-import { todayKey, titleCase } from "../../lib/fitoraData";
+import { todayKey, titleCase, updateCachedData, mealCalories, type AthleteDashboardData, type Meal } from "../../lib/fitoraData";
 
 type MealScan = {
   id: string;
@@ -38,6 +38,20 @@ type MealScan = {
     foodConfidence: number;
     quantityConfidence: number;
   }[];
+};
+
+const SCAN_ISSUE_TITLES: Record<string, string> = {
+  no_food_detected: "No Food Detected",
+  low_quality: "Image Too Unclear",
+  low_confidence: "Not Confident Enough",
+  rejected: "Scan Didn't Go Through",
+};
+
+const SCAN_ISSUE_MESSAGES: Record<string, string> = {
+  no_food_detected: "We couldn't detect any food in this image. Please scan a meal or food item and try again.",
+  low_quality: "The image isn't clear enough to identify the food. Please take another photo with better lighting and keep the food clearly visible.",
+  low_confidence: "We're not confident enough to identify this food accurately. Please retake the photo or enter the food manually.",
+  rejected: "We couldn't process that image. Please try scanning again, or enter the food manually.",
 };
 
 export default function MealScanScreen() {
@@ -108,12 +122,32 @@ export default function MealScanScreen() {
           foods,
         }),
       });
-      const body = (await res.json().catch(() => ({}))) as { error?: string };
+      const body = (await res.json().catch(() => ({}))) as { error?: string; meal?: Meal };
       if (!res.ok) {
         setError(body.error ?? "Could not save this meal.");
         return;
       }
-      router.replace({ pathname: "/athlete/dashboard", params: { section: "nutrition" } } as never);
+      const createdMeal = body.meal;
+      if (createdMeal) {
+        updateCachedData<AthleteDashboardData>("athlete-dashboard", (prev) => {
+          if (!prev) return prev;
+          const addedCalories = mealCalories(createdMeal);
+          const addedProtein = createdMeal.foods.reduce((sum, f) => sum + (Number(f.proteinG) || 0), 0);
+          const addedCarbs = createdMeal.foods.reduce((sum, f) => sum + (Number(f.carbsG) || 0), 0);
+          const addedFat = createdMeal.foods.reduce((sum, f) => sum + (Number(f.fatG) || 0), 0);
+          return {
+            ...prev,
+            meals: [...prev.meals, createdMeal],
+            mealTotals: {
+              calories: (prev.mealTotals?.calories ?? 0) + addedCalories,
+              proteinG: (prev.mealTotals?.proteinG ?? 0) + addedProtein,
+              carbsG: (prev.mealTotals?.carbsG ?? 0) + addedCarbs,
+              fatG: (prev.mealTotals?.fatG ?? 0) + addedFat,
+            },
+          };
+        });
+      }
+      router.back();
     } catch {
       setError("Network failed while saving this meal.");
     } finally {
@@ -147,7 +181,19 @@ export default function MealScanScreen() {
         </AppCard>
       ) : null}
 
-      {scan ? (
+      {scan && SCAN_ISSUE_MESSAGES[scan.status] ? (
+        <AppCard style={styles.issueCard}>
+          <IconTile icon={scan.status === "low_quality" ? "flashlight-outline" : "camera-outline"} size={56} />
+          <Text style={styles.issueTitle}>{SCAN_ISSUE_TITLES[scan.status]}</Text>
+          <Text style={styles.issueBody}>{SCAN_ISSUE_MESSAGES[scan.status]}</Text>
+          <View style={styles.actionRow}>
+            <ActionButton label="Scan Again" icon="camera-outline" onPress={chooseImage} />
+            <ActionButton label="Add Manually" icon="create-outline" variant="filled" onPress={() => router.push("/athlete/log-meal" as never)} />
+          </View>
+        </AppCard>
+      ) : null}
+
+      {scan && !SCAN_ISSUE_MESSAGES[scan.status] ? (
         <>
           <AppCard>
             <Text style={styles.eyebrow}>We Found</Text>
@@ -229,6 +275,9 @@ const styles = StyleSheet.create({
   pickBody: { color: colors.inkMuted, textAlign: "center", fontSize: 15, lineHeight: 21 },
   errorCard: { backgroundColor: colors.badSoft, borderColor: "#fecaca" },
   errorText: { color: colors.bad, fontSize: 15, fontWeight: "800" },
+  issueCard: { alignItems: "center", gap: 10, paddingVertical: 28 },
+  issueTitle: { color: colors.ink, fontSize: 20, fontWeight: "900" },
+  issueBody: { color: colors.inkMuted, textAlign: "center", fontSize: 15, lineHeight: 21 },
   eyebrow: { color: colors.primary, fontSize: 13, fontWeight: "900", textTransform: "uppercase" },
   mealTitle: { color: colors.ink, fontSize: 28, lineHeight: 34, fontWeight: "900", marginTop: 6 },
   totalRow: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: 12, marginTop: 14 },

@@ -43,7 +43,7 @@ const CATEGORY_FILTERS: { value: Category; label: string }[] = [
 ];
 
 export default function CoachContent() {
-  const state = useAsyncData(loadCoachContentData, []);
+  const state = useAsyncData(loadCoachContentData, [], "coach-content");
   const [tab, setTab] = useState<Tab>("library");
   const [category, setCategory] = useState<Category>("all");
   const [draft, setDraft] = useState<UploadDraft | null>(null);
@@ -65,7 +65,13 @@ export default function CoachContent() {
         return;
       }
       setMenuVideoId(null);
-      state.reload();
+      // The response is the updated video record — patch it in place
+      // instead of re-fetching the whole library + roster + templates.
+      const json = (await res.json().catch(() => ({}))) as { video?: CoachVideo };
+      if (json.video) {
+        const updated = json.video;
+        state.setData((prev) => (prev ? { ...prev, videos: prev.videos.map((v) => (v.id === updated.id ? updated : v)) } : prev));
+      }
     } catch {
       setVideoActionMessage("Network error while updating video.");
     } finally {
@@ -83,7 +89,9 @@ export default function CoachContent() {
         return;
       }
       setMenuVideoId(null);
-      state.reload();
+      // The deleted id is already known — splice it out locally instead of
+      // re-fetching the whole library.
+      state.setData((prev) => (prev ? { ...prev, videos: prev.videos.filter((v) => v.id !== video.id) } : prev));
     } catch {
       setVideoActionMessage("Network error while deleting video.");
     } finally {
@@ -118,14 +126,19 @@ export default function CoachContent() {
       body.append("category", draft.category);
       body.append("visibility", draft.visibility);
       const res = await apiFetch("/api/coach/videos", { method: "POST", body });
+      const json = (await res.json().catch(() => ({}))) as { error?: string; video?: CoachVideo };
       if (!res.ok) {
-        const error = await res.json().catch(() => ({}));
-        setMessage(error?.error === "unsupported_file_type" ? "Choose an MP4, WebM, or MOV video." : "Could not upload this video.");
+        setMessage(json.error === "unsupported_file_type" ? "Choose an MP4, WebM, or MOV video." : "Could not upload this video.");
         return;
       }
       setDraft(null);
       setMessage("Video uploaded.");
-      state.reload();
+      // The response is the newly-created video — append it instead of
+      // re-fetching the whole library.
+      if (json.video) {
+        const created = json.video;
+        state.setData((prev) => (prev ? { ...prev, videos: [created, ...prev.videos] } : prev));
+      }
     } catch {
       setMessage("Network error while uploading.");
     } finally {
@@ -178,15 +191,26 @@ export default function CoachContent() {
       {draft ? (
         <UploadCard draft={draft} setDraft={setDraft} uploading={uploading} onUpload={uploadVideo} onCancel={() => setDraft(null)} />
       ) : null}
-      {action ? <ContentActionCard data={data} action={action} onClose={() => setAction(null)} onDone={state.reload} /> : null}
+      {action ? (
+        <ContentActionCard
+          data={data}
+          action={action}
+          onClose={() => setAction(null)}
+          onDone={(updatedVideo) => {
+            if (updatedVideo) {
+              state.setData((prev) => (prev ? { ...prev, videos: prev.videos.map((v) => (v.id === updatedVideo.id ? updatedVideo : v)) } : prev));
+            }
+          }}
+        />
+      ) : null}
       {editingVideo ? (
         <EditVideoCard
           video={editingVideo}
           onClose={() => setEditingVideo(null)}
-          onSaved={() => {
+          onSaved={(updated) => {
             setEditingVideo(null);
             setMenuVideoId(null);
-            state.reload();
+            state.setData((prev) => (prev ? { ...prev, videos: prev.videos.map((v) => (v.id === updated.id ? updated : v)) } : prev));
           }}
         />
       ) : null}
@@ -310,7 +334,7 @@ function ContentActionCard({
   data: CoachContentData;
   action: ContentAction;
   onClose: () => void;
-  onDone: () => void;
+  onDone: (updatedVideo?: CoachVideo) => void;
 }) {
   const [videoId, setVideoId] = useState(data.videos[0]?.id ?? "");
   const [selectedAthleteIds, setSelectedAthleteIds] = useState<string[]>(() => data.roster[0]?.athleteId ? [data.roster[0].athleteId] : []);
@@ -342,6 +366,7 @@ function ContentActionCard({
         }),
       });
       if (!patchRes.ok) throw new Error("video_assign_failed");
+      const patchJson = (await patchRes.json().catch(() => ({}))) as { video?: CoachVideo };
 
       if (action === "workout") {
         const templateRes = await apiFetch("/api/workout-templates", {
@@ -369,7 +394,7 @@ function ContentActionCard({
       }
 
       setMessage(action === "assign" ? "Video assigned to selected clients." : "Video task added to selected clients' workouts.");
-      onDone();
+      onDone(patchJson.video);
     } catch {
       setMessage("Could not complete this action. Try another video or client.");
     } finally {
@@ -577,7 +602,7 @@ function VideoActionMenu({ video, busy, onEdit, onArchive, onDelete, onToggleMen
   );
 }
 
-function EditVideoCard({ video, onClose, onSaved }: { video: CoachVideo; onClose: () => void; onSaved: () => void }) {
+function EditVideoCard({ video, onClose, onSaved }: { video: CoachVideo; onClose: () => void; onSaved: (video: CoachVideo) => void }) {
   const [title, setTitle] = useState(video.title);
   const [category, setCategory] = useState(video.category);
   const [visibility, setVisibility] = useState(video.visibility as UploadDraft["visibility"]);
@@ -597,7 +622,8 @@ function EditVideoCard({ video, onClose, onSaved }: { video: CoachVideo; onClose
         setError("Could not save changes.");
         return;
       }
-      onSaved();
+      const json = (await res.json().catch(() => ({}))) as { video?: CoachVideo };
+      onSaved(json.video ?? { ...video, title: title.trim(), category, visibility });
     } catch {
       setError("Network error while saving.");
     } finally {

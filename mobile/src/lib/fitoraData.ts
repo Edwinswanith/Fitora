@@ -85,6 +85,7 @@ export type AthleteProfile = {
   fitnessGoal?: string | null;
   goalIntensity?: string | null;
   activityLevel?: string | null;
+  biologicalSex?: string | null;
   dietaryPreferences?: string[];
   allergies?: string[];
   cuisinePreferences?: string[];
@@ -403,11 +404,69 @@ type AsyncState<T> = {
   refreshing: boolean;
   error: string | null;
   reload: () => void;
+  /**
+   * Patches this screen's data in place — no network call. Use after a
+   * mutation whose response (or request body) already tells you the new
+   * shape, instead of calling `reload()` and re-running the whole loader
+   * just to reflect one small change. Also updates the shared cache entry
+   * (if this hook has a cacheKey), so a background `reload()` started
+   * afterward reconciles against the patched value, not stale pre-mutation
+   * data.
+   */
+  setData: (value: T | ((prev: T | null) => T | null)) => void;
 };
 
-export function useAsyncData<T>(loader: () => Promise<T>, deps: unknown[] = []): AsyncState<T> {
-  const [data, setData] = useState<T | null>(null);
-  const [loading, setLoading] = useState(true);
+type CacheEntry = { data: unknown; listeners: Set<(data: unknown) => void> };
+
+/**
+ * Cross-mount, in-memory cache keyed by screen identity (e.g. "athlete-dashboard").
+ * Lets a screen that remounts (navigated away and back, not just re-rendered)
+ * paint instantly from last-known data instead of a full loading screen, while
+ * a fresh fetch still runs in the background — stale-while-revalidate, not a
+ * substitute for actually refetching. Cleared only by app restart; that's fine
+ * here since every mount always revalidates anyway.
+ *
+ * Also doubles as a tiny pub/sub: `updateCachedData` lets a *different*
+ * screen (e.g. a "log meal" detail screen) patch another screen's data (e.g.
+ * the dashboard it's about to navigate back to) and have that screen's
+ * `useAsyncData` instance pick up the change immediately if it's still
+ * mounted underneath — no network round-trip, no remount.
+ */
+const asyncDataCache = new Map<string, CacheEntry>();
+
+function getCacheEntry(key: string): CacheEntry {
+  let entry = asyncDataCache.get(key);
+  if (!entry) {
+    entry = { data: undefined, listeners: new Set() };
+    asyncDataCache.set(key, entry);
+  }
+  return entry;
+}
+
+/**
+ * Patches the cached value for `cacheKey` and immediately pushes the result
+ * to every currently-mounted `useAsyncData` instance using that key. `prev`
+ * is `undefined` if nothing has ever populated this cache key yet (e.g. that
+ * screen was never visited this session) — return `undefined` to no-op in
+ * that case rather than fabricate a value; that screen's own mount-time
+ * fetch will populate it correctly whenever it's actually opened.
+ */
+export function updateCachedData<T>(cacheKey: string, updater: (prev: T | undefined) => T | undefined): void {
+  const entry = getCacheEntry(cacheKey);
+  const next = updater(entry.data as T | undefined);
+  if (next === undefined) return;
+  entry.data = next;
+  entry.listeners.forEach((listener) => listener(next));
+}
+
+export function useAsyncData<T>(loader: () => Promise<T>, deps: unknown[] = [], cacheKey?: string): AsyncState<T> {
+  const entry = cacheKey ? getCacheEntry(cacheKey) : null;
+  const cached = entry && entry.data !== undefined ? (entry.data as T) : null;
+  const [data, setDataState] = useState<T | null>(cached);
+  // Matches whatever the mount-time effect below is about to do — avoids a
+  // one-frame gap where neither the loading screen nor the cached content
+  // has painted yet (useEffect runs after the first commit, not before it).
+  const [loading, setLoading] = useState(cached === null);
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [version, setVersion] = useState(0);
@@ -416,11 +475,37 @@ export function useAsyncData<T>(loader: () => Promise<T>, deps: unknown[] = []):
     setVersion((value) => value + 1);
   }, []);
 
+  const setData = useCallback(
+    (value: T | ((prev: T | null) => T | null)) => {
+      setDataState((prev) => {
+        const next = typeof value === "function" ? (value as (prev: T | null) => T | null)(prev) : value;
+        if (entry) entry.data = next;
+        return next;
+      });
+    },
+    [entry]
+  );
+
+  // Picks up patches made by a *different* mounted screen via updateCachedData
+  // (e.g. a detail screen that navigated back here after a save).
+  useEffect(() => {
+    if (!entry) return;
+    const listener = (value: unknown) => setDataState(value as T);
+    entry.listeners.add(listener);
+    return () => {
+      entry.listeners.delete(listener);
+    };
+  }, [entry]);
+
   useEffect(() => {
     let active = true;
-    const firstLoad = data === null;
-    if (firstLoad) setLoading(true);
-    else setRefreshing(true);
+    // Reflects whether this specific effect run started with data already
+    // in hand (either from a prior successful load, or hydrated from cache
+    // on a fresh mount) — not affected by the setData call below, since this
+    // effect doesn't re-run until version/deps change again.
+    const hadDataAtStart = data !== null;
+    if (hadDataAtStart) setRefreshing(true);
+    else setLoading(true);
     setError(null);
 
     loader()
@@ -430,7 +515,10 @@ export function useAsyncData<T>(loader: () => Promise<T>, deps: unknown[] = []):
       })
       .catch(() => {
         if (!active) return;
-        setError("Check your connection and try again.");
+        // A background revalidation failing shouldn't blow away perfectly
+        // good data already on screen — only surface the error state when
+        // there's genuinely nothing to show instead.
+        if (!hadDataAtStart) setError("Check your connection and try again.");
       })
       .finally(() => {
         if (!active) return;
@@ -444,7 +532,7 @@ export function useAsyncData<T>(loader: () => Promise<T>, deps: unknown[] = []):
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [version, ...deps]);
 
-  return { data, loading, refreshing, error, reload };
+  return { data, loading, refreshing, error, reload, setData };
 }
 
 async function optional<T>(label: string, task: Promise<T>, issues: string[]): Promise<T | null> {

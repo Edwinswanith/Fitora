@@ -222,8 +222,11 @@ export default function Water() {
         return;
       }
       setGoalDraft(String(rounded));
+      // The PATCH already told us the goal was accepted — apply it locally
+      // to both the day summary and the history chart's goal line instead of
+      // re-fetching both from the network right after.
       setDay((d) => (d ? { ...d, goalMl: rounded } : d));
-      await Promise.all([loadDay(), loadHistory()]);
+      setHistory((h) => (h ? { ...h, goalMl: rounded } : h));
     } finally {
       setBusy(false);
     }

@@ -39,7 +39,8 @@ export default function CoachClientDetail() {
       if (!athleteId) throw new Error("missing_athlete");
       return loadCoachClientDetailData(athleteId);
     },
-    [athleteId]
+    [athleteId],
+    athleteId ? `coach-athlete-${athleteId}` : undefined
   );
 
   if (!athleteId) {

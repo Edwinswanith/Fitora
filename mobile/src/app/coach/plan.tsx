@@ -23,7 +23,7 @@ type Tab = "assignments" | "templates" | "routines";
 type PlanMode = "workout" | "tasks" | "meal" | "routine";
 
 export default function CoachPlan() {
-  const state = useAsyncData(loadCoachPlanData, []);
+  const state = useAsyncData(loadCoachPlanData, [], "coach-plan");
   const [tab, setTab] = useState<Tab>("assignments");
   const [mode, setMode] = useState<PlanMode | null>(null);
 

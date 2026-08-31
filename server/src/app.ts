@@ -1,6 +1,7 @@
 import express from "express";
 import "express-async-errors";
 import cors from "cors";
+import compression from "compression";
 import { env } from "./config/env";
 import coachRouter from "./routes/coach";
 import authRouter from "./routes/auth";
@@ -85,6 +86,11 @@ export function createApp(): express.Express {
     res.setHeader("Permissions-Policy", "camera=(), microphone=(), geolocation=()");
     next();
   });
+  // Gzips every response body over its default 1kb threshold — dashboard/list
+  // JSON payloads are the main beneficiary. Only touches the outgoing
+  // response, so it doesn't interact with the raw-body webhook verification
+  // below (that's about the incoming request body).
+  app.use(compression());
   // Mounted BEFORE express.json(): the webhook signature is computed over the
   // exact raw bytes Razorpay sent, which JSON body-parsing (parse then
   // re-serialize) would not reproduce byte-for-byte. Every other route

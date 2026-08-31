@@ -59,7 +59,7 @@ export default function Coaches() {
         method: "POST",
         body: JSON.stringify({ name: name.trim(), email: email.trim() }),
       });
-      const json = (await res.json().catch(() => ({}))) as { coach?: { name: string; email: string }; tempPassword?: string };
+      const json = (await res.json().catch(() => ({}))) as { coach?: { userId: string; name: string; email: string }; tempPassword?: string };
       if (res.status === 409) {
         setFormError("That email already has an account.");
         return;
@@ -72,7 +72,11 @@ export default function Coaches() {
       setName("");
       setEmail("");
       setAdding(false);
-      load();
+      // The response already has everything needed for the list row — no
+      // need to re-fetch the whole coaches list to add one entry.
+      if (json.coach) {
+        setCoaches((prev) => [...(prev ?? []), { userId: json.coach!.userId, name: json.coach!.name, email: json.coach!.email, isAcademyOwner: false }]);
+      }
     } catch {
       setFormError("Network error. Please try again.");
     } finally {

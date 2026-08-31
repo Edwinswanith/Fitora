@@ -112,7 +112,7 @@ export function buildVoiceAction(
         method: "POST",
         path: "/api/athlete/water",
         body: { amountMl: entities.amountMl, clientActionId: opts.clientActionId },
-        successMessage: "Water logged.",
+        successMessage: `${entities.amountMl} ml added.`,
       };
 
     case "log_meal": {
@@ -134,7 +134,7 @@ export function buildVoiceAction(
           fatG: typeof entities.fatG === "number" ? entities.fatG : 0,
           clientActionId: opts.clientActionId,
         },
-        successMessage: "Meal logged.",
+        successMessage: `${foodName} added to ${typeof entities.mealType === "string" ? entities.mealType : "your log"}.`,
       };
     }
 
@@ -144,7 +144,7 @@ export function buildVoiceAction(
         method: "PATCH",
         path: "/api/athlete/me",
         body: { hydrationGoalMl: entities.goalMl },
-        successMessage: "Water goal updated.",
+        successMessage: `Water goal set to ${entities.goalMl} ml.`,
       };
 
     case "change_hydration_reminder": {

@@ -30,11 +30,12 @@ import {
   titleCase,
   useAsyncData,
   type CoachHomeData,
+  type CoachSession,
   type DailyCard,
 } from "../../lib/fitoraData";
 
 export default function CoachHome() {
-  const state = useAsyncData(loadCoachHomeData, []);
+  const state = useAsyncData(loadCoachHomeData, [], "coach-dashboard");
 
   if (state.loading && !state.data) {
     return (
@@ -54,14 +55,20 @@ export default function CoachHome() {
 
   if (!state.data) return null;
 
+  function patchSession(sessionId: string, patch: Partial<CoachSession>) {
+    state.setData((prev) =>
+      prev ? { ...prev, sessions: prev.sessions.map((s) => (s.id === sessionId ? { ...s, ...patch } : s)) } : prev
+    );
+  }
+
   return (
     <ScreenContainer refreshing={state.refreshing} onRefresh={state.reload}>
-      <CoachHomeView data={state.data} />
+      <CoachHomeView data={state.data} onSessionUpdate={patchSession} />
     </ScreenContainer>
   );
 }
 
-function CoachHomeView({ data }: { data: CoachHomeData }) {
+function CoachHomeView({ data, onSessionUpdate }: { data: CoachHomeData; onSessionUpdate: (sessionId: string, patch: Partial<CoachSession>) => void }) {
   const router = useRouter();
   const { user } = useAuth();
   const [sessionPanel, setSessionPanel] = useState(false);
@@ -120,6 +127,7 @@ function CoachHomeView({ data }: { data: CoachHomeData }) {
         setSessionMessage("Could not confirm this session.");
         return;
       }
+      onSessionUpdate(nextSession.id, { status: "confirmed" });
       setSessionMessage("Session confirmed.");
     } catch {
       setSessionMessage("Network error while confirming session.");
@@ -141,6 +149,7 @@ function CoachHomeView({ data }: { data: CoachHomeData }) {
         setSessionMessage("Could not cancel this session.");
         return;
       }
+      onSessionUpdate(nextSession.id, { status: "cancelled" });
       setCancelNote("");
       setSessionMessage("Session cancelled.");
     } catch {
@@ -166,6 +175,7 @@ function CoachHomeView({ data }: { data: CoachHomeData }) {
         setSessionMessage("Could not complete this session.");
         return;
       }
+      onSessionUpdate(nextSession.id, { status: "completed" });
       setSessionMessage("Session marked complete.");
     } catch {
       setSessionMessage("Network error while completing session.");
@@ -202,6 +212,7 @@ function CoachHomeView({ data }: { data: CoachHomeData }) {
         setSessionMessage("Could not reschedule this session.");
         return;
       }
+      onSessionUpdate(nextSession.id, { status: "rescheduled", scheduledStart: nextStart.toISOString() });
       setSessionMessage("Session rescheduled.");
     } catch {
       setSessionMessage("Network error while rescheduling session.");

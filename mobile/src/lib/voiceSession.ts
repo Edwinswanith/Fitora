@@ -6,6 +6,7 @@ import { speakAgentReply, stopAgentSpeech } from "./agentSpeech";
 import { API_BASE, apiFetch, getAccessToken } from "./api";
 import { normalizeVoiceCommandForAgent } from "./voiceTranslation";
 import { getDeepgramLanguageHint, getVoiceRecognitionLanguage } from "./voiceLanguage";
+import { isSystemicTranscribeFailure } from "./voiceTranscribeFailure";
 
 export type VoiceSessionHandlers = {
   onListeningChange: (listening: boolean) => void;
@@ -215,7 +216,21 @@ export function startVoiceConversation(handlers: VoiceConversationHandlers): Voi
 type TranscribeResponse = {
   transcript?: string;
   message?: string;
+  error?: string;
 };
+
+/**
+ * `systemic` distinguishes "the provider/service is unavailable right now"
+ * (Deepgram unconfigured/down, a network failure) from "you just didn't say
+ * anything clear" (empty audio/transcript). Only the former should push the
+ * user to the text-input fallback — the latter should just let them try
+ * speaking again.
+ */
+class VoiceTranscriptionError extends Error {
+  constructor(message: string, readonly systemic: boolean) {
+    super(message);
+  }
+}
 
 type AudioRecorderLike = {
   isRecording: boolean;
@@ -400,9 +415,18 @@ async function appendAudio(form: FormData, uri: string): Promise<void> {
 async function transcribeWithDeepgram(uri: string): Promise<string> {
   const form = new FormData();
   await appendAudio(form, uri);
-  const res = await apiFetch(`/api/voice/transcribe?language=${encodeURIComponent(getDeepgramLanguageHint())}`, { method: "POST", body: form });
+  let res: Response;
+  try {
+    res = await apiFetch(`/api/voice/transcribe?language=${encodeURIComponent(getDeepgramLanguageHint())}`, { method: "POST", body: form });
+  } catch (err) {
+    // Network failure before any response — voice transport itself is down, not just this recording.
+    throw new VoiceTranscriptionError(err instanceof Error ? err.message : "network_error", true);
+  }
   const payload = (await res.json().catch(() => ({}))) as TranscribeResponse;
-  if (!res.ok) throw new Error(payload.message || "deepgram_transcription_failed");
+  if (!res.ok) {
+    const systemic = isSystemicTranscribeFailure(res.status, payload.error);
+    throw new VoiceTranscriptionError(payload.message || "deepgram_transcription_failed", systemic);
+  }
   return (payload.transcript ?? "").trim();
 }
 
@@ -574,8 +598,9 @@ function startDeepgramVoiceSession(handlers: VoiceSessionHandlers): VoiceSession
     try {
       const transcript = await transcribeWithDeepgram(uri);
       handlers.onResult(transcript);
-    } catch {
-      handlers.onError();
+    } catch (err) {
+      if (err instanceof VoiceTranscriptionError && err.systemic) handlers.onNeedsFallback();
+      else handlers.onError();
     }
   }
 

@@ -43,7 +43,7 @@ function hasRecentOrUpcomingSession(sessions: CoachSession[]): boolean {
 }
 
 export default function CoachClients() {
-  const state = useAsyncData(loadCoachHomeData, []);
+  const state = useAsyncData(loadCoachHomeData, [], "coach-dashboard");
 
   if (state.loading && !state.data) {
     return (

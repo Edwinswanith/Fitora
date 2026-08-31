@@ -80,8 +80,12 @@ export default function Announcements() {
         setPostError("Couldn't post. Try again.");
         return false;
       }
+      const json = (await res.json().catch(() => ({}))) as { announcement?: Announcement };
       setDraft("");
-      load();
+      // The response already has the created announcement — prepend it
+      // locally instead of re-fetching both announcements and the full
+      // roster just to show one new item.
+      if (json.announcement) setItems((prev) => [json.announcement!, ...(prev ?? [])]);
       return true;
     } catch {
       setPostError("Network error. Please try again.");

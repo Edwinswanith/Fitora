@@ -28,12 +28,15 @@ import {
   titleCase,
   useAsyncData,
   type AthleteDashboardData,
+  type AthleteProfile,
   type CoachProfileData,
+  type NutritionTarget,
 } from "../lib/fitoraData";
 
 const FITNESS_GOALS = ["lose_weight", "maintain_weight", "gain_weight"] as const;
 const GOAL_INTENSITIES = ["mild", "moderate", "aggressive"] as const;
 const ACTIVITY_LEVELS = ["sedentary", "light", "moderate", "active", "very_active"] as const;
+const BIOLOGICAL_SEXES = ["male", "female"] as const;
 
 const NOTIFICATION_ROWS: { key: keyof NotificationCategories; label: string; icon: keyof typeof Ionicons.glyphMap }[] = [
   { key: "alerts", label: "Risk Alerts", icon: "notifications-outline" },
@@ -58,7 +61,7 @@ export default function Account() {
 }
 
 function AthleteAccount() {
-  const state = useAsyncData(loadAthleteDashboardData, []);
+  const state = useAsyncData(loadAthleteDashboardData, [], "athlete-dashboard");
   const [editOpen, setEditOpen] = useState(false);
 
   if (state.loading && !state.data) {
@@ -85,9 +88,9 @@ function AthleteAccount() {
         <AthleteEditForm
           data={state.data}
           onClose={() => setEditOpen(false)}
-          onSaved={() => {
+          onSaved={(profile, target) => {
             setEditOpen(false);
-            state.reload();
+            state.setData((prev) => (prev ? { ...prev, profile: profile ?? prev.profile, target: target ?? prev.target } : prev));
           }}
         />
       ) : null}
@@ -97,7 +100,7 @@ function AthleteAccount() {
 }
 
 function CoachAccount() {
-  const state = useAsyncData(loadCoachProfileData, []);
+  const state = useAsyncData(loadCoachProfileData, [], "coach-profile");
   const [editOpen, setEditOpen] = useState(false);
 
   if (state.loading && !state.data) {
@@ -124,9 +127,9 @@ function CoachAccount() {
         <CoachEditForm
           data={state.data}
           onClose={() => setEditOpen(false)}
-          onSaved={() => {
+          onSaved={(profile) => {
             setEditOpen(false);
-            state.reload();
+            state.setData((prev) => (prev ? { ...prev, profile: profile ?? prev.profile } : prev));
           }}
         />
       ) : null}
@@ -249,7 +252,11 @@ function AthleteProfileContent({ data, onManageGoal }: { data: AthleteDashboardD
           </View>
           <ActionButton
             label={coachName ? "View Coach" : "Find Coach"}
-            onPress={() => router.push(coachName ? { pathname: "/athlete/dashboard", params: { section: "coach" } } as never : ("/athlete/coach-discovery" as never))}
+            onPress={() =>
+              coachName
+                ? router.replace({ pathname: "/athlete/dashboard", params: { section: "coach" } } as never)
+                : router.push("/athlete/coach-discovery" as never)
+            }
           />
         </View>
       </AppCard>
@@ -322,12 +329,13 @@ function AthleteEditForm({
 }: {
   data: AthleteDashboardData;
   onClose: () => void;
-  onSaved: () => void;
+  onSaved: (profile: AthleteProfile | undefined, target: NutritionTarget | undefined) => void;
 }) {
   const profile = data.profile;
   const [weightKg, setWeightKg] = useState(profile?.weightKg != null ? String(profile.weightKg) : "");
   const [heightCm, setHeightCm] = useState(profile?.heightCm != null ? String(profile.heightCm) : "");
   const [dob, setDob] = useState(profile?.dob ? profile.dob.slice(0, 10) : "");
+  const [biologicalSex, setBiologicalSex] = useState(profile?.biologicalSex ?? "");
   const [activityLevel, setActivityLevel] = useState(profile?.activityLevel ?? "");
   const [fitnessGoal, setFitnessGoal] = useState(profile?.fitnessGoal ?? "");
   const [goalIntensity, setGoalIntensity] = useState(profile?.goalIntensity ?? "");
@@ -367,6 +375,7 @@ function AthleteEditForm({
       if (parsedWeight != null) body.weightKg = parsedWeight;
       if (parsedHeight != null) body.heightCm = parsedHeight;
       if (dob.trim()) body.dob = dob.trim();
+      if (biologicalSex) body.biologicalSex = biologicalSex;
       if (activityLevel) body.activityLevel = activityLevel;
       if (fitnessGoal) body.fitnessGoal = fitnessGoal;
       if (goalIntensity) body.goalIntensity = goalIntensity;
@@ -375,7 +384,24 @@ function AthleteEditForm({
         setError("Could not save changes. Check your entries and try again.");
         return;
       }
-      onSaved();
+      const patchBody = (await res.json().catch(() => ({}))) as { athlete?: AthleteProfile };
+      // Best-effort: the nutrition target is a deterministic calculation, not
+      // something the athlete types in directly — recompute it whenever the
+      // profile now has everything the formula needs. Never blocks the save
+      // itself; profile_incomplete_for_nutrition_target just means one of
+      // these fields is still blank, which is a normal, expected state.
+      let newTarget: NutritionTarget | undefined;
+      if (weightKg.trim() && heightCm.trim() && dob.trim() && biologicalSex && activityLevel && fitnessGoal && goalIntensity) {
+        const recalcRes = await apiFetch("/api/athlete/nutrition/target/recalculate", { method: "POST" }).catch(() => null);
+        if (recalcRes?.ok) {
+          const recalcBody = (await recalcRes.json().catch(() => ({}))) as { target?: NutritionTarget };
+          newTarget = recalcBody.target;
+        }
+      }
+      // Both responses already contain everything the dashboard needs to
+      // reflect this save — the caller patches its own cached data with
+      // them instead of re-running the full ~15-request dashboard loader.
+      onSaved(patchBody.athlete, newTarget);
     } catch {
       setError("Network error while saving.");
     } finally {
@@ -400,6 +426,9 @@ function AthleteEditForm({
 
       <Text style={styles.formLabel}>Date of Birth</Text>
       <TextInput value={dob} onChangeText={setDob} style={styles.input} placeholder="YYYY-MM-DD" placeholderTextColor={colors.inkFaint} />
+
+      <Text style={styles.formLabel}>Biological Sex</Text>
+      <ChipPicker options={BIOLOGICAL_SEXES} value={biologicalSex} onChange={setBiologicalSex} />
 
       <Text style={styles.formLabel}>Activity Level</Text>
       <ChipPicker options={ACTIVITY_LEVELS} value={activityLevel} onChange={setActivityLevel} />
@@ -434,7 +463,7 @@ function CoachEditForm({
 }: {
   data: CoachProfileData;
   onClose: () => void;
-  onSaved: () => void;
+  onSaved: (profile: CoachProfileData["profile"]) => void;
 }) {
   const profile = data.profile;
   const [bio, setBio] = useState(profile?.bio ?? "");
@@ -463,7 +492,8 @@ function CoachEditForm({
         setError("Could not save changes.");
         return;
       }
-      onSaved();
+      const body = (await res.json().catch(() => ({}))) as { profile?: CoachProfileData["profile"] };
+      onSaved(body.profile ?? null);
     } catch {
       setError("Network error while saving.");
     } finally {

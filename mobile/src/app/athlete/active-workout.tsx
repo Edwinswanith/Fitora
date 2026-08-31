@@ -60,10 +60,24 @@ export default function ActiveWorkoutScreen() {
 
   if (!state.data) return null;
 
+  function patchProgress(exerciseIndex: number, status: string, setsCompleted: { setNumber: number }[]) {
+    state.setData((prev) => {
+      if (!prev) return prev;
+      const fullSets = setsCompleted.map((s) => ({ setNumber: s.setNumber, reps: null, weightKg: null, durationSec: null }));
+      const existingIndex = prev.progress.findIndex((row) => row.exerciseIndex === exerciseIndex);
+      const progress =
+        existingIndex === -1
+          ? [...prev.progress, { exerciseIndex, status, setsCompleted: fullSets, notes: null, completedAt: null }]
+          : prev.progress.map((row, i) => (i === existingIndex ? { ...row, status, setsCompleted: fullSets } : row));
+      const completedCount = progress.filter((row) => row.status === "completed").length;
+      return { ...prev, progress, completedCount };
+    });
+  }
+
   return (
     <ScreenContainer refreshing={state.refreshing} onRefresh={state.reload}>
       <BackHeader title={state.data.name} onBack={() => router.back()} />
-      <WorkoutTask assignment={state.data} onChanged={state.reload} />
+      <WorkoutTask assignment={state.data} onProgressSaved={patchProgress} />
     </ScreenContainer>
   );
 }
@@ -80,7 +94,13 @@ function BackHeader({ title, onBack }: { title: string; onBack?: () => void }) {
   );
 }
 
-function WorkoutTask({ assignment, onChanged }: { assignment: WorkoutAssignmentDetail; onChanged: () => void }) {
+function WorkoutTask({
+  assignment,
+  onProgressSaved,
+}: {
+  assignment: WorkoutAssignmentDetail;
+  onProgressSaved: (exerciseIndex: number, status: string, setsCompleted: { setNumber: number }[]) => void;
+}) {
   const router = useRouter();
   const [activeIndex, setActiveIndex] = useState(() => {
     const current = assignment.exercises.findIndex((_, index) => {
@@ -113,12 +133,15 @@ function WorkoutTask({ assignment, onChanged }: { assignment: WorkoutAssignmentD
     }).catch(() => null);
     setSaving(false);
     if (res?.ok) {
+      // The request body already fully describes the new progress row — no
+      // need to refetch the whole assignment (all exercises + all progress)
+      // just to reflect one set.
+      onProgressSaved(activeIndex, status, setsCompleted);
       if (status === "completed" && activeIndex < assignment.exercises.length - 1) {
         setActiveIndex((index) => index + 1);
       } else if (status === "completed" && activeIndex >= assignment.exercises.length - 1) {
         setDone(true);
       }
-      onChanged();
     }
   }
 

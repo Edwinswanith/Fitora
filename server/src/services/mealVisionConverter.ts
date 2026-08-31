@@ -27,6 +27,16 @@ export type MealVisionItem = {
 export type MealVisionResult = {
   suggestedMealName?: string;
   items: MealVisionItem[];
+  /**
+   * Explicit model assessment, separate from `items` — an empty items array
+   * alone is ambiguous (no food? blurry photo? model returned nothing for an
+   * unrelated reason?). Absent/non-boolean values are treated as "true" by
+   * the caller (services/mealScan.ts) so older converters/test doubles that
+   * don't set these fields keep falling through to the existing
+   * items-and-confidence-based logic rather than being newly rejected.
+   */
+  containsFood?: boolean;
+  isImageClear?: boolean;
 };
 
 export interface MealVisionConverter {
@@ -43,6 +53,9 @@ function str(value: unknown, max: number): string | undefined {
   const trimmed = value.trim();
   if (!trimmed) return undefined;
   return trimmed.slice(0, max);
+}
+function bool(value: unknown): boolean | undefined {
+  return typeof value === "boolean" ? value : undefined;
 }
 
 /**
@@ -97,15 +110,25 @@ export class GeminiMealVisionConverter implements MealVisionConverter {
   async convert(input: { filePath: string; mimeType: string; originalName: string }): Promise<MealVisionResult> {
     const base64 = await fs.promises.readFile(input.filePath, { encoding: "base64" });
     const prompt =
-      "You are identifying food items in a photo of a meal for nutrition tracking. For each " +
-      "distinct food item visible, estimate: foodName, quantity, unit (e.g. 'g', 'ml', 'piece', " +
-      "'cup'), calories, proteinG, carbsG, fatG, and optionally fiberG. Also provide foodConfidence " +
-      "(0-1, how sure you are of the food's IDENTITY) and quantityConfidence (0-1, how sure you are " +
-      "of the estimated QUANTITY/portion size) for each item separately, since identity and portion " +
-      "size can be uncertain independently. Also suggest an overall mealName describing the plate.\n\n" +
+      "You are identifying food items in a photo for nutrition tracking. First assess the image " +
+      "itself, then identify food.\n\n" +
+      "Step 1 — assess the image:\n" +
+      "- containsFood: true only if the image actually shows food, a meal, drink, or identifiable " +
+      "food packaging. Set to false for people, rooms, furniture, documents, empty tables, random " +
+      "objects, or anything without visible food.\n" +
+      "- isImageClear: true only if the image is sharp and well-lit enough that you could reasonably " +
+      "identify what's on the plate. Set to false if it's too blurry, too dark, too far away, or too " +
+      "obstructed to make a real assessment — even if it might contain food.\n\n" +
+      "Step 2 — only if containsFood and isImageClear are both true, identify each distinct food item " +
+      "visible and estimate: foodName, quantity, unit (e.g. 'g', 'ml', 'piece', 'cup'), calories, " +
+      "proteinG, carbsG, fatG, and optionally fiberG. Provide foodConfidence (0-1, how sure you are of " +
+      "the food's IDENTITY) and quantityConfidence (0-1, how sure you are of the estimated QUANTITY/" +
+      "portion size) for each item separately, since identity and portion size can be uncertain " +
+      "independently. Also suggest an overall mealName describing the plate.\n\n" +
       "CRITICAL: if you cannot identify a food item with reasonable confidence, DO NOT invent one — " +
       "omit it entirely rather than guessing. Never fabricate nutrition values for a food you cannot " +
-      "actually see. If the image contains no identifiable food, return an empty items array.";
+      "actually see. If containsFood or isImageClear is false, return an empty items array — do not " +
+      "attempt to identify anything.";
 
     const body = {
       contents: [{ parts: [{ text: prompt }, { inline_data: { mime_type: input.mimeType, data: base64 } }] }],
@@ -115,6 +138,8 @@ export class GeminiMealVisionConverter implements MealVisionConverter {
         responseSchema: {
           type: "OBJECT",
           properties: {
+            containsFood: { type: "BOOLEAN" },
+            isImageClear: { type: "BOOLEAN" },
             suggestedMealName: { type: "STRING" },
             items: {
               type: "ARRAY",
@@ -139,7 +164,7 @@ export class GeminiMealVisionConverter implements MealVisionConverter {
               },
             },
           },
-          required: ["items"],
+          required: ["containsFood", "isImageClear", "items"],
         },
       },
     };
@@ -167,6 +192,8 @@ export class GeminiMealVisionConverter implements MealVisionConverter {
     return {
       suggestedMealName: str(rec.suggestedMealName, 160),
       items: sanitizeMealVisionItems(rec.items),
+      containsFood: bool(rec.containsFood),
+      isImageClear: bool(rec.isImageClear),
     };
   }
 }

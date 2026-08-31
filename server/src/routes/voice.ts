@@ -4,6 +4,7 @@ import multer from "multer";
 import { env } from "../config/env";
 import { requireAuth } from "../middleware/auth";
 import { writeRateLimit } from "../middleware/rateLimit";
+import { logVoiceEvent } from "../lib/voiceObservability";
 
 const router = Router();
 const upload = multer({
@@ -64,7 +65,9 @@ router.use(requireAuth);
 router.use(writeRateLimit({ windowMs: 60_000, max: 30 }));
 
 router.post("/transcribe", upload.single("audio"), async (req, res) => {
+  const startedAt = Date.now();
   if (!requireDeepgram()) {
+    logVoiceEvent("transcribe", { outcome: "not_configured" });
     res.status(503).json({ error: "deepgram_not_configured", message: "Voice transcription is not configured." });
     return;
   }
@@ -94,6 +97,7 @@ router.post("/transcribe", upload.single("audio"), async (req, res) => {
 
   if (!response.ok) {
     const status = response.status === 400 || response.status === 408 || response.status === 422 ? 422 : 502;
+    logVoiceEvent("transcribe", { outcome: "deepgram_error", status: response.status, latencyMs: Date.now() - startedAt, model, language });
     res.status(status).json({ error: "transcription_unavailable", message: "I could not hear that command." });
     return;
   }
@@ -101,14 +105,17 @@ router.post("/transcribe", upload.single("audio"), async (req, res) => {
   const payload = (await response.json()) as DeepgramTranscriptResponse;
   const transcript = payload.results?.channels?.[0]?.alternatives?.[0]?.transcript?.trim() ?? "";
   if (!transcript) {
+    logVoiceEvent("transcribe", { outcome: "empty_transcript", latencyMs: Date.now() - startedAt, model, language });
     res.status(422).json({ error: "empty_transcript", message: "I could not hear a command in that recording." });
     return;
   }
 
+  logVoiceEvent("transcribe", { outcome: "success", latencyMs: Date.now() - startedAt, model, language, transcriptLength: transcript.length });
   res.json({ transcript });
 });
 
 router.post("/translate", async (req, res) => {
+  const startedAt = Date.now();
   const text = typeof req.body?.text === "string" ? req.body.text.trim().slice(0, 2000) : "";
   const targetLanguage = languageFromRequest(req.body?.targetLanguage);
   const sourceLanguage = languageFromRequest(req.body?.sourceLanguage);
@@ -118,6 +125,7 @@ router.post("/translate", async (req, res) => {
     return;
   }
   if (targetLanguage === sourceLanguage || !env.gemini.apiKey) {
+    logVoiceEvent("translate", { outcome: "passthrough", mode, sourceLanguage, targetLanguage });
     res.json({ text });
     return;
   }
@@ -148,6 +156,7 @@ router.post("/translate", async (req, res) => {
       signal: AbortSignal.timeout(12_000),
     });
     if (!response.ok) {
+      logVoiceEvent("translate", { outcome: "gemini_http_error", status: response.status, mode, sourceLanguage, targetLanguage, latencyMs: Date.now() - startedAt });
       res.json({ text });
       return;
     }
@@ -155,14 +164,18 @@ router.post("/translate", async (req, res) => {
       candidates?: { content?: { parts?: { text?: string }[] } }[];
     };
     const translated = payload.candidates?.[0]?.content?.parts?.[0]?.text?.trim();
+    logVoiceEvent("translate", { outcome: translated ? "success" : "empty_response", mode, sourceLanguage, targetLanguage, latencyMs: Date.now() - startedAt });
     res.json({ text: translated || text });
-  } catch {
+  } catch (err) {
+    logVoiceEvent("translate", { outcome: "error", mode, sourceLanguage, targetLanguage, latencyMs: Date.now() - startedAt, message: err instanceof Error ? err.message : "unknown" });
     res.json({ text });
   }
 });
 
 async function speak(text: string, res: Response) {
+  const startedAt = Date.now();
   if (!requireDeepgram()) {
+    logVoiceEvent("speak", { outcome: "not_configured" });
     res.status(503).json({ error: "deepgram_not_configured", message: "Voice output is not configured." });
     return;
   }
@@ -183,11 +196,13 @@ async function speak(text: string, res: Response) {
   );
 
   if (!response.ok) {
+    logVoiceEvent("speak", { outcome: "deepgram_error", status: response.status, latencyMs: Date.now() - startedAt, model: env.deepgram.ttsModel, textLength: message.length });
     res.status(502).json({ error: "speech_unavailable" });
     return;
   }
 
   const audio = Buffer.from(await response.arrayBuffer());
+  logVoiceEvent("speak", { outcome: "success", latencyMs: Date.now() - startedAt, model: env.deepgram.ttsModel, textLength: message.length, audioBytes: audio.length });
   res.setHeader("Cache-Control", "no-store");
   res.setHeader("Content-Type", response.headers.get("content-type") ?? "audio/mpeg");
   res.send(audio);

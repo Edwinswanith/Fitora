@@ -6,6 +6,7 @@ import { useRouter } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
 import { apiFetch } from "../../../lib/api";
 import { ROLE_THEMES, colors, radius } from "../../../lib/theme";
+import { updateCachedData, type CoachHomeData } from "../../../lib/fitoraData";
 import { Banner, Card, Label, Muted, PrimaryButton, TextField } from "../../../components/ui";
 
 const theme = ROLE_THEMES.coach;
@@ -34,7 +35,11 @@ export default function NewAthlete() {
         method: "POST",
         body: JSON.stringify({ name: name.trim(), email: email.trim(), sport: sport.trim(), position: position.trim() || undefined }),
       });
-      const json = (await res.json().catch(() => ({}))) as { athlete?: { name: string; email: string }; tempPassword?: string; error?: string };
+      const json = (await res.json().catch(() => ({}))) as {
+        athlete?: { athleteId: string; userId?: string; name: string; email: string; sport: string; position?: string | null };
+        tempPassword?: string;
+        error?: string;
+      };
       if (res.status === 409) {
         setError("That email already has an account.");
         return;
@@ -42,6 +47,30 @@ export default function NewAthlete() {
       if (!res.ok || !json.tempPassword) {
         setError("Couldn't create athlete. Check the details and try again.");
         return;
+      }
+      // The roster screen (coach/athletes/index.tsx) shares this cache key —
+      // patch it directly instead of leaving the new athlete invisible there
+      // until a manual pull-to-refresh.
+      const created = json.athlete;
+      if (created?.athleteId) {
+        updateCachedData<CoachHomeData>("coach-dashboard", (prev) =>
+          prev
+            ? {
+                ...prev,
+                roster: [
+                  ...prev.roster,
+                  {
+                    athleteId: created.athleteId,
+                    userId: created.userId,
+                    name: created.name,
+                    email: created.email,
+                    sport: created.sport,
+                    position: created.position ?? null,
+                  },
+                ],
+              }
+            : prev
+        );
       }
       setCreated({ name: json.athlete?.name ?? name.trim(), email: json.athlete?.email ?? email.trim(), tempPassword: json.tempPassword });
     } catch {

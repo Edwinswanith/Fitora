@@ -187,7 +187,7 @@ export default function AthleteDashboard() {
   const router = useRouter();
   const [activeTab, setActiveTab] = useState<AthleteTab>(() => normalizeTab(params.section));
   const [loggingWater, setLoggingWater] = useState(false);
-  const state = useAsyncData(loadAthleteDashboardData, []);
+  const state = useAsyncData(loadAthleteDashboardData, [], "athlete-dashboard");
   const reloadDashboard = state.reload;
 
   useEffect(() => {
@@ -239,7 +239,13 @@ export default function AthleteDashboard() {
         method: "POST",
         body: JSON.stringify({ amountMl, date: todayKey() }),
       });
-      if (res.ok) state.reload();
+      if (res.ok) {
+        // The response is the athlete's whole updated water day — apply it
+        // directly instead of re-running the full ~15-request dashboard
+        // loader just to reflect one water log.
+        const water = await res.json().catch(() => null);
+        if (water) state.setData((prev) => (prev ? { ...prev, water } : prev));
+      }
     } finally {
       setLoggingWater(false);
     }
@@ -256,10 +262,10 @@ export default function AthleteDashboard() {
       avoidTopSafeArea={isWorkoutsTab || isProgressTab}
       contentStyle={isWorkoutsTab ? styles.workoutsScreenContent : isProgressTab ? styles.progressScreenContent : undefined}
     >
-      {activeTab === "today" ? <TodayView data={data} onLogWater={logWater} loggingWater={loggingWater} /> : null}
+      {activeTab === "today" ? <TodayView data={data} onLogWater={logWater} loggingWater={loggingWater} onNavigate={setActiveTab} /> : null}
       {activeTab === "workouts" ? <WorkoutsView data={data} /> : null}
-      {activeTab === "nutrition" ? <NutritionView data={data} onLogWater={logWater} loggingWater={loggingWater} onReload={state.reload} /> : null}
-      {activeTab === "coach" ? <CoachView data={data} onReload={state.reload} /> : null}
+      {activeTab === "nutrition" ? <NutritionView data={data} onLogWater={logWater} loggingWater={loggingWater} onUpdateData={state.setData} /> : null}
+      {activeTab === "coach" ? <CoachView data={data} onReload={state.reload} onNavigate={setActiveTab} /> : null}
       {activeTab === "progress" ? <ProgressView data={data} /> : null}
       {data.partialIssues.length > 0 ? (
         <Text style={styles.partialNote}>
@@ -274,10 +280,12 @@ function TodayView({
   data,
   onLogWater,
   loggingWater,
+  onNavigate,
 }: {
   data: AthleteDashboardData;
   onLogWater: () => void;
   loggingWater: boolean;
+  onNavigate: (tab: AthleteTab) => void;
 }) {
   const router = useRouter();
   const name = data.profile?.name ?? data.daily?.name ?? "User";
@@ -287,8 +295,8 @@ function TodayView({
   const nextSession = nextFutureSession(data.sessions);
   const activeCoach = data.coachProfile?.name || data.coaches[0]?.name || "your coach";
   const alert = buildTodayAlert(data, activeCoach, {
-    membership: () => router.push({ pathname: "/athlete/dashboard", params: { section: "coach" } } as never),
-    progress: () => router.push({ pathname: "/athlete/dashboard", params: { section: "progress" } } as never),
+    membership: () => onNavigate("coach"),
+    progress: () => onNavigate("progress"),
     checkIn: () => router.push("/athlete/check-in" as never),
   });
 
@@ -321,7 +329,7 @@ function TodayView({
           value={target ? `${consumed} / ${target} kcal` : `${consumed} kcal`}
           progress={progress(consumed, target)}
           tone="success"
-          onPress={() => router.push({ pathname: "/athlete/dashboard", params: { section: "nutrition" } } as never)}
+          onPress={() => onNavigate("nutrition")}
         />
         <Divider />
         <RowLink
@@ -329,7 +337,7 @@ function TodayView({
           title="Coach Tasks"
           subtitle={data.coachComments[0]?.body ?? "No open coach tasks"}
           value={data.coachComments.length ? `${data.coachComments.length} notes` : undefined}
-          onPress={() => router.push({ pathname: "/athlete/dashboard", params: { section: "coach" } } as never)}
+          onPress={() => onNavigate("coach")}
         />
       </AppCard>
 
@@ -395,7 +403,7 @@ function TodayView({
               <Text style={styles.messageTitle}>From Coach {firstName(activeCoach, "Coach")}</Text>
               <Text style={styles.messageBody} numberOfLines={2}>{data.coachComments[0].body}</Text>
             </View>
-            <Pressable onPress={() => router.push({ pathname: "/athlete/dashboard", params: { section: "coach" } } as never)} hitSlop={8}>
+            <Pressable onPress={() => onNavigate("coach")} hitSlop={8}>
               <Text style={styles.linkText}>Reply</Text>
             </Pressable>
           </View>
@@ -1031,12 +1039,12 @@ function NutritionView({
   data,
   onLogWater,
   loggingWater,
-  onReload,
+  onUpdateData,
 }: {
   data: AthleteDashboardData;
   onLogWater: () => void;
   loggingWater: boolean;
-  onReload: () => void;
+  onUpdateData: (updater: (prev: AthleteDashboardData | null) => AthleteDashboardData | null) => void;
 }) {
   const router = useRouter();
   const [expandedPlan, setExpandedPlan] = useState(false);
@@ -1078,13 +1086,37 @@ function NutritionView({
           })),
         }),
       });
-      const body = (await res.json().catch(() => ({}))) as { error?: string };
+      const body = (await res.json().catch(() => ({}))) as { error?: string; meal?: Meal };
       if (!res.ok) {
         setNutritionMessage(body.error ?? "Could not log this planned meal.");
         return;
       }
       setNutritionMessage(`${titleCase(meal.mealType)} logged.`);
-      onReload();
+      // Append the newly-created Meal and roll its macros into the running
+      // totals locally — avoids re-running the whole dashboard loader (which
+      // includes a 7-day sequential nutrition-history fetch) just to reflect
+      // one meal.
+      const createdMeal = body.meal;
+      if (createdMeal) {
+        const addedCalories = mealCalories(createdMeal);
+        const addedProtein = createdMeal.foods.reduce((sum, f) => sum + (Number(f.proteinG) || 0), 0);
+        const addedCarbs = createdMeal.foods.reduce((sum, f) => sum + (Number(f.carbsG) || 0), 0);
+        const addedFat = createdMeal.foods.reduce((sum, f) => sum + (Number(f.fatG) || 0), 0);
+        onUpdateData((prev) =>
+          prev
+            ? {
+                ...prev,
+                meals: [...prev.meals, createdMeal],
+                mealTotals: {
+                  calories: (prev.mealTotals?.calories ?? 0) + addedCalories,
+                  proteinG: (prev.mealTotals?.proteinG ?? 0) + addedProtein,
+                  carbsG: (prev.mealTotals?.carbsG ?? 0) + addedCarbs,
+                  fatG: (prev.mealTotals?.fatG ?? 0) + addedFat,
+                },
+              }
+            : prev
+        );
+      }
     } catch {
       setNutritionMessage("Network failed while logging this meal.");
     } finally {
@@ -1354,7 +1386,15 @@ function MealStatusList({
   );
 }
 
-function CoachView({ data, onReload }: { data: AthleteDashboardData; onReload: () => void }) {
+function CoachView({
+  data,
+  onReload,
+  onNavigate,
+}: {
+  data: AthleteDashboardData;
+  onReload: () => void;
+  onNavigate: (tab: AthleteTab) => void;
+}) {
   const router = useRouter();
   const coachName = data.coachProfile?.name || data.coaches[0]?.name || "";
   const coachId = data.coaches[0]?.coachId ?? data.subscription?.coachId ?? data.coachProfile?.coachId ?? null;
@@ -1582,9 +1622,9 @@ function CoachView({ data, onReload }: { data: AthleteDashboardData; onReload: (
           <AppCard>
             <Text style={styles.cardTitle}>My Coaching Plan</Text>
             <View style={styles.twoColumnRows}>
-              <RowLink icon={workoutPlanVisual.icon} tone={workoutPlanVisual.tone} title="Workout Plan" subtitle={`${data.upcomingWorkouts.length + data.workouts.length} workouts scheduled`} onPress={() => router.push({ pathname: "/athlete/dashboard", params: { section: "workouts" } } as never)} />
+              <RowLink icon={workoutPlanVisual.icon} tone={workoutPlanVisual.tone} title="Workout Plan" subtitle={`${data.upcomingWorkouts.length + data.workouts.length} workouts scheduled`} onPress={() => onNavigate("workouts")} />
               <Divider vertical />
-              <RowLink icon={mealPlanVisual.icon} tone={mealPlanVisual.tone} title="Meal Plan" subtitle={data.plannedMeals.length ? `${data.plannedMeals.length} meals active` : "No active plan"} onPress={() => router.push({ pathname: "/athlete/dashboard", params: { section: "nutrition" } } as never)} />
+              <RowLink icon={mealPlanVisual.icon} tone={mealPlanVisual.tone} title="Meal Plan" subtitle={data.plannedMeals.length ? `${data.plannedMeals.length} meals active` : "No active plan"} onPress={() => onNavigate("nutrition")} />
             </View>
           </AppCard>
 

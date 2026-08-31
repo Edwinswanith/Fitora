@@ -72,7 +72,16 @@ const READ_ONLY_INTENTS: VoiceIntentNameV2[] = [
   "show_daily_checklist",
 ];
 
-/** Intents that save/update/send data — confirmation is mandatory, hardcoded, never model-decided. */
+/**
+ * Intents that save/update/send data. Most are simple, reversible, single-
+ * athlete writes (a log entry can always be corrected/deleted afterward) —
+ * for those, asking "should I save this?" on every single utterance is the
+ * exact friction real usage flagged (spec items 3/4), so they auto-execute
+ * the moment their required fields are present. Only `send_coach_note` stays
+ * confirmation-gated below (CONFIRMATION_REQUIRED_INTENTS): it puts a message
+ * in front of another real person and can't be unsent, which is a
+ * meaningfully different risk profile than a personal data log.
+ */
 const WRITE_INTENTS: VoiceIntentNameV2[] = [
   "log_wellness",
   "log_session",
@@ -88,6 +97,12 @@ const WRITE_INTENTS: VoiceIntentNameV2[] = [
   "send_coach_note",
   "add_note",
 ];
+
+/** Subset of WRITE_INTENTS that still requires an explicit "yes" before saving — see the comment above. */
+const CONFIRMATION_REQUIRED_INTENTS: VoiceIntentNameV2[] = ["send_coach_note"];
+
+/** Below this confidence, the model's classification isn't trusted enough to act on — never silently guesses. */
+const LOW_CONFIDENCE_THRESHOLD = 0.45;
 
 export const OPEN_SCREEN_ALLOWLIST = [
   "today",
@@ -391,33 +406,6 @@ const FIELD_FOLLOW_UP_QUESTIONS: Record<string, string> = {
   profileField: "What would you like to update — height, weight, or position?",
 };
 
-function formatSessionSummary(entities: Record<string, unknown>): string {
-  const parts: string[] = [];
-  if (entities.status) parts.push(`${entities.status}`);
-  if (entities.workoutType) parts.push(`${entities.workoutType}`);
-  if (entities.actualDurationMin) parts.push(`for ${entities.actualDurationMin} minutes`);
-  const summary = parts.length ? parts.join(" ") : "this session";
-  const rpePart =
-    typeof entities.rpe === "number"
-      ? `, RPE ${entities.rpe}${entities.trainingCategory ? ` (${entities.trainingCategory}, ${entities.plannedIntensityPercent}% planned)` : ""}`
-      : "";
-  const effortPart = typeof entities.effortScore === "number" ? ` and effort ${entities.effortScore}` : "";
-  const slot = entities.sessionType ? `your ${entities.sessionType} ` : "";
-  return `You ${slot}${summary}${rpePart}${effortPart}. Should I save it?`;
-}
-
-/** Templated, deterministic spoken text — never model-authored (correction #1, #13). */
-function formatMealSummary(entities: Record<string, unknown>): string {
-  const mealType = typeof entities.mealType === "string" ? entities.mealType : "meal";
-  const name =
-    typeof entities.mealName === "string" ? entities.mealName : typeof entities.foodName === "string" ? entities.foodName : "this meal";
-  const parts = [`${entities.calories} calories`];
-  if (typeof entities.proteinG === "number") parts.push(`${entities.proteinG} g protein`);
-  if (typeof entities.carbsG === "number") parts.push(`${entities.carbsG} g carbs`);
-  if (typeof entities.fatG === "number") parts.push(`${entities.fatG} g fat`);
-  return `Log ${name} for ${mealType} with ${parts.join(", ")}?`;
-}
-
 function spokenResponseFor(
   intent: VoiceIntentNameV2,
   action: VoiceAction,
@@ -444,70 +432,20 @@ function spokenResponseFor(
   }
 
   if (action === "reject") {
-    return "Do you want to log RPE for a session, check your readiness, log a session, or message your coach — what would you like to do?";
+    return "I didn't catch that. Could you say it again?";
   }
 
   if (action === "execute") {
     return "Saving that now.";
   }
 
-  // ready_to_confirm
-  switch (intent) {
-    case "log_session":
-      return formatSessionSummary(entities);
-    case "log_wellness": {
-      const bits: string[] = [];
-      if (typeof entities.sleepQuality === "number") bits.push(`sleep ${entities.sleepQuality}`);
-      if (typeof entities.sleepHours === "number") bits.push(`${entities.sleepHours} hours slept`);
-      if (typeof entities.mood === "number") bits.push(`mood ${entities.mood}`);
-      if (typeof entities.stress === "number") bits.push(`stress ${entities.stress}`);
-      if (typeof entities.soreness === "number") bits.push(`soreness ${entities.soreness}`);
-      if (typeof entities.fatigue === "number") bits.push(`fatigue ${entities.fatigue}`);
-      return `Save this check-in — ${bits.join(", ") || "no details"}?`;
-    }
-    case "log_rpe":
-      return `Save session RPE ${entities.rpe} ${typeof entities.trainingCategory === "string" ? `for ${entities.trainingCategory}` : ""}?`;
-    case "add_water":
-      return `Log ${entities.amountMl} ml of water?`;
-    case "log_meal":
-      return formatMealSummary(entities);
-    case "set_water_goal":
-      return `Set your water goal to ${entities.goalMl} ml?`;
-    case "change_hydration_reminder": {
-      // Correction #13: never claim a fixed-cadence hydration-specific schedule.
-      if (typeof entities.enabled === "boolean" && entities.enabled === false) {
-        return "Turn reminders off?";
-      }
-      if (typeof entities.intervalMinutes === "number") {
-        return `Space reminders at least ${entities.intervalMinutes} minutes apart?`;
-      }
-      return "Turn reminders on?";
-    }
-    case "log_recovery":
-      if (entities.skipped === true) return "Skip recovery today?";
-      return `Save recovery — ${Array.isArray(entities.modalities) ? (entities.modalities as string[]).join(", ") : "logged"}?`;
-    case "mark_rest_day":
-      return "Mark today as a rest day?";
-    case "log_heart_rate": {
-      const parts: string[] = [];
-      if (typeof entities.wakeHr === "number") parts.push(`wake ${entities.wakeHr}`);
-      if (typeof entities.bedHr === "number") parts.push(`bed ${entities.bedHr}`);
-      return `Save heart rate — ${parts.join(", ")} bpm?`;
-    }
-    case "update_profile": {
-      const parts: string[] = [];
-      if (typeof entities.heightCm === "number") parts.push(`height ${entities.heightCm} cm`);
-      if (typeof entities.weightKg === "number") parts.push(`weight ${entities.weightKg} kg`);
-      if (typeof entities.position === "string") parts.push(`position ${entities.position}`);
-      return `Update your profile — ${parts.join(", ")}?`;
-    }
-    case "send_coach_note":
-      return `Send this to your coach: "${entities.body}"?`;
-    case "add_note":
-      return `Save this note: "${entities.body}"?`;
-    default:
-      return "Should I save this?";
+  // ready_to_confirm — only send_coach_note ever reaches this now (the sole
+  // entry in CONFIRMATION_REQUIRED_INTENTS); every other write intent
+  // auto-executes the moment its required fields are present (spec item 4).
+  if (intent === "send_coach_note") {
+    return `Send this to your coach: "${entities.body}"?`;
   }
+  return "Should I save this?";
 }
 
 /**
@@ -516,6 +454,33 @@ function spokenResponseFor(
  */
 export function derivePolicy(turn: SanitizedTurn, pending: PolicyPendingState): PolicyResult {
   const isMeta = META_INTENTS.includes(turn.intent);
+
+  // A classification the model itself wasn't confident about is never acted
+  // on — better to ask the athlete to repeat themselves than execute (or
+  // start collecting fields for) a guess. Meta-intents (yes/no/correction)
+  // are short, unambiguous utterances by nature and are exempt; unknown_intent
+  // already gets its own redirect below. If a workflow was already in
+  // progress, its state is preserved rather than discarded on a garbled turn.
+  if (!isMeta && turn.intent !== "unknown_intent" && turn.confidence < LOW_CONFIDENCE_THRESHOLD) {
+    if (pending) {
+      return {
+        effectiveIntent: pending.intent,
+        entities: pending.entities,
+        missingFields: pending.missingFields,
+        action: "collect_fields",
+        requiresConfirmation: CONFIRMATION_REQUIRED_INTENTS.includes(pending.intent),
+        spokenResponse: "I didn't catch that. Could you say it again?",
+      };
+    }
+    return {
+      effectiveIntent: "unknown_intent",
+      entities: {},
+      missingFields: [],
+      action: "reject",
+      requiresConfirmation: false,
+      spokenResponse: "I didn't catch that. Could you say it again?",
+    };
+  }
 
   // Meta-intents operate on the pending workflow, not a fresh one.
   if (isMeta) {
@@ -548,7 +513,7 @@ export function derivePolicy(turn: SanitizedTurn, pending: PolicyPendingState): 
     const mergedRaw = { ...pending.entities, ...incoming };
     const merged = sanitizeEntities(pending.intent, mergedRaw);
     const missingFields = requiredMissingFields(pending.intent, merged);
-    const requiresConfirmation = WRITE_INTENTS.includes(pending.intent);
+    const requiresConfirmation = CONFIRMATION_REQUIRED_INTENTS.includes(pending.intent);
 
     if (turn.intent === "confirm_action") {
       if (missingFields.length > 0) {
@@ -573,7 +538,7 @@ export function derivePolicy(turn: SanitizedTurn, pending: PolicyPendingState): 
     }
 
     // update_field
-    const action: VoiceAction = missingFields.length > 0 ? "collect_fields" : "ready_to_confirm";
+    const action: VoiceAction = missingFields.length > 0 ? "collect_fields" : requiresConfirmation ? "ready_to_confirm" : "execute";
     return {
       effectiveIntent: pending.intent,
       entities: merged,
@@ -632,14 +597,14 @@ export function derivePolicy(turn: SanitizedTurn, pending: PolicyPendingState): 
       entities,
       missingFields: requiredMissingFields("log_wellness", entities),
       action: "collect_fields",
-      requiresConfirmation: true,
+      requiresConfirmation: false,
       spokenResponse: "Let's do your check-in. How was your sleep quality, one to ten?",
     };
   }
 
   // Every remaining intent is a write workflow.
   const missingFields = requiredMissingFields(turn.intent, entities);
-  const requiresConfirmation = WRITE_INTENTS.includes(turn.intent);
+  const requiresConfirmation = CONFIRMATION_REQUIRED_INTENTS.includes(turn.intent);
   const action: VoiceAction = missingFields.length > 0 ? "collect_fields" : requiresConfirmation ? "ready_to_confirm" : "execute";
 
   return {

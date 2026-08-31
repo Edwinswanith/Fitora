@@ -42,14 +42,21 @@ export function mealScanFilePath(doc: Pick<MealScanDoc, "storedFilename">): stri
   return resolved;
 }
 
+// Below this average confidence, items are real enough to have survived
+// sanitization but not trustworthy enough to present as "here's your meal" —
+// deliberately below the mock adapter's fixed 0.4 (moderate-confidence,
+// exercises the ordinary needs_review path in tests) so that stays unaffected.
+const LOW_CONFIDENCE_THRESHOLD = 0.35;
+
 /**
  * Runs the (real-or-mock, per getMealVisionConverter) vision call and
  * persists the sanitized items as MealScanItem rows for the User to review —
- * NEVER creates a Meal here. status becomes "needs_review" regardless of
- * confidence (even a confident detection still needs a human look before it
- * becomes trusted intake data), or "rejected" with an error message if the
- * model call itself failed — either way the User is never left with a scan
- * silently stuck in "processing" forever.
+ * NEVER creates a Meal here, and never lands on a status that implies
+ * trustworthy nutrition data unless a confident food detection actually
+ * happened. Resolves to one of MEAL_SCAN_STATUS's terminal states (see that
+ * enum's doc comment) — never left stuck in "processing" forever, and a
+ * failed/absent/low-confidence detection never reaches the client dressed up
+ * as real items.
  */
 export async function processScan(scan: HydratedDocument<MealScanDoc>, hourOfDay: number): Promise<HydratedDocument<MealScanDoc>> {
   try {
@@ -68,9 +75,47 @@ export async function processScan(scan: HydratedDocument<MealScanDoc>, hourOfDay
     // adapter is active.
     const items = sanitizeMealVisionItems(result.items);
 
-    if (items.length === 0) {
-      scan.status = "needs_review";
+    // Explicit model assessment, not inferred from an empty items array —
+    // an empty array alone can't distinguish "no food", "too blurry to
+    // tell", or "food present but nothing confident enough to report".
+    // Missing/non-boolean values default to true so converters that don't
+    // set these fields (the mock, older test doubles) keep falling through
+    // to the existing items-and-confidence logic below unaffected.
+    const containsFood = result.containsFood !== false;
+    const isImageClear = result.isImageClear !== false;
+
+    if (!containsFood) {
+      scan.status = "no_food_detected";
       scan.overallConfidence = 0;
+      await scan.save();
+      return scan;
+    }
+    if (!isImageClear) {
+      scan.status = "low_quality";
+      scan.overallConfidence = 0;
+      await scan.save();
+      return scan;
+    }
+    if (items.length === 0) {
+      // The model claimed food was present and the image was clear, but
+      // nothing survived sanitization — functionally the same as "no
+      // confident detection" from the User's point of view.
+      scan.status = "no_food_detected";
+      scan.overallConfidence = 0;
+      await scan.save();
+      return scan;
+    }
+
+    const avgConfidence =
+      items.reduce((sum, i) => sum + (i.foodConfidence + i.quantityConfidence) / 2, 0) / items.length;
+    const roundedConfidence = Math.round(avgConfidence * 100) / 100;
+
+    if (avgConfidence < LOW_CONFIDENCE_THRESHOLD) {
+      // Detected *something*, but not confidently enough to show as if it
+      // were real nutrition data — no MealScanItem rows are created, so
+      // there's nothing for the client to accidentally present as trustworthy.
+      scan.status = "low_confidence";
+      scan.overallConfidence = roundedConfidence;
       await scan.save();
       return scan;
     }
@@ -91,11 +136,8 @@ export async function processScan(scan: HydratedDocument<MealScanDoc>, hourOfDay
       }))
     );
 
-    const avgConfidence =
-      items.reduce((sum, i) => sum + (i.foodConfidence + i.quantityConfidence) / 2, 0) / items.length;
-
     scan.status = "needs_review";
-    scan.overallConfidence = Math.round(avgConfidence * 100) / 100;
+    scan.overallConfidence = roundedConfidence;
     scan.suggestedMealName = result.suggestedMealName ?? null;
     scan.suggestedMealType = suggestMealType(
       items.map((i) => i.foodName),

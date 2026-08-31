@@ -107,7 +107,7 @@ export default function Notifications() {
     const home = dashboardPathForRole(user?.role ?? "") ?? "/notifications";
     const link = n.link;
     if (!link || !link.startsWith("/")) {
-      router.push(home as never);
+      router.replace(home as never);
       return;
     }
 
@@ -115,9 +115,11 @@ export default function Notifications() {
     // (/athlete/messages/:coachId, /coach/messages/:athleteId) that have no
     // standalone mobile screen. On mobile, athlete messaging lives in the
     // dashboard "coach" section and coach messaging at /coach/messages.
+    // replace, not push — landing back on the dashboard from notifications
+    // should reuse/refresh it, not stack a fresh instance on top.
     const athleteMsg = /^\/athlete\/messages\/([^/?]+)/.exec(link);
     if (athleteMsg) {
-      router.push({ pathname: "/athlete/dashboard", params: { section: "coach", coachId: athleteMsg[1] } } as never);
+      router.replace({ pathname: "/athlete/dashboard", params: { section: "coach", coachId: athleteMsg[1] } } as never);
       return;
     }
     const coachMsg = /^\/coach\/messages(?:\/([^/?]+))?/.exec(link);

@@ -65,6 +65,7 @@ import {
 import { WorkoutMedia, type WorkoutMediaDoc } from "../models/WorkoutMedia";
 import { mediaUpload, mediaFilePath, serializeMedia } from "../services/media";
 import { enrichVoiceIntentResult, getVoiceIntentInterpreter, type VoicePendingIntent } from "../services/voiceIntentInterpreter";
+import { logVoiceEvent } from "../lib/voiceObservability";
 import { withIdempotency } from "../lib/voiceIdempotency";
 import { evaluateAndDispatch } from "../services/notificationEligibility";
 import { resolveTimezoneForUser } from "../services/timezone";
@@ -77,11 +78,21 @@ const router = Router();
 router.use(requireAuth, requireRole("athlete"), loadScope);
 
 /**
- * Voice assistant NLU — classifies a spoken transcript into a structured
- * intent only; it never writes to the database (the client performs the
- * actual write via the existing endpoints below, after the athlete
- * confirms), so it sits outside the stricter write-rate-limit below and
- * gets its own more generous limit sized for a multi-turn conversation.
+ * DEPRECATED — V1 voice assistant NLU, superseded by
+ * /api/athlete/voice/interpret-v2 (routes/athleteVoiceV2.ts), which adds
+ * server-persisted confirm-before-write state and stricter entity
+ * sanitization. The mobile client no longer ships the V1 UI/caller as of
+ * the V1 retirement — this route is kept only so an already-installed app
+ * build that hasn't updated yet doesn't hard-break. The
+ * `[voice:interpret_v1]` log line (see lib/voiceObservability.ts) tracks
+ * residual traffic here; once it's consistently zero across a release
+ * cycle, this route and services/voiceIntentInterpreter.ts can be deleted.
+ *
+ * Classifies a spoken transcript into a structured intent only; it never
+ * writes to the database (the client performs the actual write via the
+ * existing endpoints below, after the athlete confirms), so it sits outside
+ * the stricter write-rate-limit below and gets its own more generous limit
+ * sized for a multi-turn conversation.
  */
 router.post(
   "/voice/interpret",
@@ -95,11 +106,19 @@ router.post(
     const pendingIntent = sanitizePendingIntent(req.body?.pendingIntent);
     const today = new Date().toISOString().slice(0, 10);
 
+    const startedAt = Date.now();
     try {
       const interpreted = await getVoiceIntentInterpreter().interpret({ transcript, today, pendingIntent });
       const result = enrichVoiceIntentResult(interpreted, transcript);
+      logVoiceEvent("interpret_v1", {
+        hadPending: Boolean(pendingIntent),
+        intent: result.intent,
+        transcriptLength: transcript.length,
+        latencyMs: Date.now() - startedAt,
+      });
       res.json(result);
     } catch {
+      logVoiceEvent("interpret_v1", { outcome: "error", transcriptLength: transcript.length, latencyMs: Date.now() - startedAt });
       res.json({
         intent: "unsupported",
         fields: {},

@@ -8,13 +8,7 @@ import { AskAgentControl } from "./AskAgentControl";
 import { AthleteAskAgentOverlayV2 } from "./voiceAssistant/AthleteAskAgentOverlayV2";
 import { apiFetch, apiJson } from "../lib/api";
 import { ROLE_THEMES, colors } from "../lib/theme";
-import { SESSION_SLOTS, SLOT_LABEL, type SessionSlot } from "../lib/sessions";
-import { TRAINING_CATEGORIES } from "../lib/trainingCategories";
-import { athleteNavigationReply, parseAthleteNavigationCommand, type AthleteNavigationCommand } from "../lib/athleteAskNavigation";
-
-// V2 is the default Fitora assistant. Set EXPO_PUBLIC_VOICE_ASSISTANT_V2=false
-// only if a build needs to fall back to the older athlete assistant.
-const VOICE_ASSISTANT_V2 = process.env.EXPO_PUBLIC_VOICE_ASSISTANT_V2 !== "false";
+import { SESSION_SLOTS } from "../lib/sessions";
 
 type AgentRow = {
   id: string;
@@ -37,31 +31,6 @@ type AgentChatEntry = {
   role: "user" | "agent";
   text: string;
 };
-type VoiceIntentName =
-  | "navigate"
-  | "fill_wellness"
-  | "fill_attendance"
-  | "fill_training"
-  | "fill_rpe"
-  | "fill_heart_rate"
-  | "fill_recovery"
-  | "add_water"
-  | "add_note"
-  | "send_coach_message"
-  | "query_status"
-  | "unsupported";
-type VoiceInterpretResult = {
-  intent: VoiceIntentName;
-  fields: Record<string, unknown>;
-  missingFields: string[];
-  followUpQuestion?: string;
-  spokenResponse?: string;
-};
-type AskPendingGeminiIntent = {
-  intent: VoiceIntentName;
-  collected: Record<string, unknown>;
-  missingFields: string[];
-};
 type CoachAgentMemory = {
   date: string;
   lastAthleteId?: string;
@@ -71,14 +40,9 @@ type CoachAgentMemory = {
   lastSummary?: string;
   turns: { role: "user" | "agent"; text: string; at: string }[];
 };
-type PendingCoachAction = {
-  kind: "client_note";
-  athleteId: string;
-  athleteName: string;
-  body: string;
-};
-
-const LINK_COACH_BEFORE_MESSAGE = "First link with coach then you can enable to send message.";
+type PendingCoachAction =
+  | { kind: "client_note"; athleteId: string; athleteName: string; body: string }
+  | { kind: "announcement"; body: string };
 
 type CoachCard = {
   athleteId: string;
@@ -239,164 +203,6 @@ function cleanCoachClientNoteBody(command: string, athleteName?: string | null):
     .trim();
   if (!body || /^(?:for|to|about|client|athlete|player|note|comment|feedback)$/i.test(body)) return null;
   return body.slice(0, 2000);
-}
-
-function parseWaterAmountMl(command: string): number | null {
-  const lower = command.toLowerCase();
-  const litre = lower.match(/(\d+(?:\.\d+)?)\s*(?:l|litre|liter|litres|liters)\b/);
-  if (litre) return Math.round(Number(litre[1]) * 1000);
-  const ml = lower.match(/(\d+)\s*(?:ml|millilitre|milliliter|millilitres|milliliters)\b/);
-  if (ml) return Number(ml[1]);
-  const plain = lower.match(/\b(?:add|log|drink|drank)\s+(\d{2,4})\b/);
-  return plain ? Number(plain[1]) : null;
-}
-
-function cleanCoachMessageBody(command: string): string | null {
-  const body = command
-    .trim()
-    .replace(/^["'`]+|["'`]+$/g, "")
-    .replace(/^(?:now\s+)?(?:i\s+)?(?:want|need|would\s+like)\s+to\s+(?:send|tell|message|note|text)\s+(?:the\s+|a\s+|this\s+)?(?:message|note|text)?\s*(?:to\s+)?(?:my\s+)?(?:coach|couch|house)\s*/i, "")
-    .replace(/^(?:can|could|would|will)\s+you\s+(?:please\s+)?(?:send|tell|message|note|text)\s+(?:the\s+|a\s+|this\s+)?(?:message|note|text)?\s*(?:to\s+)?(?:my\s+)?(?:coach|couch|house)\s*/i, "")
-    .replace(/^(?:please\s+)?(?:send|tell|message|note|text)\s+(?:the\s+|a\s+|this\s+)?(?:message|note|text)?\s*(?:to\s+)?(?:my\s+)?(?:coach|couch|house)\s*/i, "")
-    .replace(/^(?:stating|setting|saying)\s+that\s+/i, "")
-    .replace(/^(?:stating|setting|saying|that)\s+/i, "")
-    .replace(/^(?:for|as|:|-)\s*/i, "")
-    .replace(/^available\b/i, "I won't be available")
-    .replace(/\band unable to\b/i, "and I am unable to attend")
-    .replace(/\bunable to today class\b/i, "I am unable to attend today's class")
-    .replace(/\battend today class\b/i, "attend today's class")
-    .replace(/\bi will tomorrow\b/i, "I will join tomorrow")
-    .trim();
-  if (!body) return null;
-  if (/^(?:can|could|would|will|please|you|send|sent|sending|tell|message|note|text|to|my|coach|couch|house|that|stating|setting|saying)\b[\s\w]*$/i.test(body)) {
-    return null;
-  }
-  return body;
-}
-
-function extractCoachMessage(command: string): string | null {
-  const cleaned = command.trim().replace(/\bcouch\b/gi, "coach").replace(/\bhouse\b/gi, "coach");
-  const lower = command.toLowerCase();
-  if (!/\b(coach|couch|house)\b/.test(lower) || !/\b(send|sending|sent|tell|message|note|text)\b/.test(lower)) return null;
-  const want = cleaned.match(/^(?:now\s+)?(?:i\s+)?(?:want|need|would\s+like)\s+to\s+(?:send|tell|message|note|text)\s+(?:the\s+|a\s+|this\s+)?(?:message|note|text)?\s*(?:to\s+)?(?:my\s+)?coach\s*(?:stating|setting|saying|that|:|-)?\s*(.*)$/i);
-  if (want) return cleanCoachMessageBody(want[1] ?? "");
-  const polite = cleaned.match(/^(?:can|could|would|will)\s+you\s+(?:please\s+)?(?:send|tell|message|note|text)\s+(?:the\s+|a\s+|this\s+)?(?:message|note|text)?\s*(?:to\s+)?(?:my\s+)?coach\s*(?:stating|setting|saying|that|:|-)?\s*(.*)$/i);
-  if (polite) return cleanCoachMessageBody(polite[1] ?? "");
-  const direct = cleaned.match(/^(?:please\s+)?(?:send|tell|message|note|text)\s+(?:the\s+|a\s+|this\s+)?(?:message|note|text)?\s*(?:to\s+)?(?:my\s+)?coach\s*(?:stating|setting|saying|that|:|-)?\s*(.*)$/i);
-  if (direct) return cleanCoachMessageBody(direct[1] ?? "");
-  const suffix = cleaned.match(/^(.+?)\s+(?:send\s+)?(?:this\s+)?(?:message|note|text)\s+to\s+(?:my\s+)?coach$/i);
-  if (suffix?.[1]?.trim()) return cleanCoachMessageBody(suffix[1]);
-  const match = cleaned.match(/^(?:send|sent|message|text)\s+(.+?)\s+to\s+(?:my\s+)?coach$/i);
-  if (match?.[1]?.trim()) return cleanCoachMessageBody(match[1]);
-  const reverse = cleaned.match(/^(?:send|sent|message|text)\s+(?:my\s+)?coach\s+(.+)$/i);
-  if (reverse?.[1]?.trim()) return cleanCoachMessageBody(reverse[1]);
-  return null;
-}
-
-function isCoachMessageIntent(command: string): boolean {
-  const lower = command.toLowerCase();
-  return /\bcoach\b|\bcouch\b|\bhouse\b/.test(lower) && /\b(send|sending|sent|tell|message|note|text)\b/.test(lower);
-}
-
-function extractNoteBody(command: string): string | null {
-  const match = command.match(/^(?:add|create|save|write)\s+(?:a\s+)?(?:session\s+)?note(?:\s+for)?\s+(.+)$/i);
-  return match?.[1]?.trim() || null;
-}
-
-const ATHLETE_ASK_HELP = "Try: update sleep score, mark attendance present, log RPE, add water, save recovery, or send a coach message.";
-const AGENT_API_ERROR_MESSAGES: Record<string, string> = {
-  invalid_sleepHours: "Sleep hours must be between 0 and 14.",
-  invalid_sleepQuality: "Sleep quality is out of range.",
-  invalid_mood: "Mood is out of range.",
-  invalid_stress: "Stress is out of range.",
-  invalid_soreness: "Soreness is out of range.",
-  invalid_fatigue: "Fatigue is out of range.",
-  invalid_amountMl: "Water amount must be between 1 and 4000 ml.",
-  invalid_wakeHr: "Wake heart rate must be between 25 and 220 bpm.",
-  invalid_bedHr: "Bed heart rate must be between 25 and 220 bpm.",
-  no_values: "No heart rate values to save.",
-  invalid_status: "That status is not recognized.",
-  invalid_attended: "That value is not recognized.",
-  invalid_workoutType: "Workout type is too long.",
-  invalid_reps: "Reps value is too long.",
-  invalid_sets: "Sets must be between 0 and 200.",
-  invalid_actualDurationMin: "Duration must be between 0 and 600 minutes.",
-  invalid_effortRating: "Effort or RPE must be between 1 and 10.",
-  no_updates: "Nothing to update.",
-  invalid_slot: "That session slot is not recognized.",
-  invalid_sessionType: "That session slot is not recognized.",
-  invalid_trainingCategory: "That training category is not recognized.",
-  invalid_plannedIntensityPercent: "Planned intensity must be between 0 and 100 percent.",
-  invalid_rpe: "RPE must be between 0 and 10.",
-  invalid_muscleSoreness: "Soreness is out of range.",
-  invalid_moodMotivation: "Mood is out of range.",
-  invalid_restingHeartRate: "Resting heart rate must be between 20 and 220 bpm.",
-  body_required: "Note cannot be empty.",
-  athlete_profile_not_found: "Your athlete profile could not be found.",
-  coach_not_assigned: LINK_COACH_BEFORE_MESSAGE,
-};
-
-function fieldNumber(fields: Record<string, unknown>, key: string): number | undefined {
-  const value = fields[key];
-  return typeof value === "number" && Number.isFinite(value) ? value : undefined;
-}
-
-function fieldString(fields: Record<string, unknown>, key: string): string | undefined {
-  const value = fields[key];
-  return typeof value === "string" && value.trim() ? value.trim() : undefined;
-}
-
-function slotFromFields(fields: Record<string, unknown>): SessionSlot {
-  return SESSION_SLOTS.includes(fields.slot as SessionSlot) ? (fields.slot as SessionSlot) : "AM";
-}
-
-function wellnessTenToFive(raw: unknown): number | undefined {
-  if (typeof raw !== "number" || !Number.isFinite(raw) || raw < 1 || raw > 10) return undefined;
-  return 1 + ((raw - 1) * 4) / 9;
-}
-
-function normalizeTrainingCategory(value: string | undefined): string {
-  if (value && (TRAINING_CATEGORIES as readonly string[]).includes(value)) return value;
-  const lower = (value ?? "").toLowerCase();
-  if (lower.includes("strength") || lower.includes("general")) return "GENERAL STRENGTH & MOBILITY";
-  if (lower.includes("conditioning") || lower.includes("endurance")) return "ENDURANCE";
-  if (lower.includes("skill") || lower.includes("technique")) return "TECHNIQUE / COORDINATION DRILLS";
-  if (lower.includes("mobility")) return "GENERAL STRENGTH & MOBILITY";
-  if (lower.includes("rest")) return "ACTIVE REST / REST";
-  return TRAINING_CATEGORIES[0];
-}
-
-function sessionRpeUpdateMessage(slot: SessionSlot, fields: Record<string, unknown>): string {
-  const parts: string[] = [];
-  const rpeValue = fieldNumber(fields, "effortRating") ?? fieldNumber(fields, "rpe");
-  if (rpeValue !== undefined) parts.push(`RPE ${rpeValue}`);
-  const plannedIntensity = fieldNumber(fields, "plannedIntensityPercent");
-  if (plannedIntensity !== undefined) parts.push(`planned intensity ${plannedIntensity}%`);
-  const soreness = fieldNumber(fields, "soreness");
-  if (soreness !== undefined) parts.push(`soreness ${soreness}`);
-  const fatigue = fieldNumber(fields, "fatigue");
-  if (fatigue !== undefined) parts.push(`fatigue ${fatigue}`);
-  const sleepQuality = fieldNumber(fields, "sleepQuality");
-  if (sleepQuality !== undefined) parts.push(`sleep quality ${sleepQuality}`);
-  const mood = fieldNumber(fields, "mood");
-  if (mood !== undefined) parts.push(`mood ${mood}`);
-  const restingHeartRate = fieldNumber(fields, "restingHeartRate");
-  if (restingHeartRate !== undefined) parts.push(`resting heart rate ${restingHeartRate} bpm`);
-  if (fieldString(fields, "bodyConditionFeedback")) parts.push("body condition");
-  if (!parts.length) return `Saved to your ${SLOT_LABEL[slot]} session.`;
-  return `Saved to your ${SLOT_LABEL[slot]} session: ${parts.join(", ")}.`;
-}
-
-async function readAgentApiError(res: Response): Promise<string> {
-  const raw = await res.text().catch(() => "");
-  if (!raw) return `Request failed (${res.status}).`;
-  try {
-    const parsed = JSON.parse(raw) as { error?: string; message?: string };
-    const code = parsed.error ?? parsed.message ?? raw;
-    return AGENT_API_ERROR_MESSAGES[code] ?? code;
-  } catch {
-    return raw;
-  }
 }
 
 function AgentResultSheet({ result, onClose }: { result: AgentResult | null; onClose: () => void }) {
@@ -592,7 +398,7 @@ export function CoachAskAgentOverlay() {
     return null;
   }
 
-  async function sendClientNote(action: PendingCoachAction): Promise<string> {
+  async function sendClientNote(action: Extract<PendingCoachAction, { kind: "client_note" }>): Promise<string> {
     pendingCoachActionRef.current = null;
     const res = await apiFetch(`/api/coach/athletes/${action.athleteId}/comment`, {
       method: "POST",
@@ -790,6 +596,7 @@ export function CoachAskAgentOverlay() {
   }
 
   async function sendAnnouncement(body: string): Promise<string> {
+    pendingCoachActionRef.current = null;
     const res = await apiFetch("/api/coach/announcements", { method: "POST", body: JSON.stringify({ body }) });
     if (!res.ok) throw new Error("announce_failed");
     setResult({
@@ -801,6 +608,33 @@ export function CoachAskAgentOverlay() {
     return "Announcement sent.";
   }
 
+  /**
+   * Broadcasts go to every assigned athlete and can't be unsent — unlike a
+   * client note (one athlete, correctable in the athlete's own feed), a
+   * misheard announcement reaches the whole squad. Route it through the
+   * same say-yes-to-confirm gate as client notes instead of firing on a
+   * regex match alone.
+   */
+  function prepareAnnouncement(body: string): string {
+    pendingCoachActionRef.current = { kind: "announcement", body };
+    setResult({
+      title: "Confirm Announcement",
+      subtitle: "All assigned athletes",
+      summary: body,
+      rows: [
+        {
+          id: "confirm-announcement",
+          icon: "help-circle-outline",
+          label: "Confirmation required",
+          status: "Say yes",
+          detail: "Say yes to broadcast this to your squad, or no to cancel.",
+          tone: "warn",
+        },
+      ],
+    });
+    return `Broadcast this to your whole squad: ${body}? Say yes to confirm.`;
+  }
+
   async function runCoachCommand(command: string): Promise<string> {
     const lower = normalizeCommand(command);
     try {
@@ -808,21 +642,28 @@ export function CoachAskAgentOverlay() {
       if (pending) {
         if (/^(yes|yeah|yep|confirm|send|send it|do it|save it)\b/.test(lower)) {
           setResult(null);
-          return sendClientNote(pending);
+          return pending.kind === "announcement" ? sendAnnouncement(pending.body) : sendClientNote(pending);
         }
         if (/^(no|nope|cancel|stop|never mind|dont|don't)\b/.test(lower)) {
           pendingCoachActionRef.current = null;
           const summary = "Okay, cancelled.";
-          setResult({ title: "Client Note Cancelled", subtitle: pending.athleteName, summary, rows: [] });
+          setResult({
+            title: pending.kind === "announcement" ? "Announcement Cancelled" : "Client Note Cancelled",
+            subtitle: pending.kind === "announcement" ? "All assigned athletes" : pending.athleteName,
+            summary,
+            rows: [],
+          });
           return summary;
         }
-        return "Please say yes to send the client note, or no to cancel.";
+        return pending.kind === "announcement"
+          ? "Please say yes to send the announcement, or no to cancel."
+          : "Please say yes to send the client note, or no to cancel.";
       }
 
       setResult(null);
       const announcementBody = extractAnnouncementBody(command);
       if (announcementBody) {
-        return sendAnnouncement(announcementBody);
+        return prepareAnnouncement(announcementBody);
       }
       const clientNote = await prepareClientNote(command);
       if (clientNote) return clientNote;
@@ -898,403 +739,7 @@ export function CoachAskAgentOverlay() {
 }
 
 export function AthleteAskAgentOverlay() {
-  if (VOICE_ASSISTANT_V2) return <AthleteAskAgentOverlayV2 />;
-  return <AthleteAskAgentOverlayV1 />;
-}
-
-function AthleteAskAgentOverlayV1() {
-  const router = useRouter();
-  const accent = ROLE_THEMES.athlete.accent;
-  const accentInk = ROLE_THEMES.athlete.accentInk;
-  const [result, setResult] = useState<AgentResult | null>(null);
-  const [inputOpen, setInputOpen] = useState(false);
-  const pendingCoachMessageRef = useRef(false);
-  const pendingGeminiRef = useRef<AskPendingGeminiIntent | null>(null);
-
-  function openDashboard(section: string, slot?: "AM" | "AFT" | "PM") {
-    router.push({ pathname: "/athlete/dashboard", params: { section, ...(slot ? { slot } : {}) } } as never);
-  }
-
-  function applyNavigation(command: AthleteNavigationCommand) {
-    if (command.kind === "notifications") {
-      router.push("/notifications" as never);
-      return;
-    }
-    if (command.kind === "calendar") {
-      openDashboard("coach");
-      return;
-    }
-    openDashboard(command.section, command.slot);
-  }
-
-  async function sendCoachMessage(body: string): Promise<string> {
-    const messageBody = cleanCoachMessageBody(body);
-    if (!messageBody) {
-      setResult({ title: "Ask Agent", subtitle: "Coach message", summary: "What message would you like to send?", rows: [] });
-      return "What message would you like to send?";
-    }
-    const coachRes = await apiJson<{ coaches: { coachId: string; name?: string }[] }>("/api/athlete/coaches");
-    const coach = coachRes.coaches?.[0];
-    if (!coach) {
-      openDashboard("messages");
-      return LINK_COACH_BEFORE_MESSAGE;
-    }
-    const res = await apiFetch(`/api/athlete/messages/${coach.coachId}`, { method: "POST", body: JSON.stringify({ body: messageBody }) });
-    if (!res.ok) throw new Error("message_failed");
-    setResult({
-      title: "Message Sent",
-      subtitle: coach.name || "Coach",
-      summary: messageBody,
-      rows: [{ id: "message", icon: "chatbubble-ellipses-outline", label: "Coach message", status: "Sent", detail: "Direct message sent to coach.", tone: "ok", onPress: () => openDashboard("chat") }],
-    });
-    return "Message sent to coach.";
-  }
-
-  async function postAgentJson(path: string, body: unknown): Promise<void> {
-    const res = await apiFetch(path, { method: "POST", body: JSON.stringify(body) });
-    if (!res.ok) throw new Error(await readAgentApiError(res));
-  }
-
-  function showSavedResult(title: string, summary: string, row: AgentRow) {
-    setResult({ title, subtitle: today(), summary, rows: [row] });
-  }
-
-  async function interpretAthleteCommand(command: string): Promise<VoiceInterpretResult> {
-    const pending = pendingGeminiRef.current;
-    const response = await apiFetch("/api/athlete/voice/interpret", {
-      method: "POST",
-      body: JSON.stringify({
-        transcript: command,
-        pendingIntent: pending ?? undefined,
-      }),
-    });
-    if (!response.ok) throw new Error(await readAgentApiError(response));
-    return (await response.json()) as VoiceInterpretResult;
-  }
-
-  function askForMissing(result: VoiceInterpretResult): string {
-    pendingGeminiRef.current = {
-      intent: result.intent,
-      collected: result.fields ?? {},
-      missingFields: result.missingFields ?? [],
-    };
-    const summary = result.followUpQuestion ?? "I need one more detail.";
-    setResult({ title: "Ask Agent", subtitle: "More detail needed", summary, rows: [] });
-    return summary;
-  }
-
-  async function runInterpretedAthleteCommand(command: string): Promise<string> {
-    const interpreted = await interpretAthleteCommand(command);
-    const fields = interpreted.fields ?? {};
-    if (interpreted.intent === "unsupported") {
-      pendingGeminiRef.current = null;
-      setResult({ title: "Ask Agent", subtitle: "Athlete commands", summary: ATHLETE_ASK_HELP, rows: [] });
-      return interpreted.spokenResponse ?? ATHLETE_ASK_HELP;
-    }
-    if (interpreted.missingFields?.length) return askForMissing(interpreted);
-
-    if (interpreted.intent === "navigate") {
-      pendingGeminiRef.current = null;
-      const navigation = parseAthleteNavigationCommand(String(fieldString(fields, "section") ?? command)) ?? parseAthleteNavigationCommand(command);
-      if (navigation) {
-        applyNavigation(navigation);
-        return athleteNavigationReply(navigation);
-      }
-      openDashboard("today");
-      return interpreted.spokenResponse ?? "Opening dashboard.";
-    }
-
-    if (interpreted.intent === "add_water") {
-      const amountMl = Math.round(fieldNumber(fields, "amountMl") ?? 0);
-      if (!amountMl) return askForMissing({ ...interpreted, missingFields: ["amountMl"], followUpQuestion: "How much water should I log in millilitres?" });
-      pendingGeminiRef.current = null;
-      await postAgentJson("/api/athlete/water", { date: today(), amountMl });
-      showSavedResult("Water Logged", `Logged ${amountMl} ml of water.`, {
-        id: "water",
-        icon: "water-outline",
-        label: "Hydration",
-        status: `${amountMl} ml`,
-        detail: "Added to today's water total.",
-        tone: "ok",
-        onPress: () => openDashboard("water"),
-      });
-      return `Logged ${amountMl} ml of water.`;
-    }
-
-    if (interpreted.intent === "fill_wellness") {
-      const payload: Record<string, unknown> = { date: today() };
-      const sleepHours = fieldNumber(fields, "sleepHours");
-      const sleepQuality = wellnessTenToFive(fields.sleepQuality);
-      const mood = wellnessTenToFive(fields.mood);
-      const stress = wellnessTenToFive(fields.stress);
-      const soreness = wellnessTenToFive(fields.soreness);
-      const fatigue = wellnessTenToFive(fields.fatigue);
-      if (sleepHours !== undefined) payload.sleepHours = sleepHours;
-      if (sleepQuality !== undefined) payload.sleepQuality = sleepQuality;
-      if (mood !== undefined) payload.mood = mood;
-      if (stress !== undefined) payload.stress = stress;
-      if (soreness !== undefined) payload.soreness = soreness;
-      if (fatigue !== undefined) payload.fatigue = fatigue;
-      if (Object.keys(payload).length === 1) return askForMissing({ ...interpreted, missingFields: ["wellness"], followUpQuestion: "What wellness value should I update?" });
-      pendingGeminiRef.current = null;
-      await postAgentJson("/api/athlete/wellness", payload);
-      const visible = [
-        sleepHours !== undefined ? `sleep ${sleepHours}h` : null,
-        fieldNumber(fields, "sleepQuality") !== undefined ? `sleep score ${fieldNumber(fields, "sleepQuality")}` : null,
-        fieldNumber(fields, "mood") !== undefined ? `mood ${fieldNumber(fields, "mood")}` : null,
-        fieldNumber(fields, "stress") !== undefined ? `stress ${fieldNumber(fields, "stress")}` : null,
-        fieldNumber(fields, "soreness") !== undefined ? `soreness ${fieldNumber(fields, "soreness")}` : null,
-        fieldNumber(fields, "fatigue") !== undefined ? `fatigue ${fieldNumber(fields, "fatigue")}` : null,
-      ].filter(Boolean).join(", ");
-      showSavedResult("Check-in Saved", visible || "Today's check-in was updated.", {
-        id: "wellness",
-        icon: "pulse-outline",
-        label: "Daily wellness",
-        status: "Saved",
-        detail: "Updated today's check-in.",
-        tone: "ok",
-        onPress: () => openDashboard("today"),
-      });
-      return "Check-in saved.";
-    }
-
-    if (interpreted.intent === "fill_attendance") {
-      const status = fieldString(fields, "status") ?? "";
-      if (!["present", "absent", "late", "excused", "rest"].includes(status)) throw new Error("That attendance status is not recognized.");
-      pendingGeminiRef.current = null;
-      await postAgentJson("/api/athlete/attendance", { date: today(), status });
-      showSavedResult("Attendance Saved", `Attendance marked ${status}.`, {
-        id: "attendance",
-        icon: "calendar-outline",
-        label: "Attendance",
-        status,
-        detail: "Updated today's attendance.",
-        tone: "ok",
-        onPress: () => openDashboard("log"),
-      });
-      return `Attendance marked ${status}.`;
-    }
-
-    if (interpreted.intent === "fill_training") {
-      const slot = slotFromFields(fields);
-      const payload: Record<string, unknown> = { date: today() };
-      const status = fieldString(fields, "status");
-      const workoutType = fieldString(fields, "workoutType");
-      const reps = fieldString(fields, "reps");
-      const notes = fieldString(fields, "notes");
-      const sets = fieldNumber(fields, "sets");
-      const actualDurationMin = fieldNumber(fields, "actualDurationMin");
-      const effortRating = fieldNumber(fields, "effortRating") ?? fieldNumber(fields, "rpe");
-      if (status) payload.status = status;
-      if (typeof fields.attended === "boolean") payload.attended = fields.attended;
-      if (workoutType) payload.workoutType = workoutType;
-      if (sets !== undefined) payload.sets = sets;
-      if (reps) payload.reps = reps;
-      if (actualDurationMin !== undefined) payload.actualDurationMin = actualDurationMin;
-      if (effortRating !== undefined) payload.effortRating = effortRating;
-      if (notes) payload.notes = notes;
-      if (Object.keys(payload).length === 1) return askForMissing({ ...interpreted, missingFields: ["training"], followUpQuestion: "What should I update for this training session?" });
-      pendingGeminiRef.current = null;
-      await postAgentJson(`/api/athlete/training/${slot}`, payload);
-      showSavedResult(`${SLOT_LABEL[slot]} Session Saved`, `${SLOT_LABEL[slot]} session saved.`, {
-        id: "training",
-        icon: "barbell-outline",
-        label: `${SLOT_LABEL[slot]} training`,
-        status: "Saved",
-        detail: "Updated today's session log.",
-        tone: "ok",
-        onPress: () => openDashboard("log", slot),
-      });
-      return `${SLOT_LABEL[slot]} session saved.`;
-    }
-
-    if (interpreted.intent === "fill_rpe") {
-      const slot = slotFromFields(fields);
-      const existing = await apiJson<{ entries: Record<string, unknown>[] }>(`/api/athlete/rpe-monitoring?date=${today()}`)
-        .then((data) => data.entries.find((entry) => entry.sessionType === slot))
-        .catch(() => undefined);
-      const rpeValue = fieldNumber(fields, "effortRating") ?? fieldNumber(fields, "rpe") ?? fieldNumber(existing ?? {}, "rpe");
-      if (rpeValue === undefined) return askForMissing({ ...interpreted, missingFields: ["rpe"], followUpQuestion: "What was your session RPE from 1 to 10?" });
-      const neutralWellness = wellnessTenToFive(5) ?? 3;
-      const payload = {
-        date: today(),
-        sessionType: slot,
-        trainingCategory: normalizeTrainingCategory(fieldString(fields, "trainingCategory") ?? fieldString(existing ?? {}, "trainingCategory")),
-        plannedIntensityPercent: fieldNumber(fields, "plannedIntensityPercent") ?? fieldNumber(existing ?? {}, "plannedIntensityPercent") ?? 0,
-        rpe: rpeValue,
-        sleepQuality: wellnessTenToFive(fields.sleepQuality) ?? fieldNumber(existing ?? {}, "sleepQuality") ?? neutralWellness,
-        muscleSoreness: wellnessTenToFive(fields.soreness) ?? fieldNumber(existing ?? {}, "muscleSoreness") ?? neutralWellness,
-        fatigue: wellnessTenToFive(fields.fatigue) ?? fieldNumber(existing ?? {}, "fatigue") ?? neutralWellness,
-        moodMotivation: wellnessTenToFive(fields.mood) ?? fieldNumber(existing ?? {}, "moodMotivation") ?? neutralWellness,
-        ...(fieldNumber(fields, "restingHeartRate") !== undefined ? { restingHeartRate: fieldNumber(fields, "restingHeartRate") } : {}),
-        ...(fieldString(fields, "bodyConditionFeedback") ? { bodyConditionFeedback: fieldString(fields, "bodyConditionFeedback") } : {}),
-      };
-      pendingGeminiRef.current = null;
-      await postAgentJson("/api/athlete/rpe-monitoring", payload);
-      const summary = sessionRpeUpdateMessage(slot, { ...fields, rpe: rpeValue });
-      showSavedResult("Session RPE Saved", summary, {
-        id: "rpe",
-        icon: "flame-outline",
-        label: `${SLOT_LABEL[slot]} RPM`,
-        status: String(rpeValue),
-        detail: "Updated today's session load.",
-        tone: "ok",
-        onPress: () => openDashboard("log", slot),
-      });
-      return summary;
-    }
-
-    if (interpreted.intent === "fill_heart_rate") {
-      const payload: Record<string, unknown> = { date: today() };
-      const wakeHr = fieldNumber(fields, "wakeHr");
-      const bedHr = fieldNumber(fields, "bedHr");
-      if (wakeHr !== undefined) payload.wakeHr = wakeHr;
-      if (bedHr !== undefined) payload.bedHr = bedHr;
-      if (Object.keys(payload).length === 1) return askForMissing({ ...interpreted, missingFields: ["heartRate"], followUpQuestion: "What heart rate should I save?" });
-      pendingGeminiRef.current = null;
-      await postAgentJson("/api/athlete/heart-rate", payload);
-      showSavedResult("Heart Rate Saved", "Heart rate saved.", {
-        id: "heart-rate",
-        icon: "heart-outline",
-        label: "Heart rate",
-        status: wakeHr !== undefined ? `${wakeHr} bpm` : `${bedHr} bpm`,
-        detail: "Updated today's heart-rate entry.",
-        tone: "ok",
-        onPress: () => openDashboard("today"),
-      });
-      return "Heart rate saved.";
-    }
-
-    if (interpreted.intent === "fill_recovery") {
-      const modalities = Array.isArray(fields.modalities) ? fields.modalities.filter((item): item is string => typeof item === "string" && item.trim().length > 0) : [];
-      pendingGeminiRef.current = null;
-      await postAgentJson("/api/athlete/recovery", { date: today(), modalities });
-      showSavedResult("Recovery Saved", "Recovery saved.", {
-        id: "recovery",
-        icon: "fitness-outline",
-        label: "Recovery",
-        status: "Saved",
-        detail: modalities.length ? modalities.join(", ") : "Updated today's recovery.",
-        tone: "ok",
-        onPress: () => openDashboard("log"),
-      });
-      return "Recovery saved.";
-    }
-
-    if (interpreted.intent === "add_note") {
-      const body = fieldString(fields, "body") ?? extractNoteBody(command) ?? command.trim();
-      pendingGeminiRef.current = null;
-      await postAgentJson("/api/athlete/notes", { date: today(), body });
-      showSavedResult("Note Saved", body, {
-        id: "note",
-        icon: "document-text-outline",
-        label: "Session note",
-        status: "Saved",
-        detail: "Added to today's athlete notes.",
-        tone: "ok",
-        onPress: () => openDashboard("log"),
-      });
-      return "Note saved.";
-    }
-
-    if (interpreted.intent === "send_coach_message") {
-      const body = extractCoachMessage(command) ?? cleanCoachMessageBody(fieldString(fields, "body") ?? "");
-      pendingGeminiRef.current = null;
-      if (!body) {
-        pendingCoachMessageRef.current = true;
-        setResult({ title: "Ask Agent", subtitle: "Coach message", summary: "What message would you like to send?", rows: [] });
-        return "What message would you like to send?";
-      }
-      pendingCoachMessageRef.current = false;
-      return sendCoachMessage(body);
-    }
-
-    if (interpreted.intent === "query_status") {
-      pendingGeminiRef.current = null;
-      openDashboard("today");
-      return interpreted.spokenResponse ?? "Opening today's dashboard.";
-    }
-
-    pendingGeminiRef.current = null;
-    setResult({ title: "Ask Agent", subtitle: "Athlete commands", summary: ATHLETE_ASK_HELP, rows: [] });
-    return ATHLETE_ASK_HELP;
-  }
-
-  async function handleCommand(command: string): Promise<string> {
-    const lower = normalizeCommand(command);
-    setResult(null);
-    try {
-      if (pendingGeminiRef.current) {
-        return runInterpretedAthleteCommand(command);
-      }
-      const navigation = parseAthleteNavigationCommand(command);
-      if (navigation) {
-        applyNavigation(navigation);
-        return athleteNavigationReply(navigation);
-      }
-      if (pendingCoachMessageRef.current) {
-        const messageBody = cleanCoachMessageBody(command);
-        if (!messageBody) {
-          setInputOpen(true);
-          return "What message would you like to send?";
-        }
-        pendingCoachMessageRef.current = false;
-        return sendCoachMessage(messageBody);
-      }
-
-      const waterAmount = parseWaterAmountMl(command);
-      if (waterAmount && /\b(water|drink|drank|hydrat)\b/.test(lower)) {
-        const res = await apiFetch("/api/athlete/water", { method: "POST", body: JSON.stringify({ date: today(), amountMl: waterAmount }) });
-        if (!res.ok) throw new Error("water_failed");
-        setResult({ title: "Water Logged", subtitle: today(), summary: `Logged ${waterAmount} ml of water.`, rows: [{ id: "water", icon: "water-outline", label: "Hydration", status: `${waterAmount} ml`, detail: "Added to today's water total.", tone: "ok", onPress: () => openDashboard("water") }] });
-        return `Logged ${waterAmount} ml of water.`;
-      }
-      if (/\b(set|mark)\b.*\b(rest day|rest)\b/.test(lower)) {
-        const res = await apiFetch("/api/athlete/rest-day", { method: "POST", body: JSON.stringify({ date: today(), enabled: true }) });
-        if (!res.ok) throw new Error("rest_failed");
-        setResult({ title: "Rest Day Set", subtitle: today(), summary: "Today is set as a rest day.", rows: [{ id: "rest", icon: "moon-outline", label: "Rest day", status: "On", detail: "Training inputs are paused for today.", tone: "ok", onPress: () => openDashboard("log") }] });
-        return "Today is set as a rest day.";
-      }
-      if (/\b(remove|clear|turn off|disable)\b.*\b(rest day|rest)\b/.test(lower)) {
-        const res = await apiFetch("/api/athlete/rest-day", { method: "POST", body: JSON.stringify({ date: today(), enabled: false }) });
-        if (!res.ok) throw new Error("rest_clear_failed");
-        setResult({ title: "Rest Day Removed", subtitle: today(), summary: "Rest day was removed for today.", rows: [{ id: "rest", icon: "barbell-outline", label: "Training log", status: "Open", detail: "Training inputs are available again.", tone: "ok", onPress: () => openDashboard("log") }] });
-        return "Rest day was removed for today.";
-      }
-      const coachMessage = extractCoachMessage(command);
-      if (coachMessage) {
-        pendingCoachMessageRef.current = false;
-        return sendCoachMessage(coachMessage);
-      }
-      if (isCoachMessageIntent(command)) {
-        pendingCoachMessageRef.current = true;
-        setResult({ title: "Ask Agent", subtitle: "Coach message", summary: "What message would you like to send?", rows: [] });
-        return "What message would you like to send?";
-      }
-      const noteBody = extractNoteBody(command);
-      if (noteBody) {
-        const res = await apiFetch("/api/athlete/notes", { method: "POST", body: JSON.stringify({ date: today(), body: noteBody }) });
-        if (!res.ok) throw new Error("note_failed");
-        setResult({ title: "Note Saved", subtitle: today(), summary: noteBody, rows: [{ id: "note", icon: "document-text-outline", label: "Session note", status: "Saved", detail: "Added to today's athlete notes.", tone: "ok", onPress: () => openDashboard("log") }] });
-        return "Note saved.";
-      }
-      return runInterpretedAthleteCommand(command);
-    } catch (error) {
-      const message = error instanceof Error && error.message ? error.message : "I could not complete that command. Please try again.";
-      const summary = message === "water_failed" || message === "rest_failed" || message === "rest_clear_failed" || message === "note_failed"
-        ? "I could not complete that command. Please try again."
-        : message;
-      setResult({ title: "Ask Agent", subtitle: "Athlete commands", summary, rows: [] });
-      return summary;
-    }
-  }
-
-  return (
-    <>
-      <AskAgentControl accent={accent} accentInk={accentInk} onCommand={handleCommand} onInputOpenChange={setInputOpen} onListeningChange={(listening) => listening && setResult(null)} />
-      {!inputOpen ? <AgentResultSheet result={result} onClose={() => setResult(null)} /> : null}
-    </>
-  );
+  return <AthleteAskAgentOverlayV2 />;
 }
 
 const styles = StyleSheet.create({

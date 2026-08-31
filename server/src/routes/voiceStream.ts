@@ -5,6 +5,7 @@ import WebSocket, { WebSocketServer, type RawData } from "ws";
 import { env } from "../config/env";
 import { verifyAccessToken } from "../lib/tokens";
 import { User } from "../models/User";
+import { logVoiceEvent } from "../lib/voiceObservability";
 
 type VoiceStreamMessage =
   | { type: "interim"; transcript: string }
@@ -117,10 +118,12 @@ export function attachVoiceStreamProxy(server: Server): void {
     let idleTimer: ReturnType<typeof setTimeout> | null = null;
     let maxTimer: ReturnType<typeof setTimeout> | null = null;
     let transcriptTimer: ReturnType<typeof setTimeout> | null = null;
+    const startedAt = Date.now();
 
-    function cleanup() {
+    function cleanup(reason: string) {
       if (closed) return;
       closed = true;
+      logVoiceEvent("stream_closed", { userId, reason, durationMs: Date.now() - startedAt });
       if (idleTimer) clearTimeout(idleTimer);
       if (maxTimer) clearTimeout(maxTimer);
       if (transcriptTimer) clearTimeout(transcriptTimer);
@@ -137,7 +140,7 @@ export function attachVoiceStreamProxy(server: Server): void {
       if (idleTimer) clearTimeout(idleTimer);
       idleTimer = setTimeout(() => {
         closeWithError(client, 4408, "stream_idle_timeout", "Voice stream timed out.");
-        cleanup();
+        cleanup("stream_idle_timeout");
       }, 30_000);
     }
 
@@ -152,36 +155,39 @@ export function attachVoiceStreamProxy(server: Server): void {
     void (async () => {
       if (!env.deepgram.apiKey) {
         closeWithError(client, 1011, "deepgram_not_configured", "Voice streaming is not configured.");
-        cleanup();
+        cleanup("deepgram_not_configured");
         return;
       }
 
       const auth = await authenticate(req).catch(() => null);
       if (!auth) {
         closeWithError(client, 4401, "unauthenticated", "Sign in again to use voice commands.");
-        cleanup();
+        cleanup("unauthenticated");
         return;
       }
       userId = auth.userId;
       if (isRateLimited(userId)) {
         closeWithError(client, 4429, "too_many_streams", "Too many voice sessions. Try again shortly.");
-        cleanup();
+        cleanup("too_many_streams");
         return;
       }
       if (activeStreams.has(userId)) {
         closeWithError(client, 4429, "stream_already_active", "Another voice session is already active.");
-        cleanup();
+        cleanup("stream_already_active");
         return;
       }
       activeStreams.set(userId, client);
 
-      upstream = new WebSocket(deepgramUrl(languageFromRequest(req)), {
+      const language = languageFromRequest(req);
+      logVoiceEvent("stream_opened", { userId, language, model: env.deepgram.sttModel });
+
+      upstream = new WebSocket(deepgramUrl(language), {
         headers: { Authorization: `Token ${env.deepgram.apiKey}` },
       });
       resetIdleTimer();
       maxTimer = setTimeout(() => {
         closeWithError(client, 4408, "stream_max_duration", "Voice stream ended.");
-        cleanup();
+        cleanup("stream_max_duration");
       }, 30_000);
 
       upstream.on("open", () => {
@@ -194,7 +200,7 @@ export function attachVoiceStreamProxy(server: Server): void {
         if (!event) return;
         if (event.type === "Error") {
           closeWithError(client, 1011, "deepgram_error", "Voice transcription failed.");
-          cleanup();
+          cleanup("deepgram_error");
           return;
         }
         if (event.type === "UtteranceEnd" || event.type === "EndOfTurn") {
@@ -222,11 +228,11 @@ export function attachVoiceStreamProxy(server: Server): void {
 
       upstream.on("error", () => {
         closeWithError(client, 1011, "deepgram_unavailable", "Voice transcription is temporarily unavailable.");
-        cleanup();
+        cleanup("deepgram_unavailable");
       });
       upstream.on("close", () => {
         if (client.readyState === WebSocket.OPEN) client.close();
-        cleanup();
+        cleanup("deepgram_closed");
       });
     })();
 
@@ -246,7 +252,7 @@ export function attachVoiceStreamProxy(server: Server): void {
       }
       if (pendingAudio.length < 64) pendingAudio.push(rawDataToBuffer(data));
     });
-    client.on("close", cleanup);
-    client.on("error", cleanup);
+    client.on("close", () => cleanup("client_closed"));
+    client.on("error", () => cleanup("client_error"));
   });
 }

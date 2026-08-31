@@ -34,7 +34,7 @@ async function loadCoaches() {
 
 export default function CoachDiscovery() {
   const router = useRouter();
-  const state = useAsyncData(loadCoaches, []);
+  const state = useAsyncData(loadCoaches, [], "athlete-coach-discovery");
   const [query, setQuery] = useState("");
   const [filter, setFilter] = useState<"all" | "nutrition" | "strength" | "experienced">("all");
 
@@ -113,7 +113,14 @@ export default function CoachDiscovery() {
 
       <SectionHeader title={`${coaches.length} Coaches`} />
       {coaches.length ? (
-        coaches.map((coach) => <CoachCard key={coach.coachId} coach={coach} currentCoachId={state.data?.currentCoachId ?? null} onSwitched={state.reload} />)
+        coaches.map((coach) => (
+      <CoachCard
+        key={coach.coachId}
+        coach={coach}
+        currentCoachId={state.data?.currentCoachId ?? null}
+        onActivated={(coachId) => state.setData((prev) => (prev ? { ...prev, currentCoachId: coachId } : prev))}
+      />
+    ))
       ) : (
         <EmptyState title="No coaches found" body="Try a different specialization, language, or rating filter." icon="search-outline" />
       )}
@@ -124,11 +131,11 @@ export default function CoachDiscovery() {
 function CoachCard({
   coach,
   currentCoachId,
-  onSwitched,
+  onActivated,
 }: {
   coach: MarketplaceCoach;
   currentCoachId: string | null;
-  onSwitched: () => void;
+  onActivated: (coachId: string) => void;
 }) {
   const [expanded, setExpanded] = useState(false);
   const [profile, setProfile] = useState<PublicCoachProfile | null>(null);
@@ -172,7 +179,13 @@ function CoachCard({
         return;
       }
       setMessage(body.checkoutRef ? (isSwitch ? "Coach switch checkout started." : "Membership checkout started.") : "Membership request created.");
-      onSwitched();
+      // A checkout ref means the relationship only activates later, once
+      // Razorpay's webhook confirms payment — nothing to reflect here yet.
+      // Only a response with no checkoutRef (a free/legacy plan) activates
+      // immediately, so only then does the marketplace's "current coach"
+      // actually change — patch that one field locally instead of
+      // re-fetching the entire coach list to reflect it.
+      if (!body.checkoutRef) onActivated(coach.coachId);
     } catch {
       setMessage("Network failed while starting membership.");
     }

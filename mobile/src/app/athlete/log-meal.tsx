@@ -5,7 +5,7 @@ import { Ionicons } from "@expo/vector-icons";
 import { Text } from "../../components/AppText";
 import { ActionButton, AppCard, ScreenContainer } from "../../components/fitora";
 import { apiFetch } from "../../lib/api";
-import { todayKey, titleCase } from "../../lib/fitoraData";
+import { todayKey, titleCase, updateCachedData, mealCalories, type AthleteDashboardData, type Meal } from "../../lib/fitoraData";
 import { colors, radius } from "../../lib/theme";
 
 const MEAL_TYPES = ["breakfast", "lunch", "snack", "dinner"] as const;
@@ -65,12 +65,36 @@ export default function LogMealScreen() {
           ],
         }),
       });
+      const body = (await res.json().catch(() => ({}))) as { error?: string; meal?: Meal };
       if (!res.ok) {
-        const body = (await res.json().catch(() => ({}))) as { error?: string };
         setError(body.error ?? "Could not save this meal.");
         return;
       }
-      router.replace({ pathname: "/athlete/dashboard", params: { section: "nutrition" } } as never);
+      // Patch the dashboard's cached data directly (it's still mounted right
+      // underneath this screen in the stack) and go back to it, instead of
+      // `replace`-ing to it — that used to remount the whole dashboard,
+      // briefly showing stale totals before a full background reload caught up.
+      const createdMeal = body.meal;
+      if (createdMeal) {
+        updateCachedData<AthleteDashboardData>("athlete-dashboard", (prev) => {
+          if (!prev) return prev;
+          const addedCalories = mealCalories(createdMeal);
+          const addedProtein = createdMeal.foods.reduce((sum, f) => sum + (Number(f.proteinG) || 0), 0);
+          const addedCarbs = createdMeal.foods.reduce((sum, f) => sum + (Number(f.carbsG) || 0), 0);
+          const addedFat = createdMeal.foods.reduce((sum, f) => sum + (Number(f.fatG) || 0), 0);
+          return {
+            ...prev,
+            meals: [...prev.meals, createdMeal],
+            mealTotals: {
+              calories: (prev.mealTotals?.calories ?? 0) + addedCalories,
+              proteinG: (prev.mealTotals?.proteinG ?? 0) + addedProtein,
+              carbsG: (prev.mealTotals?.carbsG ?? 0) + addedCarbs,
+              fatG: (prev.mealTotals?.fatG ?? 0) + addedFat,
+            },
+          };
+        });
+      }
+      router.back();
     } catch {
       setError("Network failed while saving this meal.");
     } finally {

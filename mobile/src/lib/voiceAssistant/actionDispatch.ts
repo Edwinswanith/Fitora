@@ -43,7 +43,11 @@ function humanizeExecuteError(err: unknown): string {
   return "Something went wrong saving that. Please try again.";
 }
 
-export type ExecuteVoiceActionResult = { message: string };
+export type ExecuteVoiceActionResult = {
+  message: string;
+  /** The write endpoint's raw parsed JSON body — lets the caller patch cached dashboard data with the server-confirmed result instead of guessing (spec item 7). */
+  response: unknown;
+};
 
 /**
  * Performs the actual save for a confirmed voice action — the write only
@@ -66,8 +70,8 @@ export async function executeVoiceAction(
   }
 
   try {
-    await apiJson(mapping.path, { method: mapping.method, body: JSON.stringify(mapping.body) });
-    return { message: mapping.successMessage };
+    const response = await apiJson<unknown>(mapping.path, { method: mapping.method, body: JSON.stringify(mapping.body) });
+    return { message: mapping.successMessage, response };
   } catch (err) {
     throw new Error(humanizeExecuteError(err));
   }

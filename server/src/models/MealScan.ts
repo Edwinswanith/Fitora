@@ -1,7 +1,15 @@
 import { Schema, model, Types, type InferSchemaType, type Model } from "mongoose";
 import { MEAL_TYPES } from "./PlannedMeal";
 
-export const MEAL_SCAN_STATUS = ["processing", "needs_review", "confirmed", "rejected"] as const;
+export const MEAL_SCAN_STATUS = [
+  "processing",
+  "needs_review",
+  "no_food_detected",
+  "low_quality",
+  "low_confidence",
+  "confirmed",
+  "rejected",
+] as const;
 export type MealScanStatus = (typeof MEAL_SCAN_STATUS)[number];
 
 /**
@@ -10,9 +18,18 @@ export type MealScanStatus = (typeof MEAL_SCAN_STATUS)[number];
  * it is NEVER trusted as consumed nutrition on its own. A Meal (authoritative
  * intake) is only ever created via the explicit /confirm step, after the
  * User has reviewed/edited the items — see services/mealScan.ts. `status`
- * starts "processing", moves to "needs_review" once the model responds (even
- * a low-confidence or empty result — never "confirmed" automatically), and
- * only reaches "confirmed" via the User's own action.
+ * starts "processing", then resolves to one of:
+ *   - "needs_review": a confident food detection, ready for the User to
+ *     review/edit and confirm.
+ *   - "no_food_detected": the model explicitly found no food in the image
+ *     (or nothing survived sanitization), e.g. a photo of a person/room/object.
+ *   - "low_quality": the model flagged the image itself as too blurry/dark to
+ *     assess, independent of whether food might be present.
+ *   - "low_confidence": food-like items were detected but average confidence
+ *     is below a usable threshold — never shown as trustworthy nutrition.
+ *   - "rejected": the vision call itself failed (network/provider error).
+ * None of the failure statuses ever fabricate nutrition data, and only
+ * "confirmed" (the User's own action) ever produces a real Meal.
  */
 const mealScanSchema = new Schema(
   {

@@ -23,8 +23,9 @@ import { evaluateAndDispatch } from "../services/notificationEligibility";
 import { resolveTimezoneForUser } from "../services/timezone";
 import { buildReadinessRiskFlag } from "../services/notificationTemplates";
 import { withIdempotency } from "../lib/voiceIdempotency";
+import { logVoiceEvent } from "../lib/voiceObservability";
 import { getVoiceIntentInterpreterV2 } from "../services/voiceIntentInterpreterV2";
-import { derivePolicy, VOICE_INTENTS_V2, type PolicyPendingState, type VoiceIntentNameV2 } from "../services/voiceIntentPolicy";
+import { derivePolicy, VOICE_INTENTS_V2, OPEN_SCREEN_ALLOWLIST, type PolicyPendingState, type VoiceIntentNameV2, type OpenScreenTarget } from "../services/voiceIntentPolicy";
 
 /**
  * V2 athlete voice pipeline — additive and inert unless called. The existing
@@ -57,7 +58,7 @@ function sanitizePendingIntentHint(raw: unknown): PolicyPendingState {
 
 /**
  * POST /api/athlete/voice/interpret-v2
- * body: { transcript, pendingIntentHint? }
+ * body: { transcript, pendingIntentHint?, currentScreen? }
  *
  * Read-only from the athlete's own data's perspective — never writes to any
  * athlete-scoped collection. It only classifies (interpreter, model-only),
@@ -81,6 +82,12 @@ router.post(
       res.status(400).json({ error: "invalid_transcript" });
       return;
     }
+    // Client-reported current tab, used only to disambiguate an otherwise-
+    // unclassifiable vague reference ("add this") — allowlist-validated so an
+    // unrecognized/malformed value is simply ignored, never trusted blindly.
+    const currentScreen = OPEN_SCREEN_ALLOWLIST.includes(req.body?.currentScreen as OpenScreenTarget)
+      ? (req.body.currentScreen as OpenScreenTarget)
+      : undefined;
 
     const existing = await VoicePendingState.findOne({ athleteProfileId: profileId }).lean();
     const pending: PolicyPendingState = existing
@@ -89,13 +96,28 @@ router.post(
 
     const today = new Date().toISOString().slice(0, 10);
 
+    const startedAt = Date.now();
     let policyResult;
+    let interpreterOutcome: "success" | "error" = "success";
+    let confidence = 0;
     try {
-      const turn = await getVoiceIntentInterpreterV2().interpret({ transcript, today, pendingIntent: pending });
+      const turn = await getVoiceIntentInterpreterV2().interpret({ transcript, today, pendingIntent: pending, currentScreen });
+      confidence = turn.confidence;
       policyResult = derivePolicy(turn, pending);
     } catch {
+      interpreterOutcome = "error";
       policyResult = derivePolicy({ intent: "unknown_intent", entities: {}, confidence: 0 }, pending);
     }
+    logVoiceEvent("interpret", {
+      athleteId: profileId.toString(),
+      interpreterOutcome,
+      hadPending: Boolean(pending),
+      intent: policyResult.effectiveIntent,
+      confidence,
+      action: policyResult.action,
+      transcriptLength: transcript.length,
+      latencyMs: Date.now() - startedAt,
+    });
 
     if (policyResult.action === "collect_fields" || policyResult.action === "ready_to_confirm") {
       await VoicePendingState.findOneAndUpdate(
@@ -507,6 +529,7 @@ router.post(
     const date = parseDateStrict(b.date, res);
     if (!date) return;
 
+    const startedAt = Date.now();
     const actorUserId = req.actor.userId;
     const outcome = await withIdempotency(actorUserId, clientActionId, "voice/log-session", () =>
       writeSessionAndRpe({
@@ -532,10 +555,12 @@ router.post(
       return;
     }
     if ("error" in outcome.result) {
+      logVoiceEvent("action_executed", { action: "log_session", outcome: outcome.result.error, sessionType, latencyMs: Date.now() - startedAt });
       res.status(outcome.result.status).json({ error: outcome.result.error });
       return;
     }
 
+    logVoiceEvent("action_executed", { action: "log_session", outcome: outcome.duplicate ? "duplicate" : "success", sessionType, latencyMs: Date.now() - startedAt });
     await VoicePendingState.deleteOne({ athleteProfileId: profileId });
     res.status(200).json(outcome.result);
   }
@@ -608,6 +633,7 @@ router.post("/log-meal", writeRateLimit({ windowMs: 60_000, max: 60 }), async (r
     return;
   }
 
+  const logMealStartedAt = Date.now();
   const outcome = await withIdempotency(req.actor.userId, clientActionId, "voice/log-meal", async () => {
     const meal = await Meal.create({
       athleteId: profileId,
@@ -659,6 +685,7 @@ router.post("/log-meal", writeRateLimit({ windowMs: 60_000, max: 60 }), async (r
     return;
   }
 
+  logVoiceEvent("action_executed", { action: "log_meal", outcome: outcome.duplicate ? "duplicate" : "success", mealType, latencyMs: Date.now() - logMealStartedAt });
   await VoicePendingState.deleteOne({ athleteProfileId: profileId });
   res.status(outcome.duplicate ? 200 : 201).json(outcome.result);
 });

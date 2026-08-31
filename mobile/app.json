@@ -3,7 +3,7 @@
     "name": "Fitora",
     "slug": "fitora",
     "owner": "edwinswanith",
-    "version": "1.0.25",
+    "version": "1.0.26",
     "orientation": "portrait",
     "icon": "./assets/images/icon.png",
     "scheme": "fitora",
@@ -24,11 +24,11 @@
     },
     "android": {
       "adaptiveIcon": {
-        "backgroundColor": "#ffffff",
+        "backgroundColor": "#eaf1ff",
         "foregroundImage": "./assets/images/adaptive-icon.png"
       },
       "package": "app.fitora.coaching",
-      "versionCode": 28,
+      "versionCode": 29,
       "predictiveBackGestureEnabled": false,
       "googleServicesFile": "./google-services.json",
       "permissions": [

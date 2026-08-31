@@ -1,4 +1,4 @@
-import { useCallback, useReducer, useRef } from "react";
+import { useCallback, useEffect, useReducer, useRef } from "react";
 import * as Crypto from "expo-crypto";
 import { speakAgentReply } from "../agentSpeech";
 import { apiJson } from "../api";
@@ -8,10 +8,16 @@ import { fetchAnswerFor } from "./answerFetchers";
 import type { InterpretV2Response, VoiceIntentNameV2 } from "./types";
 
 export type UseVoiceAssistantOptions = {
-  /** Called after a successful save, so the screen can refresh whatever data changed. */
-  onExecuted?: (intent: VoiceIntentNameV2) => void;
+  /**
+   * Called after a successful save, so the app can sync whatever data
+   * changed — entities are the confirmed values that were saved, response is
+   * the write endpoint's raw parsed body (server-confirmed, not a guess).
+   */
+  onExecuted?: (intent: VoiceIntentNameV2, entities: Record<string, unknown>, response: unknown) => void;
   /** Called for policy-approved open_screen commands. */
   onNavigate?: (screen: string) => void;
+  /** The Fitora tab the athlete is currently looking at (e.g. "nutrition", "water") — sent with every turn so the server can disambiguate a vague reference like "add this" (spec item 6). Read fresh on every turn via a ref, not captured at mount. */
+  currentScreen?: string;
 };
 
 /**
@@ -28,11 +34,15 @@ export function useVoiceAssistant(options: UseVoiceAssistantOptions = {}) {
   const [state, dispatch] = useReducer(voiceAssistantReducer, initialVoiceAssistantState);
   const clientActionIdRef = useRef<string | null>(null);
   const resolvedCoachIdRef = useRef<string | null>(null);
+  const currentScreenRef = useRef<string | undefined>(options.currentScreen);
+  useEffect(() => {
+    currentScreenRef.current = options.currentScreen;
+  }, [options.currentScreen]);
 
   const interpret = useCallback(async (transcript: string): Promise<InterpretV2Response> => {
     return apiJson<InterpretV2Response>("/api/athlete/voice/interpret-v2", {
       method: "POST",
-      body: JSON.stringify({ transcript }),
+      body: JSON.stringify({ transcript, currentScreen: currentScreenRef.current }),
     });
   }, []);
 
@@ -44,9 +54,9 @@ export function useVoiceAssistant(options: UseVoiceAssistantOptions = {}) {
       const coachId = intent === "send_coach_note" ? resolvedCoachIdRef.current ?? undefined : undefined;
       resolvedCoachIdRef.current = null;
       try {
-        const { message } = await executeVoiceAction(intent, entities, { clientActionId, coachId });
+        const { message, response } = await executeVoiceAction(intent, entities, { clientActionId, coachId });
         dispatch({ type: "EXECUTED", message });
-        options.onExecuted?.(intent);
+        options.onExecuted?.(intent, entities, response);
         return message;
       } catch (err) {
         const message = err instanceof Error ? err.message : "Something went wrong saving that. Please try again.";

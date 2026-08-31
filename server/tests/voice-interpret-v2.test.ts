@@ -101,7 +101,7 @@ describe("POST /api/athlete/voice/interpret-v2 — contract", () => {
     expect(pending).toBeNull();
   });
 
-  test("a complete write command is ready to confirm and persists pending state server-side", async () => {
+  test("a complete, simple write command auto-executes without persisting pending state (no confirmation needed)", async () => {
     const app = buildApp();
     const { user, profile } = await makeAthlete("Bala");
     const token = tokenFor(user._id as Types.ObjectId, "athlete");
@@ -111,12 +111,28 @@ describe("POST /api/athlete/voice/interpret-v2 — contract", () => {
       .send({ transcript: "drink 500 ml of water" });
     expect(res.status).toBe(200);
     expect(res.body.intent).toBe("add_water");
+    expect(res.body.action).toBe("execute");
+    expect(res.body.requiresConfirmation).toBe(false);
+    expect(res.body.entities.amountMl).toBe(500);
+    const pending = await VoicePendingState.findOne({ athleteProfileId: profile._id }).lean();
+    expect(pending).toBeNull();
+  });
+
+  test("a complete send_coach_note is ready to confirm and persists pending state server-side (the one write intent that stays confirmation-gated)", async () => {
+    const app = buildApp();
+    const { user, profile } = await makeAthlete("Bala2");
+    const token = tokenFor(user._id as Types.ObjectId, "athlete");
+    const res = await request(app)
+      .post("/api/athlete/voice/interpret-v2")
+      .set("Cookie", [`accessToken=${token}`])
+      .send({ transcript: "tell my coach I'll be late today" });
+    expect(res.status).toBe(200);
+    expect(res.body.intent).toBe("send_coach_note");
     expect(res.body.action).toBe("ready_to_confirm");
     expect(res.body.requiresConfirmation).toBe(true);
     const pending = await VoicePendingState.findOne({ athleteProfileId: profile._id }).lean();
     expect(pending).not.toBeNull();
-    expect(pending?.intent).toBe("add_water");
-    expect((pending?.entities as Record<string, unknown>).amountMl).toBe(500);
+    expect(pending?.intent).toBe("send_coach_note");
   });
 
   test("an incomplete session log asks a follow-up and keeps collecting", async () => {
@@ -149,42 +165,54 @@ describe("POST /api/athlete/voice/interpret-v2 — contract", () => {
     expect(res.body.entities.actualDurationMin).toBe(45);
   });
 
-  test("a real multi-turn correction updates only the mentioned field via server-persisted state", async () => {
+  test("a real multi-turn correction completes an in-progress session log and auto-executes, via server-persisted state", async () => {
     const app = buildApp();
     const { user, profile } = await makeAthlete("Esha");
     const token = tokenFor(user._id as Types.ObjectId, "athlete");
 
+    // Deliberately missing sessionType/status (no am/pm/completed/did keyword) and,
+    // since rpe is present, also missing trainingCategory/plannedIntensityPercent —
+    // genuinely incomplete, so it stays in collect_fields rather than auto-executing.
     const first = await request(app)
       .post("/api/athlete/voice/interpret-v2")
       .set("Cookie", [`accessToken=${token}`])
-      .send({
-        transcript:
-          "I completed my morning max speed session for 45 minutes at planned intensity 80 percent rpe 8 and effort 9",
-      });
-    expect(first.body.action).toBe("ready_to_confirm");
+      .send({ transcript: "training session 45 minutes rpe 8 and effort 9" });
+    expect(first.body.intent).toBe("log_session");
+    expect(first.body.action).toBe("collect_fields");
+    expect(first.body.entities.rpe).toBe(8);
+    expect(first.body.entities.effortScore).toBe(9);
 
     const fakeCorrection: VoiceIntentInterpreterV2 = {
-      interpret: async () => ({ intent: "update_field", entities: { rpe: 7 }, confidence: 0.8 }),
+      interpret: async () => ({
+        intent: "update_field",
+        entities: { sessionType: "AM", status: "completed", trainingCategory: "MAX SPEED", plannedIntensityPercent: 80 },
+        confidence: 0.8,
+      }),
     };
     setVoiceIntentInterpreterV2ForTests(fakeCorrection);
 
     const second = await request(app)
       .post("/api/athlete/voice/interpret-v2")
       .set("Cookie", [`accessToken=${token}`])
-      .send({ transcript: "actually rpe was 7" });
+      .send({ transcript: "AM, completed, max speed, planned intensity 80 percent" });
 
     expect(second.status).toBe(200);
     expect(second.body.intent).toBe("log_session");
-    expect(second.body.entities.rpe).toBe(7);
-    expect(second.body.entities.effortScore).toBe(9); // preserved, not overwritten
+    expect(second.body.action).toBe("execute"); // now complete — a session log is a simple reversible action, no confirmation needed
+    expect(second.body.entities.rpe).toBe(8); // preserved, not overwritten
+    expect(second.body.entities.effortScore).toBe(9); // preserved
     expect(second.body.entities.actualDurationMin).toBe(45); // preserved
-    expect(second.body.entities.sessionType).toBe("AM"); // preserved
+    expect(second.body.entities.sessionType).toBe("AM");
+    expect(second.body.entities.status).toBe("completed");
+    expect(second.body.entities.trainingCategory).toBe("MAX SPEED");
+    expect(second.body.entities.plannedIntensityPercent).toBe(80);
 
+    // Resolved (executed) — nothing left pending.
     const pending = await VoicePendingState.findOne({ athleteProfileId: profile._id }).lean();
-    expect((pending?.entities as Record<string, unknown>).rpe).toBe(7);
+    expect(pending).toBeNull();
   });
 
-  test("confirm_action against real persisted pending state resolves to execute and clears it", async () => {
+  test("confirm_action against real persisted pending state (send_coach_note) resolves to execute and clears it", async () => {
     const app = buildApp();
     const { user, profile } = await makeAthlete("Farhan");
     const token = tokenFor(user._id as Types.ObjectId, "athlete");
@@ -192,7 +220,7 @@ describe("POST /api/athlete/voice/interpret-v2 — contract", () => {
     await request(app)
       .post("/api/athlete/voice/interpret-v2")
       .set("Cookie", [`accessToken=${token}`])
-      .send({ transcript: "drink 500 ml of water" });
+      .send({ transcript: "tell my coach I'll be late today" });
 
     const fakeYes: VoiceIntentInterpreterV2 = {
       interpret: async () => ({ intent: "confirm_action", entities: {}, confidence: 0.95 }),
@@ -206,21 +234,25 @@ describe("POST /api/athlete/voice/interpret-v2 — contract", () => {
 
     expect(res.status).toBe(200);
     expect(res.body.action).toBe("execute");
-    expect(res.body.entities.amountMl).toBe(500);
+    expect(res.body.intent).toBe("send_coach_note");
 
     const pending = await VoicePendingState.findOne({ athleteProfileId: profile._id });
     expect(pending).toBeNull();
   });
 
-  test("cancel_action clears the pending workflow without executing anything", async () => {
+  test("cancel_action clears an in-progress (still-collecting) pending workflow without executing anything", async () => {
     const app = buildApp();
     const { user, profile } = await makeAthlete("Guru");
     const token = tokenFor(user._id as Types.ObjectId, "athlete");
 
-    await request(app)
+    // Missing calories, so this stays in collect_fields rather than auto-executing.
+    const first = await request(app)
       .post("/api/athlete/voice/interpret-v2")
       .set("Cookie", [`accessToken=${token}`])
-      .send({ transcript: "drink 500 ml of water" });
+      .send({ transcript: "log lunch chicken rice bowl" });
+    expect(first.body.action).toBe("collect_fields");
+    const pendingBeforeCancel = await VoicePendingState.findOne({ athleteProfileId: profile._id });
+    expect(pendingBeforeCancel).not.toBeNull();
 
     const fakeNo: VoiceIntentInterpreterV2 = {
       interpret: async () => ({ intent: "cancel_action", entities: {}, confidence: 0.95 }),
@@ -251,7 +283,7 @@ describe("POST /api/athlete/voice/interpret-v2 — contract", () => {
     expect(res.status).toBe(200);
     expect(res.body.intent).toBe("unknown_intent");
     expect(res.body.action).toBe("reject");
-    expect(res.body.spokenResponse).toMatch(/log RPE|readiness|coach/i);
+    expect(res.body.spokenResponse).toBe("I didn't catch that. Could you say it again?");
   });
 
   test("explain_app_field gives a controlled explanation for a known Apex term", async () => {
@@ -318,7 +350,7 @@ describe("POST /api/athlete/voice/interpret-v2 — expanded fillable fields", ()
     expect(res.body.intent).toBe("log_heart_rate");
     expect(res.body.entities.wakeHr).toBe(52);
     expect(res.body.entities.bedHr).toBe(58);
-    expect(res.body.action).toBe("ready_to_confirm");
+    expect(res.body.action).toBe("execute");
   });
 
   test("resting heart rate mentioned inside an RPE workflow still goes to log_rpe, not log_heart_rate", async () => {
@@ -376,7 +408,7 @@ describe("POST /api/athlete/voice/interpret-v2 — expanded fillable fields", ()
     expect(res.body.requiresConfirmation).toBe(false);
   });
 
-  test("a meal log extracts meal fields and waits for confirmation", async () => {
+  test("a meal log extracts meal fields and auto-executes once complete (no confirmation for a simple reversible log)", async () => {
     const app = buildApp();
     const { user } = await makeAthlete("Tanvi");
     const token = tokenFor(user._id as Types.ObjectId, "athlete");
@@ -386,14 +418,14 @@ describe("POST /api/athlete/voice/interpret-v2 — expanded fillable fields", ()
       .send({ transcript: "log lunch chicken rice bowl 650 calories 45 protein 70 carbs 12 fat" });
     expect(res.status).toBe(200);
     expect(res.body.intent).toBe("log_meal");
-    expect(res.body.action).toBe("ready_to_confirm");
+    expect(res.body.action).toBe("execute");
     expect(res.body.entities.mealType).toBe("lunch");
     expect(res.body.entities.foodName).toMatch(/chicken rice bowl/i);
     expect(res.body.entities.calories).toBe(650);
     expect(res.body.entities.proteinG).toBe(45);
     expect(res.body.entities.carbsG).toBe(70);
     expect(res.body.entities.fatG).toBe(12);
-    expect(res.body.requiresConfirmation).toBe(true);
+    expect(res.body.requiresConfirmation).toBe(false);
   });
 
   test("starting a workout navigates to workouts instead of logging a session", async () => {
@@ -408,6 +440,70 @@ describe("POST /api/athlete/voice/interpret-v2 — expanded fillable fields", ()
     expect(res.body.intent).toBe("open_screen");
     expect(res.body.entities.screen).toBe("workouts");
     expect(res.body.action).toBe("navigate");
+  });
+});
+
+describe("POST /api/athlete/voice/interpret-v2 — currentScreen disambiguates a vague reference", () => {
+  test("'add this' on the nutrition screen classifies as log_meal, not unknown_intent", async () => {
+    const app = buildApp();
+    const { user } = await makeAthlete("Vikram");
+    const token = tokenFor(user._id as Types.ObjectId, "athlete");
+    const res = await request(app)
+      .post("/api/athlete/voice/interpret-v2")
+      .set("Cookie", [`accessToken=${token}`])
+      .send({ transcript: "add this", currentScreen: "nutrition" });
+    expect(res.status).toBe(200);
+    expect(res.body.intent).toBe("log_meal");
+    expect(res.body.action).not.toBe("reject");
+  });
+
+  test("'add this' on the water screen classifies as add_water", async () => {
+    const app = buildApp();
+    const { user } = await makeAthlete("Wendy");
+    const token = tokenFor(user._id as Types.ObjectId, "athlete");
+    const res = await request(app)
+      .post("/api/athlete/voice/interpret-v2")
+      .set("Cookie", [`accessToken=${token}`])
+      .send({ transcript: "add this", currentScreen: "water" });
+    expect(res.status).toBe(200);
+    expect(res.body.intent).toBe("add_water");
+  });
+
+  test("the same vague transcript with no currentScreen still redirects rather than guessing", async () => {
+    const app = buildApp();
+    const { user } = await makeAthlete("Xena");
+    const token = tokenFor(user._id as Types.ObjectId, "athlete");
+    const res = await request(app)
+      .post("/api/athlete/voice/interpret-v2")
+      .set("Cookie", [`accessToken=${token}`])
+      .send({ transcript: "add this" });
+    expect(res.status).toBe(200);
+    expect(res.body.intent).toBe("unknown_intent");
+    expect(res.body.action).toBe("reject");
+  });
+
+  test("an unrecognized currentScreen value is ignored rather than trusted", async () => {
+    const app = buildApp();
+    const { user } = await makeAthlete("Yusuf");
+    const token = tokenFor(user._id as Types.ObjectId, "athlete");
+    const res = await request(app)
+      .post("/api/athlete/voice/interpret-v2")
+      .set("Cookie", [`accessToken=${token}`])
+      .send({ transcript: "add this", currentScreen: "admin" });
+    expect(res.status).toBe(200);
+    expect(res.body.intent).toBe("unknown_intent");
+  });
+
+  test("an explicit, differently-stated request is never overridden by the screen hint", async () => {
+    const app = buildApp();
+    const { user } = await makeAthlete("Zara");
+    const token = tokenFor(user._id as Types.ObjectId, "athlete");
+    const res = await request(app)
+      .post("/api/athlete/voice/interpret-v2")
+      .set("Cookie", [`accessToken=${token}`])
+      .send({ transcript: "drink 500 ml of water", currentScreen: "nutrition" });
+    expect(res.status).toBe(200);
+    expect(res.body.intent).toBe("add_water");
   });
 });
 

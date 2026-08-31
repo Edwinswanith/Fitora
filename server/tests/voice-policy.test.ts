@@ -9,14 +9,14 @@ describe("voiceIntentPolicy — fresh intents", () => {
     const result = derivePolicy(turn("log_wellness", {}), null);
     expect(result.action).toBe("collect_fields");
     expect(result.missingFields).toContain("sleepQuality");
-    expect(result.requiresConfirmation).toBe(true);
+    expect(result.requiresConfirmation).toBe(false);
   });
 
-  test("log_wellness with a value present is ready to confirm", () => {
+  test("log_wellness with a value present auto-executes — no confirmation needed for a simple reversible log", () => {
     const result = derivePolicy(turn("log_wellness", { sleepQuality: 8 }), null);
-    expect(result.action).toBe("ready_to_confirm");
+    expect(result.action).toBe("execute");
     expect(result.missingFields).toEqual([]);
-    expect(result.spokenResponse).toMatch(/sleep 8/);
+    expect(result.requiresConfirmation).toBe(false);
   });
 
   test("log_session missing both required fields lists sessionType first", () => {
@@ -46,11 +46,9 @@ describe("voiceIntentPolicy — fresh intents", () => {
       }),
       null
     );
-    expect(result.action).toBe("ready_to_confirm");
+    expect(result.action).toBe("execute");
     expect(result.entities.rpe).toBe(8);
     expect(result.entities.effortScore).toBeUndefined();
-    expect(result.spokenResponse).toMatch(/RPE 8/);
-    expect(result.spokenResponse).not.toMatch(/effort/);
   });
 
   test("log_session with only effortScore does not populate rpe", () => {
@@ -70,10 +68,10 @@ describe("voiceIntentPolicy — fresh intents", () => {
     expect(result.action).toBe("collect_fields");
   });
 
-  test("log_rpe with rpe present is ready to confirm", () => {
+  test("log_rpe with rpe present auto-executes", () => {
     const result = derivePolicy(turn("log_rpe", { rpe: 7, trainingCategory: "ENDURANCE" }), null);
-    expect(result.action).toBe("ready_to_confirm");
-    expect(result.spokenResponse).toMatch(/RPE 7/);
+    expect(result.action).toBe("execute");
+    expect(result.entities.rpe).toBe(7);
   });
 
   test("log_rpe rejects a trainingCategory outside the allowlist", () => {
@@ -85,8 +83,9 @@ describe("voiceIntentPolicy — fresh intents", () => {
     const tooMuch = derivePolicy(turn("add_water", { amountMl: 9000 }), null);
     expect(tooMuch.missingFields).toEqual(["amountMl"]);
     const ok = derivePolicy(turn("add_water", { amountMl: 500 }), null);
-    expect(ok.action).toBe("ready_to_confirm");
-    expect(ok.spokenResponse).toMatch(/500 ml/);
+    expect(ok.action).toBe("execute");
+    expect(ok.requiresConfirmation).toBe(false);
+    expect(ok.entities.amountMl).toBe(500);
   });
 
   test("show_hydration is read-only, needs no confirmation", () => {
@@ -105,7 +104,7 @@ describe("voiceIntentPolicy — fresh intents", () => {
     expect(session.requiresConfirmation).toBe(false);
   });
 
-  test("log_meal requires meal type, food name, and calories before confirmation", () => {
+  test("log_meal requires meal type, food name, and calories before it can save", () => {
     const incomplete = derivePolicy(turn("log_meal", { mealType: "lunch", foodName: "Chicken rice bowl" }), null);
     expect(incomplete.action).toBe("collect_fields");
     expect(incomplete.missingFields).toEqual(["calories"]);
@@ -114,11 +113,10 @@ describe("voiceIntentPolicy — fresh intents", () => {
       turn("log_meal", { mealType: "Lunch", foodName: "Chicken rice bowl", calories: 650, proteinG: 45 }),
       null
     );
-    expect(ready.action).toBe("ready_to_confirm");
-    expect(ready.requiresConfirmation).toBe(true);
+    expect(ready.action).toBe("execute");
+    expect(ready.requiresConfirmation).toBe(false);
     expect(ready.entities.mealType).toBe("lunch");
-    expect(ready.spokenResponse).toMatch(/Chicken rice bowl/);
-    expect(ready.spokenResponse).toMatch(/650 calories/);
+    expect(ready.entities.calories).toBe(650);
   });
 
   test("open_screen with an allowlisted screen navigates", () => {
@@ -166,20 +164,20 @@ describe("voiceIntentPolicy — log_heart_rate", () => {
     const result = derivePolicy(turn("log_heart_rate", {}), null);
     expect(result.action).toBe("collect_fields");
     expect(result.missingFields).toEqual(["heartRateValue"]);
-    expect(result.requiresConfirmation).toBe(true);
+    expect(result.requiresConfirmation).toBe(false);
   });
 
-  test("wakeHr alone is ready to confirm and doesn't require bedHr", () => {
+  test("wakeHr alone auto-executes and doesn't require bedHr", () => {
     const result = derivePolicy(turn("log_heart_rate", { wakeHr: 52 }), null);
-    expect(result.action).toBe("ready_to_confirm");
-    expect(result.spokenResponse).toMatch(/wake 52/);
-    expect(result.spokenResponse).not.toMatch(/bed/);
+    expect(result.action).toBe("execute");
+    expect(result.entities.wakeHr).toBe(52);
+    expect(result.entities.bedHr).toBeUndefined();
   });
 
-  test("both wakeHr and bedHr are included in the confirmation", () => {
+  test("both wakeHr and bedHr are included when both are given", () => {
     const result = derivePolicy(turn("log_heart_rate", { wakeHr: 52, bedHr: 58 }), null);
-    expect(result.spokenResponse).toMatch(/wake 52/);
-    expect(result.spokenResponse).toMatch(/bed 58/);
+    expect(result.entities.wakeHr).toBe(52);
+    expect(result.entities.bedHr).toBe(58);
   });
 
   test("an out-of-range value is stripped, not clamped, and reopens collection", () => {
@@ -196,10 +194,10 @@ describe("voiceIntentPolicy — update_profile", () => {
     expect(result.missingFields).toEqual(["profileField"]);
   });
 
-  test("height alone is ready to confirm", () => {
+  test("height alone auto-executes", () => {
     const result = derivePolicy(turn("update_profile", { heightCm: 178 }), null);
-    expect(result.action).toBe("ready_to_confirm");
-    expect(result.spokenResponse).toMatch(/height 178 cm/);
+    expect(result.action).toBe("execute");
+    expect(result.entities.heightCm).toBe(178);
   });
 
   test("a stray key like coachId or name is never passed through (allowlist)", () => {
@@ -223,16 +221,17 @@ describe("voiceIntentPolicy — show_daily_checklist", () => {
 });
 
 describe("voiceIntentPolicy — change_hydration_reminder honesty (correction #13)", () => {
-  test("never claims a fixed-cadence hydration-specific timer", () => {
+  test("auto-executes without ever claiming a fixed-cadence hydration-specific timer", () => {
     const result = derivePolicy(turn("change_hydration_reminder", { intervalMinutes: 90 }), null);
-    expect(result.action).toBe("ready_to_confirm");
+    expect(result.action).toBe("execute");
+    expect(result.entities.intervalMinutes).toBe(90);
     expect(result.spokenResponse.toLowerCase()).not.toMatch(/every 90 minutes/);
-    expect(result.spokenResponse.toLowerCase()).toMatch(/at least|apart/);
   });
 
-  test("turning reminders off is described plainly", () => {
+  test("turning reminders off still resolves the enabled flag correctly", () => {
     const result = derivePolicy(turn("change_hydration_reminder", { enabled: false }), null);
-    expect(result.spokenResponse.toLowerCase()).toMatch(/off/);
+    expect(result.action).toBe("execute");
+    expect(result.entities.enabled).toBe(false);
   });
 });
 
@@ -284,7 +283,7 @@ describe("voiceIntentPolicy — meta-intents against pending state", () => {
     expect(result.entities.effortScore).toBe(9); // untouched
     expect(result.entities.sessionType).toBe("AM"); // untouched
     expect(result.entities.actualDurationMin).toBe(45); // untouched
-    expect(result.action).toBe("ready_to_confirm");
+    expect(result.action).toBe("execute"); // log_session is a simple reversible log — no confirmation needed
   });
 
   test("update_field cannot inject a key outside the pending intent's own schema", () => {
@@ -305,6 +304,58 @@ describe("voiceIntentPolicy — meta-intents against pending state", () => {
     expect(result.entities.amountMl).toBeUndefined();
     expect(result.action).toBe("collect_fields");
     expect(result.missingFields).toEqual(["amountMl"]);
+  });
+});
+
+describe("voiceIntentPolicy — send_coach_note is the one write intent that still requires confirmation", () => {
+  test("a complete send_coach_note is ready_to_confirm, not auto-executed", () => {
+    const result = derivePolicy(turn("send_coach_note", { body: "Running 10 minutes late today" }), null);
+    expect(result.action).toBe("ready_to_confirm");
+    expect(result.requiresConfirmation).toBe(true);
+    expect(result.spokenResponse).toMatch(/Running 10 minutes late today/);
+  });
+
+  test("update_field completing a pending send_coach_note still asks for confirmation, not auto-execute", () => {
+    const pendingNote: PolicyPendingState = { intent: "send_coach_note", entities: {}, missingFields: ["body"] };
+    const result = derivePolicy(turn("update_field", { body: "See you at practice" }), pendingNote);
+    expect(result.action).toBe("ready_to_confirm");
+    expect(result.requiresConfirmation).toBe(true);
+  });
+
+  test("saying yes to a pending send_coach_note executes it", () => {
+    const pendingNote: PolicyPendingState = { intent: "send_coach_note", entities: { body: "See you at practice" }, missingFields: [] };
+    const result = derivePolicy(turn("confirm_action"), pendingNote);
+    expect(result.action).toBe("execute");
+  });
+});
+
+describe("voiceIntentPolicy — low-confidence classifications are never acted on", () => {
+  test("a fresh, low-confidence turn with no pending workflow asks the athlete to repeat, without guessing", () => {
+    const result = derivePolicy(turn("add_water", { amountMl: 500 }, 0.2), null);
+    expect(result.action).toBe("reject");
+    expect(result.spokenResponse).toBe("I didn't catch that. Could you say it again?");
+    expect(result.entities).toEqual({});
+  });
+
+  test("a low-confidence turn during an in-progress workflow preserves the pending state instead of discarding it", () => {
+    const pendingMeal: PolicyPendingState = { intent: "log_meal", entities: { mealType: "lunch", foodName: "Chicken rice bowl" }, missingFields: ["calories"] };
+    const result = derivePolicy(turn("add_water", { amountMl: 500 }, 0.2), pendingMeal);
+    expect(result.action).toBe("collect_fields");
+    expect(result.effectiveIntent).toBe("log_meal");
+    expect(result.entities).toEqual(pendingMeal.entities);
+    expect(result.spokenResponse).toBe("I didn't catch that. Could you say it again?");
+  });
+
+  test("meta-intents (yes/no/correction) are exempt from the confidence gate even when reported low", () => {
+    const pendingWater: PolicyPendingState = { intent: "add_water", entities: { amountMl: 500 }, missingFields: [] };
+    const result = derivePolicy(turn("confirm_action", {}, 0.1), pendingWater);
+    expect(result.action).toBe("execute");
+  });
+
+  test("unknown_intent is handled by its own redirect, not the confidence gate, even at zero confidence", () => {
+    const result = derivePolicy(turn("unknown_intent", {}, 0), null);
+    expect(result.action).toBe("reject");
+    expect(result.spokenResponse).toBe("I didn't catch that. Could you say it again?");
   });
 });
 

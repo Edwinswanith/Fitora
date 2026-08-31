@@ -35,19 +35,34 @@ async function speakWithDeepgram(message: string): Promise<void> {
   await new Promise<void>((resolve, reject) => {
     const startedAt = Date.now();
     const timeoutMs = Math.max(5000, Math.min(30000, message.length * 85));
+    // A server failure (e.g. Deepgram not configured/down) never produces a
+    // valid audio stream — without this, the player just sits at
+    // currentTime 0 and the fallback to expo-speech only kicks in once the
+    // timeout below fires, which can take up to 30s. The player's own load
+    // error lets us fall back immediately instead.
+    const subscription = player.addListener("playbackStatusUpdate", (status) => {
+      if (status.error) {
+        subscription.remove();
+        clearInterval(timer);
+        reject(new Error(status.error));
+      }
+    });
     const timer = setInterval(() => {
       if (currentPlayer !== player) {
+        subscription.remove();
         clearInterval(timer);
         resolve();
         return;
       }
       const status = player.currentStatus;
       if (status.didJustFinish || (!status.playing && status.currentTime > 0.05)) {
+        subscription.remove();
         clearInterval(timer);
         resolve();
         return;
       }
       if (Date.now() - startedAt > timeoutMs) {
+        subscription.remove();
         clearInterval(timer);
         reject(new Error("deepgram_tts_timeout"));
       }

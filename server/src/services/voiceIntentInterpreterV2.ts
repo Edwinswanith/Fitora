@@ -12,13 +12,26 @@
  */
 
 import { env } from "../config/env";
-import { VOICE_INTENTS_V2, type VoiceIntentNameV2, type SanitizedTurn, type PolicyPendingState } from "./voiceIntentPolicy";
+import { VOICE_INTENTS_V2, OPEN_SCREEN_ALLOWLIST, type VoiceIntentNameV2, type SanitizedTurn, type PolicyPendingState, type OpenScreenTarget } from "./voiceIntentPolicy";
 import { TRAINING_CATEGORIES } from "../lib/trainingCategories";
 
 export type VoiceInterpretInputV2 = {
   transcript: string;
   today: string;
   pendingIntent?: PolicyPendingState;
+  /** Which Fitora tab the athlete is currently looking at (client-reported, allowlist-validated) — used only to disambiguate a vague reference like "add this", never to override an explicit, differently-stated intent. */
+  currentScreen?: OpenScreenTarget;
+};
+
+/** Screen a vague, otherwise-unclassifiable reference ("add this", "log it") most likely refers to — never used to override an explicit match. */
+const SCREEN_CONTEXT_INTENT: Partial<Record<OpenScreenTarget, VoiceIntentNameV2>> = {
+  nutrition: "log_meal",
+  water: "add_water",
+  workouts: "log_session",
+  log: "log_session",
+  progress: "show_progress",
+  trends: "show_progress",
+  goals: "show_progress",
 };
 
 export interface VoiceIntentInterpreterV2 {
@@ -177,10 +190,17 @@ const SYSTEM_PROMPT_V2 =
   "Report a calibrated confidence 0-1 — lower it for ambiguous, very short, or noisy transcripts.\n\n" +
   "If pendingIntent is provided, merge newly-stated entities with the ones already collected " +
   "mentally to decide the right intent (e.g. update_field vs. a fresh intent), but only return the " +
-  "entities from THIS turn.";
+  "entities from THIS turn.\n\n" +
+  "If currentScreen is given and the transcript is a vague, anaphoric reference with no other signal " +
+  "to classify it (e.g. 'add this', 'log it', 'mark this done', 'update it') — never for an already " +
+  "clear, differently-stated request — use currentScreen as a disambiguation hint: nutrition->log_meal, " +
+  "water->add_water, workouts or log->log_session, progress/trends/goals->show_progress. Only apply " +
+  "this when the transcript genuinely has nothing else to classify it by; an explicit statement " +
+  "always wins over the screen hint.";
 
 function buildUserPrompt(input: VoiceInterpretInputV2): string {
   const parts = [`Today's date: ${input.today}`];
+  if (input.currentScreen) parts.push(`Current screen: ${input.currentScreen}`);
   if (input.pendingIntent) {
     parts.push(
       `In-progress intent: ${input.pendingIntent.intent}`,
@@ -414,6 +434,18 @@ export class MockVoiceIntentInterpreterV2 implements VoiceIntentInterpreterV2 {
 
     if (/sleep|slept|mood|stress|soreness|sore|fatigue|tired/.test(t)) {
       return { intent: "log_wellness", entities: extractEntitiesFor("log_wellness", t, input.transcript), confidence: 0.65 };
+    }
+
+    // Last resort before giving up: a vague, anaphoric reference ("add this",
+    // "log it", "mark this done") carries no keyword of its own to classify
+    // on, but if the athlete is looking at a specific Fitora tab, that screen
+    // is a reasonable stand-in for what "this" means. Never overrides an
+    // explicit match above; only fires when nothing else did.
+    if (input.currentScreen && /\b(?:add|log|record|save|mark|update)\b/.test(t) && /\b(?:this|that|it)\b/.test(t)) {
+      const hinted = SCREEN_CONTEXT_INTENT[input.currentScreen];
+      if (hinted) {
+        return { intent: hinted, entities: extractEntitiesFor(hinted, t, input.transcript), confidence: 0.55 };
+      }
     }
 
     return { intent: "unknown_intent", entities: {}, confidence: 0.2 };

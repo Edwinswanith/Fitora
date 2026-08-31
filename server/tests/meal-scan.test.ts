@@ -129,7 +129,7 @@ describe("Meal scan — AI never writes trusted consumed nutrition directly", ()
     expect(res.body.scan.error).toBe("provider_timeout");
   });
 
-  test("when the vision call finds nothing, status is needs_review with zero items — never invents a food", async () => {
+  test("when the vision call finds nothing, status is no_food_detected with zero items — never invents a food", async () => {
     const emptyConverter: MealVisionConverter = {
       async convert() {
         return { items: [] };
@@ -144,9 +144,75 @@ describe("Meal scan — AI never writes trusted consumed nutrition directly", ()
       .attach("file", PNG_BYTES, { filename: "plate.png", contentType: "image/png" });
 
     expect(res.status).toBe(201);
-    expect(res.body.scan.status).toBe("needs_review");
+    expect(res.body.scan.status).toBe("no_food_detected");
     expect(res.body.scan.items).toHaveLength(0);
     expect(res.body.scan.overallConfidence).toBe(0);
+  });
+
+  test("when the model explicitly reports no food in the image, status is no_food_detected", async () => {
+    const noFoodConverter: MealVisionConverter = {
+      async convert() {
+        return {
+          containsFood: false,
+          isImageClear: true,
+          items: [{ foodName: "Chair", quantity: 1, unit: "serving", calories: 100, proteinG: 1, carbsG: 1, fatG: 1, foodConfidence: 0.9, quantityConfidence: 0.9 }],
+        };
+      },
+    };
+    setMealVisionConverterForTests(noFoodConverter);
+
+    const { user } = await makeAthlete("scan-no-food");
+    const res = await request(buildApp())
+      .post("/api/athlete/nutrition/meal-scan")
+      .set("Authorization", `Bearer ${tokenFor(user._id)}`)
+      .attach("file", PNG_BYTES, { filename: "plate.png", contentType: "image/png" });
+
+    expect(res.status).toBe(201);
+    expect(res.body.scan.status).toBe("no_food_detected");
+    expect(res.body.scan.items).toHaveLength(0);
+  });
+
+  test("when the model flags the image as too unclear to assess, status is low_quality", async () => {
+    const blurryConverter: MealVisionConverter = {
+      async convert() {
+        return { containsFood: true, isImageClear: false, items: [] };
+      },
+    };
+    setMealVisionConverterForTests(blurryConverter);
+
+    const { user } = await makeAthlete("scan-blurry");
+    const res = await request(buildApp())
+      .post("/api/athlete/nutrition/meal-scan")
+      .set("Authorization", `Bearer ${tokenFor(user._id)}`)
+      .attach("file", PNG_BYTES, { filename: "plate.png", contentType: "image/png" });
+
+    expect(res.status).toBe(201);
+    expect(res.body.scan.status).toBe("low_quality");
+    expect(res.body.scan.items).toHaveLength(0);
+  });
+
+  test("when detected items fall below the usable confidence threshold, status is low_confidence and nothing is persisted as reviewable", async () => {
+    const uncertainConverter: MealVisionConverter = {
+      async convert() {
+        return {
+          containsFood: true,
+          isImageClear: true,
+          items: [{ foodName: "Something", quantity: 1, unit: "serving", calories: 100, proteinG: 5, carbsG: 5, fatG: 5, foodConfidence: 0.1, quantityConfidence: 0.1 }],
+        };
+      },
+    };
+    setMealVisionConverterForTests(uncertainConverter);
+
+    const { user } = await makeAthlete("scan-uncertain");
+    const res = await request(buildApp())
+      .post("/api/athlete/nutrition/meal-scan")
+      .set("Authorization", `Bearer ${tokenFor(user._id)}`)
+      .attach("file", PNG_BYTES, { filename: "plate.png", contentType: "image/png" });
+
+    expect(res.status).toBe(201);
+    expect(res.body.scan.status).toBe("low_confidence");
+    expect(res.body.scan.items).toHaveLength(0);
+    expect(res.body.scan.overallConfidence).toBe(0.1);
   });
 
   test("a low-confidence/malformed item from the model is dropped, never persisted with an invented value", async () => {

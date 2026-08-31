@@ -35,7 +35,7 @@ import {
 const DAY_LABELS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
 
 export default function CoachProfile() {
-  const state = useAsyncData(loadCoachProfileData, []);
+  const state = useAsyncData(loadCoachProfileData, [], "coach-profile");
   const { user, signOut } = useAuth();
   const router = useRouter();
   const [savingVisibility, setSavingVisibility] = useState(false);
@@ -53,7 +53,11 @@ export default function CoachProfile() {
     try {
       const path = active ? "/api/coach/profile/activate" : "/api/coach/profile/deactivate";
       const res = await apiFetch(path, { method: "POST" });
-      if (res.ok) state.reload();
+      // The response is just {active}, and that's the only field this
+      // toggle changes — patch it directly instead of re-fetching the
+      // profile, pricing plans, availability, and reviews just to flip
+      // one boolean.
+      if (res.ok) state.setData((prev) => (prev?.profile ? { ...prev, profile: { ...prev.profile, active } } : prev));
     } finally {
       setSavingVisibility(false);
     }
@@ -184,9 +188,21 @@ export default function CoachProfile() {
           <PricingEditor
             plan={editingPlan}
             onCancel={() => { setPricingOpen(false); setEditingPlan(null); }}
-            onSaved={(message) => {
+            onSaved={(message, plan) => {
               setActionMessage(message);
-              state.reload();
+              // The save/toggle response already returns the full plan —
+              // upsert it locally instead of re-fetching profile + pricing +
+              // availability + reviews for a one-plan change.
+              if (plan) {
+                state.setData((prev) => {
+                  if (!prev) return prev;
+                  const exists = prev.pricingPlans.some((p) => p.id === plan.id);
+                  return {
+                    ...prev,
+                    pricingPlans: exists ? prev.pricingPlans.map((p) => (p.id === plan.id ? plan : p)) : [...prev.pricingPlans, plan],
+                  };
+                });
+              }
             }}
           />
         ) : null}
@@ -205,7 +221,15 @@ export default function CoachProfile() {
       <View style={styles.twoCol}>
         <AppCard style={styles.splitCard}>
           <SectionHeader title="Availability" action="Manage" onAction={() => setAvailabilityOpen((value) => !value)} />
-          {availabilityOpen ? <AvailabilityEditor rules={data.availabilityRules} onSaved={() => { setActionMessage("Availability updated."); state.reload(); }} /> : null}
+          {availabilityOpen ? (
+            <AvailabilityEditor
+              rules={data.availabilityRules}
+              onSaved={(rules) => {
+                setActionMessage("Availability updated.");
+                state.setData((prev) => (prev ? { ...prev, availabilityRules: rules } : prev));
+              }}
+            />
+          ) : null}
           <AvailabilityList rules={data.availabilityRules} />
           <Pressable onPress={() => setExceptionsOpen((value) => !value)} style={styles.exceptionsToggle}>
             <Text style={styles.linkText}>{exceptionsOpen ? "Hide date overrides" : "Manage date overrides"}</Text>
@@ -213,7 +237,14 @@ export default function CoachProfile() {
           {exceptionsOpen ? (
             <AvailabilityExceptionsEditor
               exceptions={data.availabilityExceptions}
-              onChanged={(message) => { setActionMessage(message); state.reload(); }}
+              onChanged={(message, patch) => {
+                setActionMessage(message);
+                state.setData((prev) => {
+                  if (!prev) return prev;
+                  if ("added" in patch) return { ...prev, availabilityExceptions: [...prev.availabilityExceptions, patch.added] };
+                  return { ...prev, availabilityExceptions: prev.availabilityExceptions.filter((e) => e.id !== patch.removedId) };
+                });
+              }}
             />
           ) : null}
         </AppCard>
@@ -308,7 +339,7 @@ function PricingEditor({
 }: {
   plan: PricingPlan | null;
   onCancel: () => void;
-  onSaved: (message: string) => void;
+  onSaved: (message: string, plan?: PricingPlan) => void;
 }) {
   const [name, setName] = useState(plan?.name ?? "New Plan");
   const [price, setPrice] = useState(plan ? String(plan.monthlyPrice) : "2999");
@@ -360,12 +391,12 @@ function PricingEditor({
           includedServices,
         }),
       });
-      const json = await res.json().catch(() => ({}));
+      const json = (await res.json().catch(() => ({}))) as { error?: string; pricingPlan?: PricingPlan };
       if (!res.ok) {
         setMessage(json.error === "invalid_currency" ? "Use a 3-letter currency code." : "Could not save pricing plan.");
         return;
       }
-      onSaved(plan ? "Pricing plan updated." : "Pricing plan created.");
+      onSaved(plan ? "Pricing plan updated." : "Pricing plan created.", json.pricingPlan);
     } catch {
       setMessage("Network error while saving pricing.");
     } finally {
@@ -383,7 +414,8 @@ function PricingEditor({
         setMessage("Could not update visibility.");
         return;
       }
-      onSaved(plan.active === false ? "Pricing plan activated." : "Pricing plan deactivated.");
+      const json = (await res.json().catch(() => ({}))) as { pricingPlan?: PricingPlan };
+      onSaved(plan.active === false ? "Pricing plan activated." : "Pricing plan deactivated.", json.pricingPlan);
     } catch {
       setMessage("Network error while updating visibility.");
     } finally {
@@ -417,7 +449,7 @@ function PricingEditor({
   );
 }
 
-function AvailabilityEditor({ rules, onSaved }: { rules: CoachAvailabilityRule[]; onSaved: () => void }) {
+function AvailabilityEditor({ rules, onSaved }: { rules: CoachAvailabilityRule[]; onSaved: (rules: CoachAvailabilityRule[]) => void }) {
   const [selectedDays, setSelectedDays] = useState<number[]>(() => Array.from(new Set(rules.map((rule) => rule.dayOfWeek))));
   const [saving, setSaving] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
@@ -447,7 +479,8 @@ function AvailabilityEditor({ rules, onSaved }: { rules: CoachAvailabilityRule[]
         setMessage("Could not update availability.");
         return;
       }
-      onSaved();
+      const json = (await res.json().catch(() => ({}))) as { rules?: CoachAvailabilityRule[] };
+      onSaved(json.rules ?? []);
     } catch {
       setMessage("Network error while saving availability.");
     } finally {
@@ -541,7 +574,7 @@ function AvailabilityExceptionsEditor({
   onChanged,
 }: {
   exceptions: CoachAvailabilityException[];
-  onChanged: (message: string) => void;
+  onChanged: (message: string, patch: { added: CoachAvailabilityException } | { removedId: string }) => void;
 }) {
   const [date, setDate] = useState("");
   const [type, setType] = useState<"unavailable" | "custom_hours">("unavailable");
@@ -585,9 +618,10 @@ function AvailabilityExceptionsEditor({
         setMessage("Could not save this override.");
         return;
       }
+      const json = (await res.json().catch(() => ({}))) as { exception?: CoachAvailabilityException };
       setDate("");
       setReason("");
-      onChanged("Availability override saved.");
+      if (json.exception) onChanged("Availability override saved.", { added: json.exception });
     } catch {
       setMessage("Network error while saving override.");
     } finally {
@@ -604,7 +638,7 @@ function AvailabilityExceptionsEditor({
         setMessage("Could not remove this override.");
         return;
       }
-      onChanged("Availability override removed.");
+      onChanged("Availability override removed.", { removedId: id });
     } catch {
       setMessage("Network error while removing override.");
     } finally {
