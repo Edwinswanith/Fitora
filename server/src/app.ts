@@ -32,6 +32,7 @@ import athleteCoachVideosRouter from "./routes/athleteCoachVideos";
 import coachRelationshipRouter from "./routes/coachRelationship";
 import athleteCoachRelationshipRouter from "./routes/athleteCoachRelationship";
 import coachReviewsRouter from "./routes/coachReviews";
+import { athleteJoinRequestsRouter, coachJoinRequestsRouter } from "./routes/coachJoinRequests";
 import { errorHandler } from "./middleware/errorHandler";
 
 function isSameHostOrigin(origin: string, host: string | undefined): boolean {
@@ -136,6 +137,8 @@ export function createApp(): express.Express {
   app.use("/api/coach", coachRelationshipRouter);
   app.use("/api/athlete", athleteCoachRelationshipRouter);
   app.use("/api/athlete", coachReviewsRouter);
+  app.use("/api/athlete", athleteJoinRequestsRouter);
+  app.use("/api/coach", coachJoinRequestsRouter);
 
   // Same router mounted under /api for Vercel's catch-all API proxy and outside
   // /api for standalone Express deployments.

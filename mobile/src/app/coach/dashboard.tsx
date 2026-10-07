@@ -26,6 +26,7 @@ import { combineLocalDateTime, isInFuture, isoToLocalParts, todayLocalDate } fro
 import { apiFetch } from "../../lib/api";
 import { PAYMENTS_ENABLED } from "../../lib/features";
 import { joinSessionCall } from "../../lib/videoCall";
+import { decideJoinRequest, type JoinRequest } from "../../lib/joinRequests";
 import { celebrate, errorFeedback } from "../../lib/feedback";
 import { useAuth } from "../../lib/auth";
 import { colors } from "../../lib/theme";
@@ -74,12 +75,28 @@ export default function CoachHome() {
   return (
     <ScreenContainer refreshing={state.refreshing} onRefresh={state.reload}>
       {state.stale ? <StaleDataNotice onRetry={state.reload} /> : null}
-      <CoachHomeView data={state.data} onSessionUpdate={patchSession} />
+      <CoachHomeView
+        data={state.data}
+        onSessionUpdate={patchSession}
+        onJoinDecided={(requestId, accepted) => {
+          state.setData((prev) => (prev ? { ...prev, joinRequests: (prev.joinRequests ?? []).filter((r) => r.id !== requestId) } : prev));
+          // A new client changes the roster, cards and plan gaps.
+          if (accepted) state.reload();
+        }}
+      />
     </ScreenContainer>
   );
 }
 
-function CoachHomeView({ data, onSessionUpdate }: { data: CoachHomeData; onSessionUpdate: (sessionId: string, patch: Partial<CoachSession>) => void }) {
+function CoachHomeView({
+  data,
+  onSessionUpdate,
+  onJoinDecided,
+}: {
+  data: CoachHomeData;
+  onSessionUpdate: (sessionId: string, patch: Partial<CoachSession>) => void;
+  onJoinDecided: (requestId: string, accepted: boolean) => void;
+}) {
   const router = useRouter();
   const { user } = useAuth();
   const [sessionPanel, setSessionPanel] = useState(false);
@@ -92,6 +109,7 @@ function CoachHomeView({ data, onSessionUpdate }: { data: CoachHomeData; onSessi
   const [cancelNote, setCancelNote] = useState("");
   const [completeSummary, setCompleteSummary] = useState("");
   const [completeNotes, setCompleteNotes] = useState("");
+  const joinRequests = data.joinRequests ?? [];
   const attention = useMemo(
     () => [...data.cards].filter((card) => attentionRank(card) < 2.5).sort((a, b) => attentionRank(a) - attentionRank(b)).slice(0, 4),
     [data.cards]
@@ -270,7 +288,14 @@ function CoachHomeView({ data, onSessionUpdate }: { data: CoachHomeData; onSessi
         title={longDate(data.date)}
       />
 
-      {data.roster.length === 0 ? <CoachGettingStartedCard /> : (
+      {joinRequests.length ? (
+        <HeroCard
+          icon="person-add-outline"
+          eyebrow="New clients"
+          title={joinRequests.length === 1 ? `${joinRequests[0].athlete.name} wants to join` : `${joinRequests.length} people want to join`}
+          body="Accept or decline below."
+        />
+      ) : data.roster.length === 0 ? <CoachGettingStartedCard /> : (
         <CoachHomeHero
           data={data}
           nextSession={nextSession}
@@ -281,6 +306,13 @@ function CoachHomeView({ data, onSessionUpdate }: { data: CoachHomeData; onSessi
           onPlan={() => router.push("/coach/plan" as never)}
         />
       )}
+
+      {joinRequests.length ? (
+        <>
+          <SectionLabel title="Client requests" />
+          <JoinRequestsCard requests={joinRequests} onDecided={onJoinDecided} />
+        </>
+      ) : null}
 
       <SectionLabel title="Today" />
       <SessionRequestsCard sessions={data.sessions} today={data.date} onSessionUpdate={onSessionUpdate} />
@@ -535,6 +567,66 @@ function CoachHomeHero({
   );
 }
 
+/** Athletes asking to join this coach. Accepting creates the client relationship. */
+function JoinRequestsCard({ requests, onDecided }: { requests: JoinRequest[]; onDecided: (requestId: string, accepted: boolean) => void }) {
+  const [busy, setBusy] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
+
+  async function decide(request: JoinRequest, decision: "accept" | "decline") {
+    setBusy(`${request.id}:${decision}`);
+    setError(null);
+    const result = await decideJoinRequest(request.id, decision);
+    setBusy(null);
+    if (!result.ok) {
+      errorFeedback();
+      setError(result.error);
+      // Already answered elsewhere, or now coached by someone else: drop it.
+      // Anything else (e.g. offline) leaves it in place to retry.
+      if (result.code === "request_not_found" || result.code === "athlete_has_active_coach") onDecided(request.id, false);
+      return;
+    }
+    if (decision === "accept") celebrate({ title: `${firstName(request.athlete.name, "New client")} added`, body: "They're now in your Clients list." });
+    onDecided(request.id, decision === "accept");
+  }
+
+  return (
+    <AppCard>
+      {requests.map((request, index) => (
+        <View key={request.id} style={[styles.joinRow, index > 0 ? styles.joinRowDivider : null]}>
+          <Text style={styles.cardTitle}>{request.athlete.name}</Text>
+          <Text style={styles.muted}>{[request.athlete.sport ? titleCase(request.athlete.sport) : null, relativeAge(request.createdAt)].filter(Boolean).join(" · ")}</Text>
+          {request.message ? <Text style={styles.joinMessage}>{`"${request.message}"`}</Text> : null}
+          <View style={styles.actionRow}>
+            <ActionButton
+              label={busy === `${request.id}:accept` ? "Accepting..." : "Accept"}
+              variant="filled"
+              disabled={Boolean(busy)}
+              onPress={() => void decide(request, "accept")}
+            />
+            <ActionButton
+              label={busy === `${request.id}:decline` ? "Declining..." : "Decline"}
+              disabled={Boolean(busy)}
+              onPress={() => void decide(request, "decline")}
+              style={styles.cancelButton}
+              textStyle={styles.cancelButtonText}
+            />
+          </View>
+        </View>
+      ))}
+      {error ? <Text style={styles.errorText}>{error}</Text> : null}
+    </AppCard>
+  );
+}
+
+function relativeAge(iso: string): string {
+  const minutes = Math.max(0, Math.round((Date.now() - new Date(iso).getTime()) / 60000));
+  if (minutes < 60) return minutes <= 1 ? "just now" : `${minutes} min ago`;
+  const hours = Math.round(minutes / 60);
+  if (hours < 24) return `${hours} hr ago`;
+  const days = Math.round(hours / 24);
+  return `${days} day${days === 1 ? "" : "s"} ago`;
+}
+
 /** First-day guide for a coach with no clients yet, instead of a wall of zeros. */
 function CoachGettingStartedCard() {
   const router = useRouter();
@@ -726,6 +818,9 @@ function Divider() {
 }
 
 const styles = StyleSheet.create({
+  joinRow: { gap: 6, paddingVertical: 4 },
+  joinRowDivider: { borderTopWidth: 1, borderTopColor: colors.line, paddingTop: 12, marginTop: 6 },
+  joinMessage: { color: colors.ink, fontSize: 14, lineHeight: 20, fontStyle: "italic" },
   cardTitle: { color: colors.ink, fontSize: 15, lineHeight: 19, fontWeight: "900" },
   blueTitle: { color: colors.primary, fontSize: 14, lineHeight: 18, fontWeight: "900" },
   muted: { color: colors.inkMuted, fontSize: 12, lineHeight: 16 },

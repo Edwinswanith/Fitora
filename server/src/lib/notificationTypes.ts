@@ -79,6 +79,11 @@ export const NOTIFICATION_TYPES = {
 
   // --- Coach switching (Phase 13 hardening) ---
   coach_athlete_left: "alerts",
+
+  // --- Request to join a coach (no-payments path) ---
+  join_requested: "reminders",
+  join_accepted: "milestones",
+  join_declined: "messages",
 } as const satisfies Record<string, NotificationCategory>;
 
 export type NotificationType = keyof typeof NOTIFICATION_TYPES;

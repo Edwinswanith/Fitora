@@ -33,6 +33,7 @@ import { useAuth } from "../../lib/auth";
 import { PAYMENTS_ENABLED } from "../../lib/features";
 import { celebrate, showError } from "../../lib/feedback";
 import { joinSessionCall } from "../../lib/videoCall";
+import { loadMyJoinRequest, type JoinRequest } from "../../lib/joinRequests";
 import { eligibleDays, judgeRate, localDayOf, windowStart } from "../../lib/progressWindow";
 import { exerciseVisual, mealVisual, workoutVisual, type FitoraVisual } from "../../lib/fitoraIcons";
 import { colors, metricColors, radius, type MetricKey } from "../../lib/theme";
@@ -3276,23 +3277,47 @@ function athleteHasCoach(data: AthleteDashboardData): boolean {
 }
 
 function NoCoachState({ onFindCoach }: { onFindCoach: () => void }) {
+  const router = useRouter();
   const { user } = useAuth();
+  const [request, setRequest] = useState<JoinRequest | null>(null);
+  useEffect(() => {
+    if (PAYMENTS_ENABLED) return;
+    let active = true;
+    void loadMyJoinRequest().then((latest) => active && setRequest(latest));
+    return () => {
+      active = false;
+    };
+  }, []);
+
+  if (request?.status === "pending") {
+    return (
+      <HeroCard
+        calm
+        icon="time-outline"
+        eyebrow="Request sent"
+        title={`Waiting on ${request.coach.name}`}
+        body="You'll get a notification when they reply."
+        actionLabel="View Coach"
+        onAction={() => router.push({ pathname: "/athlete/coach-profile/[coachId]", params: { coachId: request.coach.id } } as never)}
+      />
+    );
+  }
   return (
     <AppCard style={styles.noCoachCard}>
       <IconTile icon="people-outline" size={58} />
       <Text style={styles.noCoachTitle}>You don&apos;t have a coach yet</Text>
-      <Text style={styles.noCoachBody}>Connect with a coach to unlock personalized training, nutrition planning, and direct feedback.</Text>
+      <Text style={styles.noCoachBody}>
+        {request?.status === "declined" ? `${request.coach.name} couldn't take you on. Try another coach.` : "A coach plans your training and meals and gives you feedback."}
+      </Text>
       <View style={styles.noCoachBenefits}>
         <CoachBenefit icon="barbell-outline" label="Personalized training" />
         <CoachBenefit icon="nutrition-outline" label="Nutrition plan" />
         <CoachBenefit icon="chatbubble-outline" label="Direct feedback" />
       </View>
-      {PAYMENTS_ENABLED ? null : (
-        <Text style={styles.noCoachBody}>
-          {`Already have a coach? Share your account email${user?.email ? ` (${user.email})` : ""} with them so they can add you.`}
-        </Text>
-      )}
       <ActionButton label="Find a Coach" icon="search-outline" variant="filled" style={styles.noCoachButton} onPress={onFindCoach} />
+      {PAYMENTS_ENABLED ? null : (
+        <Text style={styles.noCoachBody}>{`Coach not listed? Share your email${user?.email ? ` (${user.email})` : ""} so they can add you.`}</Text>
+      )}
     </AppCard>
   );
 }

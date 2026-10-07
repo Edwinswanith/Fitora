@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { AppState, Linking, Pressable, StyleSheet, View, type AppStateStatus } from "react-native";
+import { AppState, Linking, Pressable, StyleSheet, TextInput, View, type AppStateStatus } from "react-native";
 import { useLocalSearchParams } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
 import { Text } from "../../../components/AppText";
@@ -17,8 +17,9 @@ import {
   StatusChip,
 } from "../../../components/fitora";
 import { apiFetch } from "../../../lib/api";
-import { useAuth } from "../../../lib/auth";
 import { PAYMENTS_ENABLED } from "../../../lib/features";
+import { celebrate, showError } from "../../../lib/feedback";
+import { cancelJoinRequest, loadMyJoinRequest, sendJoinRequest, type JoinRequest } from "../../../lib/joinRequests";
 import { colors } from "../../../lib/theme";
 import {
   formatCurrency,
@@ -59,7 +60,6 @@ export default function CoachProfileScreen() {
   const [assignedLoaded, setAssignedLoaded] = useState(false);
   const [selectedPlanId, setSelectedPlanId] = useState<string | null>(null);
   const [checkout, setCheckout] = useState<CheckoutState>({ kind: "idle" });
-  const { user } = useAuth();
   const [submitting, setSubmitting] = useState(false);
   const [reviewsOpen, setReviewsOpen] = useState<CoachReview[]>([]);
   const [reviewsPage, setReviewsPage] = useState(1);
@@ -245,6 +245,10 @@ export default function CoachProfileScreen() {
         {isCurrentCoach ? <StatusChip label="Your current coach" tone="success" icon="checkmark-circle-outline" /> : null}
       </AppCard>
 
+      {!PAYMENTS_ENABLED && assignedLoaded && !isCurrentCoach ? (
+        <JoinRequestPanel coachId={coachId} coachName={profile.name} currentCoachName={currentCoachId ? currentCoachName ?? "another coach" : null} />
+      ) : null}
+
       <AppCard>
         <SectionHeader title="Expertise" />
         <View style={styles.tagWrap}>
@@ -330,13 +334,6 @@ export default function CoachProfileScreen() {
       ) : null}
       {checkout.kind === "error" ? <AlertBanner tone="danger" title="Could not complete this" body={checkout.message} /> : null}
 
-      {!PAYMENTS_ENABLED && !isCurrentCoach ? (
-        <AlertBanner
-          tone="primary"
-          title={`Work with ${profile.name}`}
-          body={`Online sign-up is coming soon. To start now, share your account email${user?.email ? ` (${user.email})` : ""} with ${profile.name}. Once they add you as a client, they'll appear in your Coach tab.`}
-        />
-      ) : null}
       {!PAYMENTS_ENABLED || isCurrentCoach ? null : plans.length ? (
         <ActionButton
           label={
@@ -362,6 +359,101 @@ export default function CoachProfileScreen() {
         </Text>
       ) : null}
     </ScreenContainer>
+  );
+}
+
+/**
+ * Payments-off path to a coach: ask to join, see that it's waiting, withdraw.
+ * The coach accepts from their Home screen (server: routes/coachJoinRequests.ts).
+ */
+function JoinRequestPanel({ coachId, coachName, currentCoachName }: { coachId: string; coachName: string; currentCoachName: string | null }) {
+  const [request, setRequest] = useState<JoinRequest | null>(null);
+  const [loaded, setLoaded] = useState(false);
+  const [message, setMessage] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    let active = true;
+    loadMyJoinRequest()
+      .then((latest) => active && setRequest(latest))
+      .finally(() => active && setLoaded(true));
+    return () => {
+      active = false;
+    };
+  }, []);
+
+  async function send() {
+    setBusy(true);
+    setError(null);
+    const result = await sendJoinRequest(coachId, message.trim());
+    setBusy(false);
+    if (!result.ok) {
+      setError(result.error);
+      showError(result.error);
+      return;
+    }
+    setRequest(result.data.request);
+    setMessage("");
+    celebrate({ title: "Request sent", body: `We'll let you know when ${coachName} replies.` });
+  }
+
+  async function withdraw(id: string) {
+    setBusy(true);
+    setError(null);
+    const result = await cancelJoinRequest(id);
+    setBusy(false);
+    if (!result.ok) return setError(result.error);
+    setRequest(result.data.request);
+  }
+
+  if (!loaded) return null;
+
+  if (currentCoachName) {
+    return (
+      <AppCard>
+        <Text style={styles.joinTitle}>{`You're coached by ${currentCoachName}`}</Text>
+        <Text style={styles.mutedBody}>{`To work with ${coachName}, leave your current coach from the Coach tab first.`}</Text>
+      </AppCard>
+    );
+  }
+
+  const pending = request?.status === "pending" ? request : null;
+  if (pending) {
+    const isThisCoach = pending.coach.id === coachId;
+    return (
+      <AppCard style={styles.joinCard}>
+        <View style={styles.joinStatusRow}>
+          <Ionicons name="time-outline" size={20} color={colors.primary} />
+          <Text style={styles.joinTitle}>{isThisCoach ? "Request sent" : `Waiting on ${pending.coach.name}`}</Text>
+        </View>
+        <Text style={styles.mutedBody}>
+          {isThisCoach ? `${coachName} will see it on their Home screen.` : `Withdraw that request to ask ${coachName} instead.`}
+        </Text>
+        <ActionButton label={busy ? "Withdrawing..." : "Withdraw request"} onPress={() => void withdraw(pending.id)} disabled={busy} />
+        {error ? <Text style={styles.joinError}>{error}</Text> : null}
+      </AppCard>
+    );
+  }
+
+  const declinedHere = request?.status === "declined" && request.coach.id === coachId;
+  return (
+    <AppCard style={styles.joinCard}>
+      <Text style={styles.joinTitle}>{declinedHere ? `${coachName} couldn't take you on` : `Train with ${coachName}`}</Text>
+      <Text style={styles.mutedBody}>{declinedHere ? "You can ask again later, or try another coach." : "Send a request. They'll add you once they accept."}</Text>
+      <TextInput
+        value={message}
+        onChangeText={setMessage}
+        placeholder="Your goal (optional)"
+        placeholderTextColor={colors.inkFaint}
+        maxLength={500}
+        multiline
+        style={styles.joinInput}
+        accessibilityLabel="Message to the coach"
+      />
+      <ActionButton label={busy ? "Sending..." : "Request to join"} icon="person-add-outline" variant="filled" onPress={() => void send()} disabled={busy} />
+      {error ? <Text style={styles.joinError}>{error}</Text> : null}
+    </AppCard>
   );
 }
 
@@ -427,6 +519,11 @@ const styles = StyleSheet.create({
   ratingText: { color: colors.ink, fontSize: 14, fontWeight: "800" },
   muted: { color: colors.inkMuted, fontSize: 13, lineHeight: 18, marginTop: 3 },
   mutedBody: { color: colors.inkMuted, fontSize: 14, lineHeight: 20 },
+  joinCard: { gap: 10 },
+  joinStatusRow: { flexDirection: "row", alignItems: "center", gap: 8 },
+  joinTitle: { color: colors.ink, fontSize: 17, lineHeight: 22, fontWeight: "900" },
+  joinInput: { minHeight: 64, borderRadius: 12, borderWidth: 1, borderColor: colors.line, backgroundColor: colors.surfaceRaised, paddingHorizontal: 12, paddingVertical: 10, fontSize: 15, color: colors.ink, textAlignVertical: "top" },
+  joinError: { color: colors.bad, fontSize: 13, lineHeight: 18, fontWeight: "700" },
   languagesText: { color: colors.inkMuted, fontSize: 13, lineHeight: 18, marginTop: 8 },
   tagWrap: { flexDirection: "row", flexWrap: "wrap", gap: 7, marginTop: 4 },
   pressed: { opacity: 0.88 },
