@@ -8,6 +8,7 @@ import {
   AppCard,
   EmptyState,
   ErrorState,
+  HeroCard,
   IconTile,
   LoadingState,
   MetricTile,
@@ -16,6 +17,7 @@ import {
   RowLink,
   ScreenContainer,
   SectionHeader,
+  SectionLabel,
   StaleDataNotice,
 } from "../../components/fitora";
 import { Ionicons } from "@expo/vector-icons";
@@ -268,8 +270,19 @@ function CoachHomeView({ data, onSessionUpdate }: { data: CoachHomeData; onSessi
         title={longDate(data.date)}
       />
 
-      {data.roster.length === 0 ? <CoachGettingStartedCard /> : null}
+      {data.roster.length === 0 ? <CoachGettingStartedCard /> : (
+        <CoachHomeHero
+          data={data}
+          nextSession={nextSession}
+          attention={attention}
+          starting={sessionBusy === "start"}
+          onStartSession={startSession}
+          onReview={(card) => router.push({ pathname: "/coach/athletes/[athleteId]", params: { athleteId: card.athleteId, name: card.name } } as never)}
+          onPlan={() => router.push("/coach/plan" as never)}
+        />
+      )}
 
+      <SectionLabel title="Today" />
       <SessionRequestsCard sessions={data.sessions} today={data.date} onSessionUpdate={onSessionUpdate} />
 
       {nextSession ? (
@@ -360,6 +373,7 @@ function CoachHomeView({ data, onSessionUpdate }: { data: CoachHomeData; onSessi
         </AppCard>
       ) : null}
 
+      <SectionLabel title="Clients" />
       <AppCard>
         <SectionHeader
           title={`Needs Attention${attention.length ? ` - ${attention.length}` : ""}`}
@@ -382,6 +396,7 @@ function CoachHomeView({ data, onSessionUpdate }: { data: CoachHomeData; onSessi
         )}
       </AppCard>
 
+      <SectionLabel title="At a glance" />
       {data.squadSeries.length ? (
         <AppCard>
           <SectionHeader title="Squad Readiness - 7 Days" />
@@ -466,6 +481,80 @@ function CoachHomeView({ data, onSessionUpdate }: { data: CoachHomeData; onSessi
         />
       ) : null}
     </>
+  );
+}
+
+/**
+ * The coach's one "do this now" card. First match wins: booking requests
+ * waiting, a session today, a client needing attention, else all on track.
+ */
+function CoachHomeHero({
+  data,
+  nextSession,
+  attention,
+  starting,
+  onStartSession,
+  onReview,
+  onPlan,
+}: {
+  data: CoachHomeData;
+  nextSession: CoachSession | null;
+  attention: DailyCard[];
+  starting: boolean;
+  onStartSession: () => void;
+  onReview: (card: DailyCard) => void;
+  onPlan: () => void;
+}) {
+  const requests = data.sessions
+    .filter((session) => session.status === "requested" && session.scheduledEnd >= data.date)
+    .sort((a, b) => a.scheduledStart.localeCompare(b.scheduledStart));
+  if (requests.length) {
+    const first = requests[0];
+    return (
+      <HeroCard
+        icon="calendar-outline"
+        eyebrow="Waiting on you"
+        title={requests.length === 1 ? "1 session request" : `${requests.length} session requests`}
+        body={`${first.athleteName || "A client"} · ${titleCase(first.type)} · ${new Date(first.scheduledStart).toLocaleString(undefined, { weekday: "short", hour: "numeric", minute: "2-digit" })}. Confirm or decline below.`}
+      />
+    );
+  }
+  if (nextSession && nextSession.scheduledStart.slice(0, 10) <= data.date) {
+    const isConfirmed = nextSession.status === "confirmed" || nextSession.status === "rescheduled";
+    return (
+      <HeroCard
+        icon="videocam-outline"
+        eyebrow="Today's session"
+        title={`${nextSession.athleteName || "Client"} at ${new Date(nextSession.scheduledStart).toLocaleTimeString(undefined, { hour: "numeric", minute: "2-digit" })}`}
+        body={`${titleCase(nextSession.type)}. You can join from 10 minutes before it starts.`}
+        actionLabel={isConfirmed ? (starting ? "Starting..." : "Start Session") : undefined}
+        onAction={isConfirmed ? onStartSession : undefined}
+      />
+    );
+  }
+  if (attention.length) {
+    const top = attention[0];
+    return (
+      <HeroCard
+        icon="alert-circle-outline"
+        eyebrow={attention.length === 1 ? "Needs attention" : `${attention.length} clients need attention`}
+        title={top.name || "A client"}
+        body={attentionReason(top)}
+        actionLabel="Review"
+        onAction={() => onReview(top)}
+      />
+    );
+  }
+  return (
+    <HeroCard
+      calm
+      icon="checkmark-done-outline"
+      eyebrow="All good"
+      title={`All ${data.roster.length} client${data.roster.length === 1 ? "" : "s"} on track`}
+      body="No requests or alerts right now. A good time to plan tomorrow."
+      actionLabel="Plan Tomorrow"
+      onAction={onPlan}
+    />
   );
 }
 
