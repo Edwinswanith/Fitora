@@ -83,12 +83,16 @@ export async function validatePlanForAthlete(
   const dietaryPreferences = (profile.dietaryPreferences as string[] | undefined) ?? [];
 
   const violatingFoods: string[] = [];
-  if (allergies.length > 0) {
+  // Case-insensitive: athletes type allergies free-form ("Peanuts") and
+  // coaches type tags free-form ("peanuts") — an exact-case compare would
+  // silently let a tagged allergen through the hard block.
+  const allergyKeys = new Set(allergies.map((a) => a.trim().toLowerCase()).filter(Boolean));
+  if (allergyKeys.size > 0) {
     for (const day of plan.days as unknown as Array<{ meals: Array<{ foods: Array<{ name: string; allergenTags?: string[] }> }> }>) {
       for (const meal of day.meals) {
         for (const food of meal.foods) {
           const tags = food.allergenTags ?? [];
-          if (tags.some((t) => allergies.includes(t))) {
+          if (tags.some((t) => allergyKeys.has(t.trim().toLowerCase()))) {
             violatingFoods.push(food.name);
           }
         }
