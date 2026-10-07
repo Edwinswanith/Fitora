@@ -2,9 +2,10 @@ import { useEffect, useRef, useState } from "react";
 import { Pressable, ScrollView, StyleSheet, View } from "react-native";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { Ionicons } from "@expo/vector-icons";
-import { useRouter } from "expo-router";
+import { usePathname, useRouter } from "expo-router";
 import { Text } from "./AppText";
 import { AskAgentControl } from "./AskAgentControl";
+import { isAskAgentHiddenOn } from "../lib/askAgentVisibility";
 import { AthleteAskAgentOverlayV2 } from "./voiceAssistant/AthleteAskAgentOverlayV2";
 import { apiFetch, apiJson } from "../lib/api";
 import { ROLE_THEMES, colors } from "../lib/theme";
@@ -290,6 +291,7 @@ function AgentChatLog({ entries, onClose }: { entries: AgentChatEntry[]; onClose
 
 export function CoachAskAgentOverlay() {
   const router = useRouter();
+  const pathname = usePathname();
   const accent = ROLE_THEMES.coach.accent;
   const [result, setResult] = useState<AgentResult | null>(null);
   const [inputOpen, setInputOpen] = useState(false);
@@ -729,6 +731,7 @@ export function CoachAskAgentOverlay() {
       <AskAgentControl
         accent={accent}
         accentInk="#fff"
+        hidden={isAskAgentHiddenOn(pathname)}
         onCommand={handleCommand}
         onInputOpenChange={setInputOpen}
         tourTargetId="mobile-coach-agent"
