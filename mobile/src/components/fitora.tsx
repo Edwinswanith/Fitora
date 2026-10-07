@@ -1,6 +1,8 @@
 import { ReactNode, useEffect, useMemo, useState } from "react";
 import {
+  AccessibilityInfo,
   ActivityIndicator,
+  Animated,
   Image,
   ImageSourcePropType,
   Pressable,
@@ -370,12 +372,88 @@ export function ErrorState({ message, onRetry }: { message: string; onRetry: () 
   );
 }
 
-export function LoadingState({ label = "Loading Fitora..." }: { label?: string }) {
+/**
+ * Full-screen loads show gray placeholder shapes in the layout's rough shape
+ * (feels faster than a spinner and avoids a jump when content arrives).
+ * `variant="inline"` keeps a spinner + label for an action in progress
+ * ("Analyzing meal...") where a spinner is the honest signal.
+ */
+export function LoadingState({ label = "Loading Fitora...", variant = "skeleton" }: { label?: string; variant?: "skeleton" | "inline" }) {
+  if (variant === "inline") {
+    return (
+      <View style={styles.loadingState}>
+        <ActivityIndicator color={colors.primary} />
+        <Text style={styles.loadingText}>{label}</Text>
+      </View>
+    );
+  }
+  return <SkeletonScreen label={label} />;
+}
+
+function SkeletonScreen({ label }: { label: string }) {
+  const [pulse] = useState(() => new Animated.Value(1));
+  useEffect(() => {
+    let loop: Animated.CompositeAnimation | null = null;
+    let cancelled = false;
+    AccessibilityInfo.isReduceMotionEnabled()
+      .catch(() => false)
+      .then((reduce) => {
+        if (cancelled || reduce) return;
+        loop = Animated.loop(
+          Animated.sequence([
+            Animated.timing(pulse, { toValue: 0.45, duration: 750, useNativeDriver: true }),
+            Animated.timing(pulse, { toValue: 1, duration: 750, useNativeDriver: true }),
+          ])
+        );
+        loop.start();
+      });
+    return () => {
+      cancelled = true;
+      loop?.stop();
+    };
+  }, [pulse]);
+
   return (
-    <View style={styles.loadingState}>
-      <ActivityIndicator color={colors.primary} />
-      <Text style={styles.loadingText}>{label}</Text>
-    </View>
+    <Animated.View
+      style={[styles.skeleton, { opacity: pulse }]}
+      accessible
+      accessibilityRole="progressbar"
+      accessibilityLabel={label}
+    >
+      <View style={styles.skeletonHeader}>
+        <View style={{ flex: 1, gap: 8 }}>
+          <View style={[styles.skeletonLine, { width: "38%", height: 12 }]} />
+          <View style={[styles.skeletonLine, { width: "62%", height: 22 }]} />
+        </View>
+        <View style={styles.skeletonAvatar} />
+      </View>
+      {[0, 1, 2].map((row) => (
+        <View key={row} style={styles.skeletonCard}>
+          <View style={styles.skeletonIcon} />
+          <View style={{ flex: 1, gap: 8 }}>
+            <View style={[styles.skeletonLine, { width: row === 1 ? "48%" : "58%" }]} />
+            <View style={[styles.skeletonLine, { width: row === 2 ? "70%" : "84%", height: 10 }]} />
+          </View>
+        </View>
+      ))}
+      <View style={[styles.skeletonCard, { height: 132, alignItems: "flex-start" }]}>
+        <View style={{ flex: 1, gap: 10 }}>
+          <View style={[styles.skeletonLine, { width: "40%" }]} />
+          <View style={[styles.skeletonLine, { width: "92%", height: 10 }]} />
+          <View style={[styles.skeletonLine, { width: "76%", height: 10 }]} />
+        </View>
+      </View>
+    </Animated.View>
+  );
+}
+
+/** Shown above content when saved data is displayed but the refresh failed. */
+export function StaleDataNotice({ onRetry }: { onRetry: () => void }) {
+  return (
+    <Pressable onPress={onRetry} style={({ pressed }) => [styles.staleNotice, pressed ? styles.pressed : null]} accessibilityRole="button">
+      <Ionicons name="cloud-offline-outline" size={16} color={colors.inkMuted} />
+      <Text style={styles.staleText}>Showing saved data. Tap to refresh.</Text>
+    </Pressable>
   );
 }
 
@@ -741,6 +819,23 @@ const styles = StyleSheet.create({
   retryText: { color: colors.primary, fontSize: 15, fontWeight: "800" },
   loadingState: { flex: 1, minHeight: 420, alignItems: "center", justifyContent: "center", gap: 12 },
   loadingText: { color: colors.inkMuted, fontSize: 14, fontWeight: "700" },
+  staleNotice: { flexDirection: "row", alignItems: "center", gap: 8, paddingVertical: 8, paddingHorizontal: 12, borderRadius: radius.md, backgroundColor: colors.surfaceInset },
+  staleText: { color: colors.inkMuted, fontSize: 13, fontWeight: "700" },
+  skeleton: { gap: 10, paddingTop: 6 },
+  skeletonHeader: { flexDirection: "row", alignItems: "center", gap: 12, paddingVertical: 6, marginBottom: 4 },
+  skeletonAvatar: { width: 44, height: 44, borderRadius: 22, backgroundColor: colors.line },
+  skeletonCard: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 12,
+    padding: 16,
+    borderRadius: radius.lg,
+    borderWidth: 1,
+    borderColor: colors.line,
+    backgroundColor: colors.surfaceRaised,
+  },
+  skeletonIcon: { width: 44, height: 44, borderRadius: 14, backgroundColor: colors.surfaceInset },
+  skeletonLine: { height: 14, borderRadius: 7, backgroundColor: colors.surfaceInset },
   iconTile: { alignItems: "center", justifyContent: "center" },
   rowLink: { minHeight: 38, flexDirection: "row", alignItems: "center", gap: 7, paddingVertical: 2 },
   rowMain: { flex: 1, minWidth: 0 },

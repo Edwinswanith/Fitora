@@ -157,7 +157,7 @@ export default function Coaches() {
           ) : null}
 
           {loading && !coaches && !forbidden ? (
-            <LoadingState label="Loading coaches..." />
+            <LoadingState label="Loading coaches..." variant="inline" />
           ) : forbidden ? (
             <EmptyState icon="lock-closed-outline" title="Owner only" body="Only the academy owner can manage coaches." />
           ) : error ? (

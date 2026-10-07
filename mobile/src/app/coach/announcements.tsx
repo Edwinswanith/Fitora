@@ -158,7 +158,7 @@ export default function Announcements() {
           </View>
 
           {loading && !items ? (
-            <LoadingState label="Loading announcements..." />
+            <LoadingState label="Loading announcements..." variant="inline" />
           ) : error ? (
             <ErrorState message={error} onRetry={load} />
           ) : items && items.length > 0 ? (

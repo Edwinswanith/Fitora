@@ -8,6 +8,7 @@ import { Text } from "../../components/AppText";
 import {
   ActionButton,
   AlertBanner,
+  StaleDataNotice,
   AppCard,
   BottomNavigation,
   EmptyState,
@@ -264,6 +265,7 @@ export default function AthleteDashboard() {
                   : undefined
       }
     >
+      {state.stale ? <StaleDataNotice onRetry={state.reload} /> : null}
       {activeTab === "today" ? <TodayView data={data} onNavigate={setActiveTab} /> : null}
       {activeTab === "workouts" ? <WorkoutsView data={data} /> : null}
       {activeTab === "nutrition" ? <NutritionViewV2 data={data} onLogWater={logWater} loggingWater={loggingWater} onUpdateData={state.setData} /> : null}

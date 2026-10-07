@@ -408,7 +408,7 @@ function Library({ data, nav, onChanged }: { data: CoachPlanData; nav: PlanNavig
           {archivedError ? (
             <ErrorState message={archivedError} onRetry={() => setArchivedVersion((v) => v + 1)} />
           ) : !archived ? (
-            <LoadingState label="Loading archived items..." />
+            <LoadingState label="Loading archived items..." variant="inline" />
           ) : archived.templates.length + archived.mealPlans.length === 0 ? (
             <Text style={styles.muted}>Nothing archived.</Text>
           ) : (

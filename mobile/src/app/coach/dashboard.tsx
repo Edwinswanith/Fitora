@@ -16,6 +16,7 @@ import {
   RowLink,
   ScreenContainer,
   SectionHeader,
+  StaleDataNotice,
 } from "../../components/fitora";
 import { Avatar } from "../../components/Avatar";
 import { apiFetch } from "../../lib/api";
@@ -67,6 +68,7 @@ export default function CoachHome() {
 
   return (
     <ScreenContainer refreshing={state.refreshing} onRefresh={state.reload}>
+      {state.stale ? <StaleDataNotice onRetry={state.reload} /> : null}
       <CoachHomeView data={state.data} onSessionUpdate={patchSession} />
     </ScreenContainer>
   );

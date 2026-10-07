@@ -236,7 +236,7 @@ export default function MealScanScreen() {
         </AppCard>
       ) : null}
 
-      {!scan && busy === "upload" ? <LoadingState label="Analyzing meal..." /> : null}
+      {!scan && busy === "upload" ? <LoadingState label="Analyzing meal..." variant="inline" /> : null}
 
       {!scan && busy !== "upload" ? (
         <AppCard style={styles.pickCard}>
