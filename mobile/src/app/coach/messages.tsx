@@ -39,7 +39,7 @@ type Athlete = {
 
 const AVATAR_PALETTE = [
   { bg: "#e3f5ea", fg: "#188a4e" },
-  { bg: "#e7f0ff", fg: "#2f6fe0" },
+  { bg: "#ecfaf8", fg: "#0f766e" },
   { bg: "#fdf3e3", fg: "#b2790a" },
   { bg: "#f2eafb", fg: "#7c4fd6" },
   { bg: "#fdecec", fg: "#c2382f" },

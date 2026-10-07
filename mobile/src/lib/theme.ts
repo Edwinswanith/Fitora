@@ -2,21 +2,28 @@
 
 import type { Role } from "./roles";
 
+// Teal + Coral palette (chosen over the original blue). One job per color:
+// primary teal = things you tap; progress teal = rings/bars/goals; coral
+// "energy" = streaks and celebrations (fills/icons only, text uses energyInk);
+// amber/red = warnings and problems only. Every text pairing below is >= 4.5:1
+// (WCAG AA) on white, surface, surfaceInset and its own *Soft background.
 export const colors = {
-  surface: "#fbfcff",
+  surface: "#f5faf9",
   surfaceRaised: "#ffffff",
-  surfaceInset: "#f5f7fb",
-  ink: "#0f172a",
-  inkMuted: "#475569",
-  // Status/hint colors below are tuned to >= 4.5:1 (WCAG AA) on white,
-  // surface, surfaceInset and their own *Soft backgrounds: they carry small
-  // text ("Due", "Decline", risk labels), not just icons.
-  inkFaint: "#5b6b80",
-  line: "#d5dce7",
-  lineStrong: "#cbd5e1",
-  primary: "#0b5cff",
-  primaryStrong: "#0048d9",
-  primarySoft: "#eaf1ff",
+  surfaceInset: "#edf5f3",
+  ink: "#10201e",
+  inkMuted: "#3e5552",
+  inkFaint: "#4f6764",
+  line: "#cfdfdb",
+  lineStrong: "#b9ceca",
+  primary: "#0f766e",
+  primaryStrong: "#0b5f58",
+  primarySoft: "#e3f4f1",
+  progress: "#14b8a6",
+  progressSoft: "#dcf3ef",
+  energy: "#f4573d",
+  energySoft: "#fdeeea",
+  energyInk: "#b3361f",
   ok: "#157a3a",
   okSoft: "#e8f7ed",
   warn: "#b45309",

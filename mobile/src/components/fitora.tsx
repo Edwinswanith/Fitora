@@ -25,18 +25,20 @@ import { useAuth } from "../lib/auth";
 import { ROLE_THEMES, colors, radius } from "../lib/theme";
 
 export type IconName = keyof typeof Ionicons.glyphMap;
-export type Tone = "neutral" | "primary" | "success" | "warning" | "danger";
+export type Tone = "neutral" | "primary" | "success" | "warning" | "danger" | "energy";
 
 const toneColor: Record<Tone, { text: string; bg: string; border: string }> = {
   neutral: { text: colors.inkMuted, bg: colors.surfaceInset, border: colors.line },
-  primary: { text: colors.primary, bg: colors.primarySoft, border: "#c7d7ff" },
+  primary: { text: colors.primary, bg: colors.primarySoft, border: "#d4f2ee" },
   success: { text: colors.ok, bg: colors.okSoft, border: "#bfe8c9" },
   warning: { text: colors.warn, bg: colors.warnSoft, border: "#fedb99" },
   danger: { text: colors.bad, bg: colors.badSoft, border: "#fecaca" },
+  // Coral: streaks, achievements, celebrations. Never warnings.
+  energy: { text: colors.energyInk, bg: colors.energySoft, border: "#f9cfc5" },
 };
 
 const sectionRadius = 10;
-const sectionBorder = "#e8edf5";
+const sectionBorder = "#e8f5f3";
 
 const VIDEO_THUMB_ASSETS: Record<string, ImageSourcePropType> = {
   squat: require("../../assets/fitora/video-squat.png"),
@@ -258,7 +260,7 @@ export function StatusChip({ label, tone = "neutral", icon }: { label: string; t
 
 export function ProgressBar({
   value,
-  color = colors.primary,
+  color = colors.progress,
   height = 6,
   style,
 }: {
@@ -280,7 +282,7 @@ export function ProgressRing({
   label,
   sublabel,
   size = 64,
-  color = colors.primary,
+  color = colors.progress,
 }: {
   value: number | null | undefined;
   label: string;
@@ -297,7 +299,7 @@ export function ProgressRing({
   return (
     <View style={{ width: size, height: size, alignItems: "center", justifyContent: "center" }}>
       <Svg width={size} height={size} viewBox={`0 0 ${size} ${size}`} style={[StyleSheet.absoluteFill, styles.ringSvg]}>
-        <Circle cx={size / 2} cy={size / 2} r={radiusValue} stroke="#e6eaf2" strokeWidth={stroke} fill="none" />
+        <Circle cx={size / 2} cy={size / 2} r={radiusValue} stroke="#e6f2f0" strokeWidth={stroke} fill="none" />
         <Circle
           cx={size / 2}
           cy={size / 2}
@@ -627,7 +629,7 @@ export function VideoThumb({
 
 export function MiniLineChart({
   values,
-  color = colors.primary,
+  color = colors.progress,
   height = 92,
 }: {
   values: (number | null | undefined)[];
@@ -665,7 +667,7 @@ export function MiniLineChart({
 
 export function MiniBarChart({
   values,
-  color = colors.primary,
+  color = colors.progress,
   labels,
 }: {
   values: (number | null | undefined)[];
@@ -727,12 +729,12 @@ const styles = StyleSheet.create({
   content: { paddingHorizontal: 15, paddingTop: 1, paddingBottom: 150, gap: 7 },
   contentWithNav: { paddingBottom: 98 },
   card: {
-    backgroundColor: "#fdfeff",
+    backgroundColor: "#fdfffe",
     borderWidth: 1,
     borderColor: sectionBorder,
     borderRadius: sectionRadius,
     padding: 8,
-    shadowColor: "#0f172a",
+    shadowColor: "#10201e",
     shadowOpacity: 0.014,
     shadowRadius: 4,
     shadowOffset: { width: 0, height: 1 },
@@ -744,7 +746,7 @@ const styles = StyleSheet.create({
   greeting: { fontSize: 12, lineHeight: 16, color: colors.inkMuted, marginBottom: 1 },
   greetingToday: { fontSize: 14, lineHeight: 18, color: "#53647e", marginBottom: 1 },
   appTitle: { fontSize: 18, lineHeight: 23, color: colors.ink, fontWeight: "900", letterSpacing: 0 },
-  appTitleToday: { fontSize: 24, lineHeight: 30, color: "#060b21", fontWeight: "900" },
+  appTitleToday: { fontSize: 24, lineHeight: 30, color: "#0a1614", fontWeight: "900" },
   appSubtitle: { fontSize: 12, lineHeight: 16, color: colors.inkMuted, marginTop: 1 },
   appSubtitleToday: { fontSize: 14, lineHeight: 18 },
   appActions: { flexDirection: "row", alignItems: "center", gap: 8 },
@@ -769,7 +771,7 @@ const styles = StyleSheet.create({
     backgroundColor: colors.surfaceRaised,
     borderTopWidth: 1,
     borderTopColor: sectionBorder,
-    shadowColor: "#0f172a",
+    shadowColor: "#10201e",
     shadowOpacity: 0.035,
     shadowRadius: 6,
     shadowOffset: { width: 0, height: -2 },
@@ -794,7 +796,7 @@ const styles = StyleSheet.create({
     alignSelf: "flex-start",
   },
   chipText: { fontSize: 12, lineHeight: 16, fontWeight: "800" },
-  progressTrack: { width: "100%", backgroundColor: "#e6eaf2", overflow: "hidden" },
+  progressTrack: { width: "100%", backgroundColor: "#e6f2f0", overflow: "hidden" },
   progressFill: { height: "100%" },
   ringSvg: { transform: [{ rotate: "-90deg" }] },
   ringLabel: { fontSize: 20, lineHeight: 23, color: colors.ink, fontWeight: "900" },
@@ -843,7 +845,7 @@ const styles = StyleSheet.create({
   rowSubtitle: { marginTop: 1, color: colors.inkMuted, fontSize: 12, lineHeight: 16 },
   rowRight: { flexDirection: "row", alignItems: "center", gap: 6, maxWidth: "48%" },
   rowValue: { color: colors.ink, fontSize: 12, fontWeight: "800" },
-  segmented: { minHeight: 38, flexDirection: "row", padding: 3, borderRadius: sectionRadius, borderWidth: 1, borderColor: sectionBorder, backgroundColor: "#fdfeff" },
+  segmented: { minHeight: 38, flexDirection: "row", padding: 3, borderRadius: sectionRadius, borderWidth: 1, borderColor: sectionBorder, backgroundColor: "#fdfffe" },
   segment: { flex: 1, borderRadius: 8, alignItems: "center", justifyContent: "center", flexDirection: "row", gap: 7 },
   segmentActive: { backgroundColor: colors.primarySoft, borderWidth: 1, borderColor: colors.primary },
   segmentText: { color: colors.ink, fontSize: 12, fontWeight: "700" },
@@ -872,7 +874,7 @@ const styles = StyleSheet.create({
     height: 106,
     borderRadius: sectionRadius,
     overflow: "hidden",
-    backgroundColor: "#1e293b",
+    backgroundColor: "#1b2e2b",
     alignItems: "center",
     justifyContent: "center",
   },

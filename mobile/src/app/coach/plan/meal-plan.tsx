@@ -474,6 +474,6 @@ function FoodBlock({ food, index, onChange, onRemove }: { food: FoodDraft; index
 }
 
 const styles = StyleSheet.create({
-  meal: { gap: 8, borderTopWidth: 1, borderTopColor: "#e8edf5", paddingTop: 10 },
-  food: { gap: 6, borderRadius: 10, borderWidth: 1, borderColor: "#e8edf5", backgroundColor: "#f8fafd", padding: 8 },
+  meal: { gap: 8, borderTopWidth: 1, borderTopColor: "#e8f5f3", paddingTop: 10 },
+  food: { gap: 6, borderRadius: 10, borderWidth: 1, borderColor: "#e8f5f3", backgroundColor: "#f8fdfc", padding: 8 },
 });

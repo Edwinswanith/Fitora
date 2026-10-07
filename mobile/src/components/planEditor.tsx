@@ -159,7 +159,7 @@ export function PrimaryButton({ label, onPress, disabled, busy, tone = "primary"
 }
 
 export const editorStyles = StyleSheet.create({
-  card: { backgroundColor: colors.surfaceRaised, borderRadius: 10, borderWidth: 1, borderColor: "#e8edf5", padding: 12, gap: 10 },
+  card: { backgroundColor: colors.surfaceRaised, borderRadius: 10, borderWidth: 1, borderColor: "#e8f5f3", padding: 12, gap: 10 },
   row: { flexDirection: "row", gap: 8 },
   flex1: { flex: 1, minWidth: 0 },
   cardHead: { flexDirection: "row", alignItems: "center", gap: 6 },

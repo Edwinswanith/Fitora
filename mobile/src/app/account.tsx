@@ -577,7 +577,7 @@ function NotificationCard() {
               disabled={disabled}
               onValueChange={(value) => update({ enabled: value || enabled, categories: { [row.key]: value } })}
               trackColor={{ true: colors.primarySoft }}
-              thumbColor={categories[row.key] ? colors.primary : "#f8fafc"}
+              thumbColor={categories[row.key] ? colors.primary : "#f8fcfb"}
             />
           </View>
           {index < NOTIFICATION_ROWS.length - 1 ? <Divider /> : null}

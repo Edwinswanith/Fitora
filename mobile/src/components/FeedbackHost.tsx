@@ -129,7 +129,7 @@ const styles = StyleSheet.create({
   toastIconError: { backgroundColor: colors.bad },
   toastCopy: { flexShrink: 1 },
   toastTitle: { color: "#fff", fontSize: 15, fontWeight: "800" },
-  toastBody: { color: "#cbd5e1", fontSize: 13, lineHeight: 18, marginTop: 1 },
+  toastBody: { color: "#cbe1de", fontSize: 13, lineHeight: 18, marginTop: 1 },
   bigWrap: { position: "absolute", top: 0, right: 0, bottom: 0, left: 0, alignItems: "center", justifyContent: "center", zIndex: 1000, elevation: 1000, padding: 24 },
   bigCard: {
     alignItems: "center",
@@ -146,8 +146,8 @@ const styles = StyleSheet.create({
     elevation: 12,
   },
   bigIconWrap: { width: 96, height: 96, alignItems: "center", justifyContent: "center", marginBottom: 4 },
-  ring: { position: "absolute", width: 96, height: 96, borderRadius: 48, backgroundColor: colors.ok },
-  bigIcon: { width: 68, height: 68, borderRadius: 34, alignItems: "center", justifyContent: "center", backgroundColor: colors.ok },
+  ring: { position: "absolute", width: 96, height: 96, borderRadius: 48, backgroundColor: colors.energy },
+  bigIcon: { width: 68, height: 68, borderRadius: 34, alignItems: "center", justifyContent: "center", backgroundColor: colors.energy },
   bigTitle: { color: colors.ink, fontSize: 20, fontWeight: "900", textAlign: "center" },
   bigBody: { color: colors.inkMuted, fontSize: 14, lineHeight: 20, textAlign: "center" },
 });

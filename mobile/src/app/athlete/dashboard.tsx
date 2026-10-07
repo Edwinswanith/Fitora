@@ -2637,9 +2637,9 @@ function nutritionMealRowsV2(meals: Meal[], plannedMeals: PlannedMeal[]): Nutrit
 
 function nutritionMealVisualV2(type: string): Pick<NutritionMealRowV2, "icon" | "color" | "background"> {
   if (type === "breakfast") return { icon: "sunny-outline", color: "#f5a300", background: "#fff4d9" };
-  if (type === "lunch") return { icon: "restaurant-outline", color: colors.primary, background: "#eaf3ff" };
+  if (type === "lunch") return { icon: "restaurant-outline", color: colors.primary, background: "#effaf9" };
   if (type === "snack") return { icon: "nutrition-outline", color: "#7c3aed", background: "#f1e9ff" };
-  if (type === "dinner") return { icon: "moon-outline", color: "#5277d8", background: "#eaf0ff" };
+  if (type === "dinner") return { icon: "moon-outline", color: "#0d9488", background: "#effaf9" };
   const visual = mealVisual(type);
   return { icon: visual.icon, color: visual.color, background: `${visual.color}16` };
 }
@@ -2941,7 +2941,7 @@ function CoachHeroCard({
   return (
     <AppCard style={styles.coachHeroCard}>
       <View style={styles.coachHeroWash} />
-      <Ionicons name="barbell-outline" size={37} color="#8aa4d4" style={styles.coachHeroMark} />
+      <Ionicons name="barbell-outline" size={37} color="#8ad4ca" style={styles.coachHeroMark} />
       <Text style={styles.coachHeroScribble}>Stronger{"\n"}Every Day</Text>
       <View style={styles.coachHeroIdentity}>
         <Avatar
@@ -3604,7 +3604,7 @@ function PostLeaveReview({ relationshipId, coachName, onDone }: { relationshipId
 
 type ProgressCategory = "training" | "body" | "nutrition" | "recovery";
 type ProgressRange = "7D" | "4W" | "3M";
-type ProgressTone = "primary" | "success" | "warning" | "danger" | "neutral";
+type ProgressTone = "primary" | "success" | "warning" | "danger" | "neutral" | "energy";
 
 function ProgressView({ data, onNavigate }: { data: AthleteDashboardData; onNavigate: (tab: AthleteTab) => void }) {
   const router = useRouter();
@@ -3852,12 +3852,12 @@ function ProgressHeroTrend({ values, tone }: { values: number[]; tone: ProgressT
   const linePath = points.length ? points.map((point, index) => `${index === 0 ? "M" : "L"} ${point.x} ${point.y}`).join(" ") : "";
   return (
     <Svg width={142} height={84} viewBox="0 0 142 84">
-      <Path d="M2 78 C34 44 50 42 67 51 C84 60 91 16 140 8 L140 84 L2 84 Z" fill="#eaf3ff" />
+      <Path d="M2 78 C34 44 50 42 67 51 C84 60 91 16 140 8 L140 84 L2 84 Z" fill="#effaf9" />
       {points.map((point, index) => (
         <Path
           key={`bar-${index}`}
           d={`M${point.x - 6} 76 L${point.x - 6} ${Math.min(72, point.y + 12)} Q${point.x - 6} ${point.y + 5} ${point.x + 1} ${point.y + 5} Q${point.x + 8} ${point.y + 5} ${point.x + 8} ${Math.min(72, point.y + 12)} L${point.x + 8} 76 Z`}
-          fill="#9bc5ff"
+          fill="#aaf0e7"
           opacity={index === points.length - 1 ? 1 : 0.72}
         />
       ))}
@@ -3966,7 +3966,7 @@ function TrainingProgressCard({ training, rangeLabel, loading }: { training: Tra
         {training.latestRpe != null ? <ProgressDetailMetric icon="speedometer-outline" tone="neutral" label="Latest RPE" value={training.latestRpe.toFixed(1)} sub="last logged" /> : null}
         <ProgressDetailMetric
             icon="flame-outline"
-            tone="warning"
+            tone="energy"
             label="Streak"
             value={training.streak.current ? `${training.streak.current} day${training.streak.current === 1 ? "" : "s"}` : "Start today"}
             sub={training.streak.longest ? `longest: ${training.streak.longest} day${training.streak.longest === 1 ? "" : "s"}` : "Check in to begin"}
@@ -4129,7 +4129,7 @@ function ProgressLineChart({
       {points.map((point, index) => (
         <Circle key={`point-${index}`} cx={point.x} cy={point.y} r={showEndpoint && index === points.length - 1 ? 7 : 3.6} fill="#ffffff" stroke={colors.primary} strokeWidth={showEndpoint && index === points.length - 1 ? 3.3 : 2.3} />
       ))}
-      <Line x1={left} y1={top + chartHeight} x2={left + chartWidth} y2={top + chartHeight} stroke="#cbd5e1" strokeWidth="1" />
+      <Line x1={left} y1={top + chartHeight} x2={left + chartWidth} y2={top + chartHeight} stroke="#cbe1de" strokeWidth="1" />
       {xLabels.map((label, index) => {
         const x = left + (index / Math.max(1, xLabels.length - 1)) * chartWidth;
         return (
@@ -4510,6 +4510,7 @@ function toneColor(tone: ProgressTone): string {
   if (tone === "warning") return colors.warn;
   if (tone === "danger") return colors.bad;
   if (tone === "primary") return colors.primary;
+  if (tone === "energy") return colors.energyInk;
   return colors.inkMuted;
 }
 
@@ -4518,6 +4519,7 @@ function toneSoftStyle(tone: ProgressTone) {
   if (tone === "warning") return { backgroundColor: colors.warnSoft };
   if (tone === "danger") return { backgroundColor: colors.badSoft };
   if (tone === "primary") return { backgroundColor: colors.primarySoft };
+  if (tone === "energy") return { backgroundColor: colors.energySoft };
   return { backgroundColor: colors.surfaceInset };
 }
 
@@ -4595,14 +4597,14 @@ const styles = StyleSheet.create({
     minHeight: 62,
     borderRadius: 14,
     borderWidth: 1,
-    borderColor: "#dbe3ef",
+    borderColor: "#dbefec",
     backgroundColor: "#ffffff",
     paddingHorizontal: 12,
     paddingVertical: 8,
     flexDirection: "row",
     alignItems: "center",
     gap: 13,
-    shadowColor: "#0f172a",
+    shadowColor: "#10201e",
     shadowOpacity: 0.035,
     shadowRadius: 10,
     shadowOffset: { width: 0, height: 3 },
@@ -4635,7 +4637,7 @@ const styles = StyleSheet.create({
   scheduleCard: { paddingHorizontal: 12, paddingVertical: 10 },
   scheduleRow: { minHeight: 42, flexDirection: "row", alignItems: "center", gap: 8, paddingVertical: 1 },
   timelineCell: { width: 20, alignSelf: "stretch", alignItems: "center", justifyContent: "center", position: "relative" },
-  timelineLine: { position: "absolute", width: 2, backgroundColor: "#dce4ee", borderRadius: 1 },
+  timelineLine: { position: "absolute", width: 2, backgroundColor: "#dceeec", borderRadius: 1 },
   timelineLineTop: { top: -4, bottom: "50%" },
   timelineLineBottom: { top: "50%", bottom: -4 },
   timelineDot: { width: 18, height: 18, borderRadius: 9, borderWidth: 2, borderColor: colors.lineStrong, backgroundColor: "#ffffff", alignItems: "center", justifyContent: "center", zIndex: 2 },
@@ -4652,7 +4654,7 @@ const styles = StyleSheet.create({
   scheduleValueText: { color: colors.primary, fontSize: 12, lineHeight: 16, fontWeight: "900" },
   dailyStatusCard: { paddingHorizontal: 12, paddingVertical: 8 },
   statusGrid: { flexDirection: "row", flexWrap: "wrap", gap: 6 },
-  statusMetric: { width: "48%", minHeight: 56, borderRadius: 10, borderWidth: 1, borderColor: colors.line, backgroundColor: "#fbfdff", padding: 6, flexDirection: "row", alignItems: "center", gap: 7 },
+  statusMetric: { width: "48%", minHeight: 56, borderRadius: 10, borderWidth: 1, borderColor: colors.line, backgroundColor: "#fcfefe", padding: 6, flexDirection: "row", alignItems: "center", gap: 7 },
   statusMetricIcon: { width: 30, height: 30, borderRadius: 15, alignItems: "center", justifyContent: "center" },
   statusMetricCopy: { flex: 1, minWidth: 0 },
   statusLabel: { color: colors.inkMuted, fontSize: 12, lineHeight: 16, fontWeight: "800" },
@@ -4711,7 +4713,7 @@ const styles = StyleSheet.create({
     justifyContent: "center",
   },
   trainingHeroCard: { minHeight: 208, paddingHorizontal: 13, paddingVertical: 12, overflow: "hidden", position: "relative" },
-  trainingHeroImageWash: { position: "absolute", right: -14, bottom: -8, width: 142, height: 126, borderTopLeftRadius: 88, backgroundColor: "#eef5ff" },
+  trainingHeroImageWash: { position: "absolute", right: -14, bottom: -8, width: 142, height: 126, borderTopLeftRadius: 88, backgroundColor: "#f2fbfa" },
   trainingHeroTopLine: { minHeight: 28, flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: 10, marginBottom: 5 },
   trainingHeroEyebrow: { color: colors.primary, fontSize: 12, lineHeight: 16, fontWeight: "900", letterSpacing: 1.1 },
   trainingStatusBadge: { minHeight: 24, borderRadius: 12, borderWidth: 1, borderColor: colors.line, backgroundColor: colors.surfaceInset, paddingHorizontal: 9, flexDirection: "row", alignItems: "center", gap: 6 },
@@ -4726,7 +4728,7 @@ const styles = StyleSheet.create({
   trainingAssignedText: { flex: 1, minWidth: 0, color: colors.inkMuted, fontSize: 13, lineHeight: 17, fontWeight: "700" },
   trainingHeroVisual: { width: 92, height: 86, alignItems: "center", justifyContent: "center", marginTop: 6, opacity: 0.78 },
   trainingHeroImage: { width: 84, height: 78 },
-  trainingCoachNote: { minHeight: 46, borderRadius: 10, backgroundColor: "#eef5ff", paddingHorizontal: 10, paddingVertical: 8, flexDirection: "row", alignItems: "center", gap: 9, marginTop: 8, zIndex: 1 },
+  trainingCoachNote: { minHeight: 46, borderRadius: 10, backgroundColor: "#f2fbfa", paddingHorizontal: 10, paddingVertical: 8, flexDirection: "row", alignItems: "center", gap: 9, marginTop: 8, zIndex: 1 },
   trainingCoachNoteText: { flex: 1, minWidth: 0, color: colors.inkMuted, fontSize: 12.5, lineHeight: 17, fontWeight: "600" },
   trainingProgressRow: { flexDirection: "row", alignItems: "center", gap: 10, marginTop: 8, zIndex: 1 },
   trainingProgressBar: { flex: 1 },
@@ -4748,7 +4750,7 @@ const styles = StyleSheet.create({
   trainingVideoBadge: { width: 22, height: 18, borderRadius: 5, borderWidth: 1, borderColor: colors.lineStrong, alignItems: "center", justifyContent: "center" },
   trainingExerciseRight: { maxWidth: 96, alignItems: "flex-end", justifyContent: "center" },
   trainingUpNextCard: { minHeight: 104, paddingHorizontal: 13, paddingVertical: 12, overflow: "hidden", position: "relative" },
-  trainingUpNextWash: { position: "absolute", right: -18, bottom: -28, width: 160, height: 96, borderTopLeftRadius: 110, backgroundColor: "#eef5ff" },
+  trainingUpNextWash: { position: "absolute", right: -18, bottom: -28, width: 160, height: 96, borderTopLeftRadius: 110, backgroundColor: "#f2fbfa" },
   trainingUpNextRow: { minHeight: 58, flexDirection: "row", alignItems: "center", gap: 12, zIndex: 1 },
   trainingUpNextIcon: { width: 44, height: 44, borderRadius: 13, backgroundColor: colors.primarySoft, alignItems: "center", justifyContent: "center" },
   trainingUpNextCopy: { flex: 1, minWidth: 0 },
@@ -4766,8 +4768,8 @@ const styles = StyleSheet.create({
     padding: 4,
     borderRadius: 12,
     borderWidth: 1,
-    borderColor: "#d9e0eb",
-    backgroundColor: "#fdfeff",
+    borderColor: "#d9ebe9",
+    backgroundColor: "#fdfffe",
   },
   workoutSegment: { flex: 1, minHeight: 36, borderRadius: 9, alignItems: "center", justifyContent: "center" },
   workoutSegmentActive: {
@@ -4786,7 +4788,7 @@ const styles = StyleSheet.create({
   weekDayToday: { borderColor: colors.primary, backgroundColor: colors.primarySoft },
   weekDaySelected: { backgroundColor: colors.primary, borderColor: colors.primary },
   weekDayLabel: { color: colors.inkFaint, fontSize: 12, lineHeight: 16, fontWeight: "800", letterSpacing: 0.3 },
-  weekDayLabelSelected: { color: "#e8efff" },
+  weekDayLabelSelected: { color: "#edfaf8" },
   weekDayNumber: { color: colors.ink, fontSize: 18, lineHeight: 22, fontWeight: "900" },
   weekDayNumberSelected: { color: "#fff" },
   weekDayDot: { width: 5, height: 5, borderRadius: 3 },
@@ -4841,7 +4843,7 @@ const styles = StyleSheet.create({
     gap: 4,
   },
   workoutStatusPillSuccess: { backgroundColor: colors.okSoft, borderColor: "#bfe8c9" },
-  workoutStatusPillPrimary: { backgroundColor: colors.primarySoft, borderColor: "#c7d7ff" },
+  workoutStatusPillPrimary: { backgroundColor: colors.primarySoft, borderColor: "#d4f2ee" },
   workoutStatusPillNeutral: { backgroundColor: colors.surfaceInset, borderColor: colors.line },
   workoutStatusPillText: { color: colors.inkMuted, fontSize: 12, lineHeight: 16, fontWeight: "800" },
   workoutStatusPillTextSuccess: { color: colors.ok },
@@ -4940,7 +4942,7 @@ const styles = StyleSheet.create({
   sectionInline: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: 12 },
   rowIconTitle: { flexDirection: "row", alignItems: "center", gap: 10, flex: 1, minWidth: 0 },
   innerList: { marginTop: 9, borderWidth: 1, borderColor: colors.line, borderRadius: radius.md, overflow: "hidden", paddingHorizontal: 8 },
-  coachMealCard: { padding: 8, backgroundColor: "#f8faff" },
+  coachMealCard: { padding: 8, backgroundColor: "#fafdfd" },
   mealPlanInnerList: { marginTop: 6, borderWidth: 1, borderColor: colors.line, borderRadius: 9, overflow: "hidden", backgroundColor: "#ffffff", paddingHorizontal: 7 },
   mealPlanActions: { minHeight: 32, flexDirection: "row", alignItems: "center", borderTopWidth: 1, borderTopColor: colors.line },
   mealPlanAction: { flex: 1, minHeight: 32, alignItems: "center", justifyContent: "center", flexDirection: "row", gap: 5 },
@@ -4970,9 +4972,9 @@ const styles = StyleSheet.create({
   bulletRow: { flexDirection: "row", flexWrap: "wrap", gap: 8, marginTop: 8, marginBottom: 8 },
   bulletText: { color: colors.inkMuted, fontSize: 12, fontWeight: "700" },
   coachHeroCard: { minHeight: 174, paddingHorizontal: 13, paddingVertical: 11, overflow: "hidden", position: "relative", gap: 8 },
-  coachHeroWash: { position: "absolute", right: -28, top: -8, bottom: -6, width: 160, borderTopLeftRadius: 116, borderBottomLeftRadius: 70, backgroundColor: "#eef5ff" },
+  coachHeroWash: { position: "absolute", right: -28, top: -8, bottom: -6, width: 160, borderTopLeftRadius: 116, borderBottomLeftRadius: 70, backgroundColor: "#f2fbfa" },
   coachHeroMark: { position: "absolute", right: 34, top: 34, opacity: 0.9 },
-  coachHeroScribble: { position: "absolute", right: 21, top: 82, color: "#7e94bd", fontSize: 13, lineHeight: 15, fontWeight: "800", fontStyle: "italic", textAlign: "center", transform: [{ rotate: "-12deg" }], opacity: 0.8 },
+  coachHeroScribble: { position: "absolute", right: 21, top: 82, color: "#7ebdb5", fontSize: 13, lineHeight: 15, fontWeight: "800", fontStyle: "italic", textAlign: "center", transform: [{ rotate: "-12deg" }], opacity: 0.8 },
   coachHeroIdentity: { flexDirection: "row", alignItems: "center", gap: 12, paddingRight: 92, zIndex: 1 },
   coachHeroCopy: { flex: 1, minWidth: 0 },
   coachNameLine: { flexDirection: "row", alignItems: "center", gap: 5 },
@@ -4980,7 +4982,7 @@ const styles = StyleSheet.create({
   coachHeroSubtitle: { color: colors.inkMuted, fontSize: 12.5, lineHeight: 16, fontWeight: "700", marginTop: 1 },
   coachHeroRating: { color: colors.ink, fontSize: 12.5, lineHeight: 16, fontWeight: "900", marginTop: 4 },
   coachHeroChips: { flexDirection: "row", flexWrap: "wrap", gap: 6, zIndex: 1 },
-  coachSpecialtyChip: { maxWidth: "48%", minHeight: 27, borderRadius: 9, borderWidth: 1, borderColor: "#c9d9ff", backgroundColor: colors.primarySoft, paddingHorizontal: 9, alignItems: "center", justifyContent: "center" },
+  coachSpecialtyChip: { maxWidth: "48%", minHeight: 27, borderRadius: 9, borderWidth: 1, borderColor: "#d5f3ef", backgroundColor: colors.primarySoft, paddingHorizontal: 9, alignItems: "center", justifyContent: "center" },
   coachSpecialtyText: { color: colors.primary, fontSize: 12, lineHeight: 16, fontWeight: "900" },
   coachHeroActions: { flexDirection: "row", gap: 10, zIndex: 1 },
   coachHeroAction: { flex: 1, minHeight: 40, borderRadius: 10 },
@@ -4994,7 +4996,7 @@ const styles = StyleSheet.create({
   coachBubbleText: { color: colors.ink, fontSize: 12.5, lineHeight: 17, fontWeight: "600" },
   coachBubbleTextMine: { color: "#ffffff" },
   coachBubbleTime: { color: colors.inkFaint, fontSize: 12, lineHeight: 16, fontWeight: "700", marginTop: 3 },
-  coachBubbleTimeMine: { color: "#dbe7ff" },
+  coachBubbleTimeMine: { color: "#e3f7f4" },
   coachComposer: { minHeight: 70, borderRadius: 10, borderWidth: 1, borderColor: colors.lineStrong, backgroundColor: "#ffffff", color: colors.ink, fontSize: 13, lineHeight: 18, paddingHorizontal: 11, paddingVertical: 9, textAlignVertical: "top" },
   coachSendButton: { minHeight: 40, borderRadius: 9 },
   nextCoachSessionCard: { paddingHorizontal: 13, paddingVertical: 11, gap: 7 },
@@ -5048,8 +5050,8 @@ const styles = StyleSheet.create({
     minHeight: 34,
     borderRadius: 10,
     borderWidth: 1,
-    borderColor: "#d9e0eb",
-    backgroundColor: "#fdfeff",
+    borderColor: "#d9ebe9",
+    backgroundColor: "#fdfffe",
     flexDirection: "row",
     padding: 3,
     overflow: "hidden",
@@ -5086,7 +5088,7 @@ const styles = StyleSheet.create({
   },
   progressCategoryText: { color: colors.inkMuted, fontSize: 12, lineHeight: 16, fontWeight: "900" },
   progressCategoryTextActive: { color: "#ffffff" },
-  progressHeroCard: { minHeight: 168, paddingHorizontal: 10, paddingVertical: 9, overflow: "hidden", position: "relative", gap: 6, borderColor: "#cfe1ff" },
+  progressHeroCard: { minHeight: 168, paddingHorizontal: 10, paddingVertical: 9, overflow: "hidden", position: "relative", gap: 6, borderColor: "#daf4f1" },
   progressHeroArt: { position: "absolute", right: 7, top: 34, width: 120, height: 52, opacity: 0.9, overflow: "hidden", zIndex: 0 },
   progressHeroTop: { minHeight: 72, flexDirection: "row", alignItems: "flex-start", gap: 8, position: "relative", zIndex: 2 },
   progressHeroCopy: { flex: 1, minWidth: 0, paddingRight: 36 },
@@ -5122,14 +5124,14 @@ const styles = StyleSheet.create({
   progressWeekCopy: { flex: 1, minWidth: 0, gap: 1 },
   progressMetricTitle: { color: colors.ink, fontSize: 12, lineHeight: 16, fontWeight: "900" },
   progressMetricValue: { color: colors.ink, fontSize: 12, lineHeight: 16, fontWeight: "800" },
-  progressTinyTrack: { height: 4, borderRadius: 2, backgroundColor: "#dfe4ed", overflow: "hidden", marginTop: 1 },
+  progressTinyTrack: { height: 4, borderRadius: 2, backgroundColor: "#dfedeb", overflow: "hidden", marginTop: 1 },
   progressTinyFill: { height: "100%", borderRadius: 3 },
   progressDetailCard: { paddingHorizontal: 11, paddingVertical: 11, gap: 10 },
   progressDetailHeader: { minHeight: 38, flexDirection: "row", alignItems: "flex-start", justifyContent: "space-between", gap: 8 },
   progressDetailHeaderCopy: { flex: 1, minWidth: 0 },
   progressDetailTitle: { color: colors.ink, fontSize: 20, lineHeight: 24, fontWeight: "900", letterSpacing: 0 },
   progressDetailSubtitle: { color: colors.inkMuted, fontSize: 12, lineHeight: 15, fontWeight: "600", marginTop: 1 },
-  progressRangePill: { minHeight: 30, borderRadius: 9, borderWidth: 1, borderColor: colors.line, backgroundColor: "#fbfdff", paddingHorizontal: 9, flexDirection: "row", alignItems: "center", gap: 4 },
+  progressRangePill: { minHeight: 30, borderRadius: 9, borderWidth: 1, borderColor: colors.line, backgroundColor: "#fcfefe", paddingHorizontal: 9, flexDirection: "row", alignItems: "center", gap: 4 },
   progressRangePillText: { color: colors.inkMuted, fontSize: 12, lineHeight: 16, fontWeight: "800" },
   progressPrimaryChartRow: { minHeight: 102, borderRadius: 10, borderWidth: 1, borderColor: colors.line, backgroundColor: "#ffffff", paddingHorizontal: 9, paddingVertical: 8, flexDirection: "row", alignItems: "center", gap: 8 },
   progressPrimaryMetric: { width: 98, alignItems: "flex-start", gap: 4 },

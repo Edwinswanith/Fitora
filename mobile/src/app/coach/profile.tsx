@@ -201,7 +201,7 @@ export default function CoachProfile() {
               value={Boolean(profile?.active)}
               onValueChange={toggleMarketplace}
               trackColor={{ true: colors.primarySoft }}
-              thumbColor={profile?.active ? colors.primary : "#f8fafc"}
+              thumbColor={profile?.active ? colors.primary : "#f8fcfb"}
             />
           )}
         </View>

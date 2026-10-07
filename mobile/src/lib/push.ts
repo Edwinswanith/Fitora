@@ -29,7 +29,7 @@ async function ensureChannel(): Promise<void> {
     vibrationPattern: [0, 300, 200, 300],
     enableVibrate: true,
     enableLights: true,
-    lightColor: "#0b5cff",
+    lightColor: "#0f766e",
     lockscreenVisibility: Notifications.AndroidNotificationVisibility.PUBLIC,
     showBadge: true,
   }).catch(() => undefined);

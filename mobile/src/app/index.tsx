@@ -69,7 +69,7 @@ const FEATURES: Feature[] = [
 ];
 
 const FEATURE_TONES: Record<Feature["tone"], { bg: string; color: string }> = {
-  blue: { bg: "#edf3ff", color: colors.primary },
+  blue: { bg: "#f1fbfa", color: colors.primary },
   purple: { bg: "#f0ecff", color: "#6c50d7" },
   green: { bg: "#e9f7ef", color: "#16a34a" },
   gold: { bg: "#fff4d8", color: "#d69a06" },
@@ -133,7 +133,7 @@ export default function Landing() {
 
         <View style={styles.notice}>
           <View style={styles.noticeIcon}>
-            <Ionicons name="shield-checkmark-outline" size={17} color="#40516e" />
+            <Ionicons name="shield-checkmark-outline" size={17} color="#406e68" />
           </View>
           <Text style={styles.noticeText}>
             Existing accounts keep their saved role.{"\n"}New Google users are created from the role you pick.
@@ -204,7 +204,7 @@ const styles = StyleSheet.create({
   brandRow: { flexDirection: "row", alignItems: "center", gap: 10 },
   brandMark: { width: 38, height: 38 },
   brandText: {
-    color: "#1c2940",
+    color: "#1c403b",
     fontSize: 14,
     lineHeight: 18,
     fontWeight: "800",
@@ -212,7 +212,7 @@ const styles = StyleSheet.create({
   },
   hero: {
     marginTop: 18,
-    color: "#111a30",
+    color: "#10201e",
     fontSize: 36,
     lineHeight: 43,
     fontWeight: "900",
@@ -238,14 +238,14 @@ const styles = StyleSheet.create({
     alignItems: "center",
     borderRadius: 17,
     borderWidth: 1,
-    borderColor: "#dfe5ef",
+    borderColor: "#dfefed",
     backgroundColor: "#ffffff",
     paddingTop: 27,
   },
   roleCardSelected: {
     borderColor: colors.primary,
     borderWidth: 1.5,
-    backgroundColor: "#fbfdff",
+    backgroundColor: "#fcfefe",
   },
   popularPill: {
     position: "absolute",
@@ -268,13 +268,13 @@ const styles = StyleSheet.create({
     width: 59,
     height: 59,
     borderRadius: 19,
-    backgroundColor: "#f0f4ff",
+    backgroundColor: "#f3fcfb",
     alignItems: "center",
     justifyContent: "center",
   },
   roleTitle: {
     marginTop: 10,
-    color: "#111a30",
+    color: "#10201e",
     fontSize: 20,
     lineHeight: 25,
     fontWeight: "900",
@@ -295,7 +295,7 @@ const styles = StyleSheet.create({
     height: 28,
     borderRadius: 14,
     borderWidth: 2,
-    borderColor: "#cfd7e5",
+    borderColor: "#cfe5e2",
     backgroundColor: "#ffffff",
     alignItems: "center",
     justifyContent: "center",
@@ -309,7 +309,7 @@ const styles = StyleSheet.create({
     marginTop: 14,
     borderRadius: 16,
     borderWidth: 1,
-    borderColor: "#e3e8f0",
+    borderColor: "#e3f0ee",
     backgroundColor: "#ffffff",
     flexDirection: "row",
     alignItems: "center",
@@ -320,7 +320,7 @@ const styles = StyleSheet.create({
     width: 34,
     height: 34,
     borderRadius: 17,
-    backgroundColor: "#eef3fb",
+    backgroundColor: "#effaf9",
     alignItems: "center",
     justifyContent: "center",
   },
@@ -341,7 +341,7 @@ const styles = StyleSheet.create({
   sectionLine: {
     flex: 1,
     height: 1,
-    backgroundColor: "#e6ecf5",
+    backgroundColor: "#e6f5f3",
   },
   diamond: {
     width: 6,
@@ -361,7 +361,7 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     flexWrap: "wrap",
     borderWidth: 1,
-    borderColor: "#e3e8f0",
+    borderColor: "#e3f0ee",
     borderRadius: 17,
     overflow: "hidden",
     backgroundColor: "#ffffff",
@@ -371,7 +371,7 @@ const styles = StyleSheet.create({
     height: 116,
     paddingTop: 13,
     paddingHorizontal: 16,
-    borderColor: "#e7ecf4",
+    borderColor: "#e7f4f2",
   },
   featureCellRight: {
     borderLeftWidth: 1,
@@ -388,7 +388,7 @@ const styles = StyleSheet.create({
   },
   featureTitle: {
     marginTop: 8,
-    color: "#111a30",
+    color: "#10201e",
     fontSize: 12,
     lineHeight: 16,
     fontWeight: "900",

@@ -38,12 +38,12 @@ type MascotRecipe = {
 
 const MASCOT_RECIPES: Record<string, MascotRecipe> = {
   "male-1": {
-    bg: "#eff6ff",
+    bg: "#f3fbfa",
     skin: "#f2c9a0",
     hair: "#2b2118",
-    jersey: "#2563eb",
+    jersey: "#14b8a6",
     shorts: "#ffffff",
-    sock: "#2563eb",
+    sock: "#14b8a6",
     hairStyle: "short-side",
   },
   "male-2": {
