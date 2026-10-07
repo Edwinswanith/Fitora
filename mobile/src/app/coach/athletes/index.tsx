@@ -226,12 +226,12 @@ function ClientRow({
 
   return (
     <Pressable onPress={onPress} style={({ pressed }) => [styles.clientRow, pressed ? styles.pressed : null]}>
-      <View style={[styles.clientDot, { backgroundColor: statusTone === "danger" ? colors.bad : statusTone === "warning" ? colors.warn : colors.ok }]} />
-      <Avatar avatar={athlete.avatar} name={athlete.name || "Client"} size={58} photoPath={`/api/coach/athletes/${athlete.athleteId}/avatar/file`} />
+      <View style={[styles.clientDot, { backgroundColor: statusTone === "danger" ? colors.bad : statusTone === "warning" ? colors.warn : "transparent" }]} />
+      <Avatar avatar={athlete.avatar} name={athlete.name || "Client"} size={48} photoPath={`/api/coach/athletes/${athlete.athleteId}/avatar/file`} />
       <View style={styles.clientMain}>
         <View style={styles.nameLine}>
           <Text style={styles.clientName} numberOfLines={1}>{athlete.name || "Client"}</Text>
-          <StatusChip label={statusLabel} tone={statusTone} />
+          {statusTone !== "success" ? <StatusChip label={statusLabel} tone={statusTone} /> : null}
         </View>
         <Text style={styles.goalText} numberOfLines={1}>{athlete.sport || "General Fitness"}</Text>
         <View style={styles.clientMetrics}>

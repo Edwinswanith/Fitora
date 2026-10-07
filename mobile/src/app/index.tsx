@@ -4,7 +4,7 @@ import { Text } from "../components/AppText";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { useRouter } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
-import { colors } from "../lib/theme";
+import { colors, metricColors } from "../lib/theme";
 import type { Role } from "../lib/roles";
 
 const BRAND_MARK = require("../../assets/fitora/landing-logo-reference.png");
@@ -69,10 +69,11 @@ const FEATURES: Feature[] = [
 ];
 
 const FEATURE_TONES: Record<Feature["tone"], { bg: string; color: string }> = {
-  blue: { bg: "#f1fbfa", color: colors.primary },
-  purple: { bg: "#f0ecff", color: "#6c50d7" },
-  green: { bg: "#e9f7ef", color: "#16a34a" },
-  gold: { bg: "#fff4d8", color: "#d69a06" },
+  // Same colors the app uses for these metrics once you're inside.
+  blue: { bg: metricColors.readiness.soft, color: metricColors.readiness.ink },
+  purple: { bg: metricColors.training.soft, color: metricColors.training.ink },
+  green: { bg: metricColors.nutrition.soft, color: metricColors.nutrition.ink },
+  gold: { bg: metricColors.water.soft, color: metricColors.water.ink },
 };
 
 export default function Landing() {
@@ -190,7 +191,7 @@ const styles = StyleSheet.create({
   safe: { flex: 1, backgroundColor: "#ffffff" },
   content: {
     minHeight: "100%",
-    paddingHorizontal: 32,
+    paddingHorizontal: 20,
     paddingTop: 8,
     paddingBottom: 11,
   },
@@ -368,9 +369,10 @@ const styles = StyleSheet.create({
   },
   featureCell: {
     width: "50%",
-    height: 116,
-    paddingTop: 13,
-    paddingHorizontal: 16,
+    minHeight: 120,
+    paddingTop: 14,
+    paddingBottom: 14,
+    paddingHorizontal: 14,
     borderColor: "#e7f4f2",
   },
   featureCellRight: {
@@ -403,9 +405,9 @@ const styles = StyleSheet.create({
     letterSpacing: 0,
   },
   continueButton: {
-    height: 34,
-    marginTop: 15,
-    borderRadius: 8,
+    height: 52,
+    marginTop: 18,
+    borderRadius: 14,
     backgroundColor: colors.primary,
     flexDirection: "row",
     alignItems: "center",
@@ -414,13 +416,13 @@ const styles = StyleSheet.create({
   },
   continueText: {
     color: "#ffffff",
-    fontSize: 14,
-    lineHeight: 18,
+    fontSize: 16,
+    lineHeight: 20,
     fontWeight: "800",
     letterSpacing: 0,
   },
   footer: {
-    marginTop: 3,
+    marginTop: 10,
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "center",

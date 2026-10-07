@@ -158,8 +158,7 @@ export default function BookSessionScreen() {
 
   return (
     <ScreenContainer>
-      <BackHeader title="Book a Session" />
-      <Text style={styles.subtitle}>with {coachName}</Text>
+      <BackHeader title="Book a Session" subtitle={`With ${coachName}`} />
 
       <AppCard>
         <SectionHeader title="What's it about?" />
@@ -247,7 +246,6 @@ export default function BookSessionScreen() {
 }
 
 const styles = StyleSheet.create({
-  subtitle: { color: colors.inkMuted, fontSize: 14, textAlign: "center", marginTop: -8, marginBottom: 4 },
   pressed: { opacity: 0.8 },
   typeWrap: { flexDirection: "row", flexWrap: "wrap", gap: 8 },
   typeChip: { paddingHorizontal: 12, paddingVertical: 8, borderRadius: radius.pill, borderWidth: 1, borderColor: colors.line, backgroundColor: colors.surface },
