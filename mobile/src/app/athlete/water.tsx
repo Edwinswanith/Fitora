@@ -14,7 +14,11 @@ import { AppCard, ScreenContainer } from "../../components/fitora";
 
 // The web hydration card renders a blue water ring — mirror that here rather
 // than the athlete gold accent, so both platforms read as the same feature.
+// Water keeps its own blue for the ring, chart and drop icons (blue reads as
+// water everywhere). Buttons and selections use the app's teal like every
+// other screen; WATER_INK is the text-safe (>= 4.5:1) water shade.
 const WATER = "#2f7df6";
+const WATER_INK = "#1f5fc8";
 const OK = colors.ok;
 
 // Local calendar day, same as the rest of the app (toISOString() is UTC, which
@@ -56,7 +60,7 @@ function WaterRing({ pct, reached }: { pct: number; reached: boolean }) {
         />
       </Svg>
       <Text style={styles.ringPct}>{Math.round(pct)}%</Text>
-      <Text style={[styles.ringLabel, { color: reached ? OK : WATER }]}>{reached ? "Goal met" : "Complete"}</Text>
+      <Text style={[styles.ringLabel, { color: reached ? OK : WATER_INK }]}>{reached ? "Goal met" : "Complete"}</Text>
     </View>
   );
 }
@@ -329,7 +333,7 @@ export default function Water() {
       <Text style={styles.tagline}>Stay on top of hydration.</Text>
 
       {loading && !day ? (
-        <ActivityIndicator color={WATER} style={{ marginTop: 40 }} />
+        <ActivityIndicator color={colors.primary} style={{ marginTop: 40 }} />
       ) : (
         <View style={{ gap: 12 }}>
           {/* Water goal — ring + Drunk / Remaining / Goal + status */}
@@ -377,7 +381,7 @@ export default function Water() {
                 placeholderTextColor={colors.inkFaint}
                 style={styles.input}
               />
-              <Pressable disabled={busy} onPress={() => saveGoal()} style={[styles.primaryBtn, { backgroundColor: WATER }]}>
+              <Pressable disabled={busy} onPress={() => saveGoal()} style={[styles.primaryBtn, { backgroundColor: colors.primary }]}>
                 <Text style={styles.primaryBtnText}>Save</Text>
               </Pressable>
             </View>
@@ -404,7 +408,7 @@ export default function Water() {
                 placeholderTextColor={colors.inkFaint}
                 style={styles.input}
               />
-              <Pressable disabled={busy || !amountDraft.trim()} onPress={addCustom} style={[styles.primaryBtn, { backgroundColor: WATER, opacity: !amountDraft.trim() ? 0.5 : 1 }]}>
+              <Pressable disabled={busy || !amountDraft.trim()} onPress={addCustom} style={[styles.primaryBtn, { backgroundColor: colors.primary, opacity: !amountDraft.trim() ? 0.5 : 1 }]}>
                 <Text style={styles.primaryBtnText}>Add</Text>
               </Pressable>
             </View>
@@ -421,7 +425,7 @@ export default function Water() {
                   {remindersEnabled ? `Every ${reminderMinutes} minutes.` : "Off"}
                 </Text>
               </View>
-              <Pressable onPress={toggleReminders} style={[styles.toggle, remindersEnabled ? { backgroundColor: WATER, borderColor: WATER } : null]}>
+              <Pressable onPress={toggleReminders} style={[styles.toggle, remindersEnabled ? { backgroundColor: colors.primary, borderColor: colors.primary } : null]}>
                 <Text style={[styles.toggleText, remindersEnabled ? { color: "#fff" } : null]}>
                   {remindersEnabled ? "On" : "Enable"}
                 </Text>
@@ -539,9 +543,9 @@ const styles = StyleSheet.create({
   // Presets
   presetRow: { flexDirection: "row", gap: 8, marginTop: 10 },
   preset: { flex: 1, height: 40, borderRadius: radius.sm, borderWidth: 1, borderColor: colors.line, backgroundColor: colors.surfaceInset, alignItems: "center", justifyContent: "center" },
-  presetOn: { borderColor: WATER, backgroundColor: `${WATER}18` },
+  presetOn: { borderColor: colors.primary, backgroundColor: colors.primarySoft },
   presetText: { fontSize: 12, fontWeight: "800", color: colors.inkMuted },
-  presetTextOn: { color: WATER },
+  presetTextOn: { color: colors.primary },
   // Inline input + button
   inlineRow: { flexDirection: "row", gap: 8, marginTop: 12 },
   input: { flex: 1, height: 46, borderRadius: radius.sm, borderWidth: 1, borderColor: colors.line, backgroundColor: colors.surfaceInset, paddingHorizontal: 12, color: colors.ink, fontSize: 14 },
@@ -561,7 +565,7 @@ const styles = StyleSheet.create({
   // Chart
   seg: { flexDirection: "row", gap: 4, backgroundColor: colors.surfaceInset, borderRadius: radius.sm, padding: 3 },
   segBtn: { paddingHorizontal: 12, paddingVertical: 6, borderRadius: radius.sm - 2 },
-  segBtnOn: { backgroundColor: WATER },
+  segBtnOn: { backgroundColor: colors.primary },
   segText: { fontSize: 12, fontWeight: "800", color: colors.inkMuted },
   segTextOn: { color: "#fff" },
   chartAxis: { flexDirection: "row", justifyContent: "space-between", marginTop: 8 },

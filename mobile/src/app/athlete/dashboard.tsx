@@ -3750,7 +3750,6 @@ function ProgressView({ data, onNavigate }: { data: AthleteDashboardData; onNavi
         onSelectCategory={setCategory}
       />
 
-      <SectionLabel title="This week" />
       <ProgressWeeklyCard weekly={weekly} />
 
       <SectionLabel title="Details" />
