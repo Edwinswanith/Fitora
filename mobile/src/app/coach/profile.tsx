@@ -18,6 +18,8 @@ import {
   StatusChip,
 } from "../../components/fitora";
 import { apiFetch } from "../../lib/api";
+import { PAYMENTS_ENABLED } from "../../lib/features";
+import { PRIVACY_POLICY_URL, SUPPORT_URL, openExternal } from "../../lib/links";
 import { useAuth } from "../../lib/auth";
 import { colors } from "../../lib/theme";
 import {
@@ -304,6 +306,7 @@ export default function CoachProfile() {
         <SettingsRow icon="chatbubble-outline" label="Coaching Philosophy" value={profile?.philosophy ? "Added" : "Not set"} />
       </AppCard>
 
+      {PAYMENTS_ENABLED ? (
       <AppCard>
         <SectionHeader title="Payments & Membership" />
         <SettingsRow icon="business-outline" label="Payout Settings" />
@@ -311,13 +314,14 @@ export default function CoachProfile() {
         <SettingsRow icon="people-outline" label="Client Memberships" />
         <SettingsRow icon="document-text-outline" label="Invoices" />
       </AppCard>
+      ) : null}
 
       <AppCard>
         <SectionHeader title="Settings" />
         <SettingsRow icon="notifications-outline" label="Notifications" onPress={() => router.push("/account" as never)} />
-        <SettingsRow icon="shield-checkmark-outline" label="Privacy" onPress={() => router.push("/account" as never)} />
         <SettingsRow icon="lock-closed-outline" label="Account & Security" onPress={() => router.push("/account" as never)} />
-        <SettingsRow icon="help-circle-outline" label="Help & Support" />
+        <SettingsRow icon="help-circle-outline" label="Help & Support" onPress={() => openExternal(SUPPORT_URL)} />
+        <SettingsRow icon="shield-checkmark-outline" label="Privacy Policy" onPress={() => openExternal(PRIVACY_POLICY_URL)} />
       </AppCard>
 
       {data.partialIssues.length ? (

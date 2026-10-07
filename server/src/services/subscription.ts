@@ -10,7 +10,7 @@ import {
 import { CoachSwitchIntent, type CoachSwitchIntentDoc } from "../models/CoachSwitchIntent";
 import { CoachSession, type CoachSessionStatus } from "../models/CoachSession";
 import { Payment } from "../models/Payment";
-import { getPaymentProvider, type NormalizedPaymentEvent } from "./paymentProvider";
+import { getPaymentProvider, paymentsAvailable, type NormalizedPaymentEvent } from "./paymentProvider";
 import { withOptionalTransaction, cancelOpenSessionsAndVideoRoomsForRelationship } from "./bookingConcurrency";
 import { cancelOpenCoachContentForRelationship } from "./relationshipCleanup";
 import { evaluateAndDispatch } from "./notificationEligibility";
@@ -118,6 +118,7 @@ async function createProviderCheckout(
   coachId: Types.ObjectId,
   athleteId: Types.ObjectId
 ): Promise<{ providerSubscriptionId: string; checkoutRef: string }> {
+  if (!paymentsAvailable()) throw new SubscriptionError(503, "payments_unavailable");
   const provider = getPaymentProvider();
   const checkout = await provider.createSubscriptionCheckout({
     coachId: coachId.toString(),

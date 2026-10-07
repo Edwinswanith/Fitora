@@ -598,6 +598,20 @@ export function longDate(key: string): string {
   return date.toLocaleDateString(undefined, { weekday: "long", month: "long", day: "numeric" });
 }
 
+/** Header date that fits one line on a phone: "Wednesday, Oct 7". */
+export function headerDate(key: string): string {
+  const [year, month, day] = key.split("-").map(Number);
+  const date = new Date(year, (month || 1) - 1, day || 1);
+  return date.toLocaleDateString(undefined, { weekday: "long", month: "short", day: "numeric" });
+}
+
+export function timeOfDayGreeting(now = new Date()): string {
+  const hour = now.getHours();
+  if (hour < 12) return "Good morning";
+  if (hour < 17) return "Good afternoon";
+  return "Good evening";
+}
+
 export function shortDate(key: string): string {
   const [year, month, day] = key.split("-").map(Number);
   const date = new Date(year, (month || 1) - 1, day || 1);

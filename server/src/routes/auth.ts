@@ -172,9 +172,19 @@ function wantsNativeTokens(req: Request): boolean {
   );
 }
 
+// Concurrent signed-in devices per user. Signing in on a sixth device drops
+// the oldest session.
+const MAX_REFRESH_SESSIONS = 5;
+
+/**
+ * Issues a new access/refresh pair and records the refresh hash as one more
+ * device session. `replaceHash` rotates a single session (refresh);
+ * `revokeOthers` makes this the only session (password change).
+ */
 async function issueTokensForUser(
   user: UserDoc,
-  res: Response
+  res: Response,
+  opts: { replaceHash?: string; revokeOthers?: boolean } = {}
 ): Promise<{ accessToken: string; refreshToken: string }> {
   const accessToken = signAccessToken({
     sub: user._id.toString(),
@@ -182,9 +192,34 @@ async function issueTokensForUser(
   });
   const refreshToken = signRefreshToken({ sub: user._id.toString() });
   const refreshTokenHash = hashRefreshToken(refreshToken);
-  await User.updateOne({ _id: user._id }, { $set: { refreshTokenHash } });
+  if (opts.revokeOthers) {
+    await User.updateOne(
+      { _id: user._id },
+      { $set: { refreshTokenHashes: [refreshTokenHash] }, $unset: { refreshTokenHash: "" } }
+    );
+  } else {
+    if (opts.replaceHash) {
+      await User.updateOne({ _id: user._id }, { $pull: { refreshTokenHashes: opts.replaceHash } });
+    }
+    // A pre-upgrade single-session hash stays valid for its device until that
+    // device refreshes (rotating it into the list) or logs out.
+    const rotatingLegacy = Boolean(opts.replaceHash && opts.replaceHash === user.refreshTokenHash);
+    await User.updateOne(
+      { _id: user._id },
+      {
+        $push: { refreshTokenHashes: { $each: [refreshTokenHash], $slice: -MAX_REFRESH_SESSIONS } },
+        ...(rotatingLegacy ? { $unset: { refreshTokenHash: "" } } : {}),
+      }
+    );
+  }
   setAuthCookies(res, accessToken, refreshToken);
   return { accessToken, refreshToken };
+}
+
+/** The stored session hash this refresh token belongs to, if it is still live. */
+function matchingSessionHash(token: string, user: UserDoc): string | null {
+  const stored = [...(user.refreshTokenHashes ?? []), ...(user.refreshTokenHash ? [user.refreshTokenHash] : [])];
+  return stored.find((hash) => refreshTokenMatches(token, hash)) ?? null;
 }
 
 function authResponsePayload(
@@ -654,20 +689,20 @@ router.post("/refresh", async (req: Request, res: Response) => {
   }
 
   const user = await User.findById(sub);
-  if (!user || !user.isActive || !user.refreshTokenHash) {
+  if (!user || !user.isActive) {
     clearAuthCookies(res);
     res.status(401).json({ error: "invalid_refresh_token" });
     return;
   }
 
-  const match = refreshTokenMatches(token, user.refreshTokenHash);
-  if (!match) {
+  const matchedHash = matchingSessionHash(token, user);
+  if (!matchedHash) {
     clearAuthCookies(res);
     res.status(401).json({ error: "invalid_refresh_token" });
     return;
   }
 
-  const tokens = await issueTokensForUser(user, res);
+  const tokens = await issueTokensForUser(user, res, { replaceHash: matchedHash });
   res.json(authResponsePayload(req, tokens, user));
 });
 
@@ -718,8 +753,9 @@ router.post(
   user.mustChangePassword = false;
   await user.save();
 
-  // Rotate tokens so any other session using the old refresh token is invalidated.
-  const tokens = await issueTokensForUser(user, res);
+  // Sign out every other device: a password change should end sessions that
+  // may have been opened with the old password.
+  const tokens = await issueTokensForUser(user, res, { revokeOthers: true });
   res.json({ ok: true, ...authResponsePayload(req, tokens, user) });
 });
 
@@ -746,7 +782,10 @@ router.post("/logout", async (req: Request, res: Response) => {
     try {
       const { sub } = verifyRefreshToken(token);
       if (Types.ObjectId.isValid(sub)) {
-        await User.updateOne({ _id: sub }, { $unset: { refreshTokenHash: "" } });
+        // Sign out this device only; other devices keep their sessions.
+        const hash = hashRefreshToken(token);
+        await User.updateOne({ _id: sub, refreshTokenHash: hash }, { $unset: { refreshTokenHash: "" } });
+        await User.updateOne({ _id: sub }, { $pull: { refreshTokenHashes: hash } });
       }
     } catch {
       // ignore — we still clear the cookie below

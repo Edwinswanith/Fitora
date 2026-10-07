@@ -28,6 +28,7 @@ import {
   type CoachSession,
   type DailyCard,
 } from "../../../lib/fitoraData";
+import { PAYMENTS_ENABLED } from "../../../lib/features";
 
 type Filter = "all" | "attention" | "active" | "membership";
 
@@ -73,7 +74,7 @@ export default function CoachClients() {
 function ClientsView({ data }: { data: CoachHomeData }) {
   const router = useRouter();
   const params = useLocalSearchParams<{ filter?: Filter }>();
-  const initialFilter: Filter = ["all", "attention", "active", "membership"].includes(params.filter ?? "") ? (params.filter as Filter) : "all";
+  const initialFilter: Filter = ["all", "attention", "active", ...(PAYMENTS_ENABLED ? ["membership"] : [])].includes(params.filter ?? "") ? (params.filter as Filter) : "all";
   const [query, setQuery] = useState("");
   const [filter, setFilter] = useState<Filter>(initialFilter);
   const summary = useMemo(() => Object.fromEntries(data.cards.map((card) => [card.athleteId, card])), [data.cards]);
@@ -128,7 +129,7 @@ function ClientsView({ data }: { data: CoachHomeData }) {
           { value: "all", label: "All" },
           { value: "attention", label: "Attention" },
           { value: "active", label: "Active" },
-          { value: "membership", label: "Membership" },
+          ...(PAYMENTS_ENABLED ? [{ value: "membership" as const, label: "Membership" }] : []),
         ]}
       />
 

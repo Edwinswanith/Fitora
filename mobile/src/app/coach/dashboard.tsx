@@ -19,12 +19,14 @@ import {
 } from "../../components/fitora";
 import { Avatar } from "../../components/Avatar";
 import { apiFetch } from "../../lib/api";
+import { PAYMENTS_ENABLED } from "../../lib/features";
 import { useAuth } from "../../lib/auth";
 import { colors } from "../../lib/theme";
 import {
   attentionRank,
   attentionReason,
   firstName,
+  timeOfDayGreeting,
   loadCoachHomeData,
   longDate,
   nextFutureSession,
@@ -243,7 +245,7 @@ function CoachHomeView({ data, onSessionUpdate }: { data: CoachHomeData; onSessi
   return (
     <>
       <PrimaryAppBar
-        greeting={`Good morning, ${firstName(user?.name, "Coach")}`}
+        greeting={`${timeOfDayGreeting()}, ${firstName(user?.name, "Coach")}`}
         title={longDate(data.date)}
       />
 
@@ -363,6 +365,7 @@ function CoachHomeView({ data, onSessionUpdate }: { data: CoachHomeData; onSessi
         </View>
       </AppCard>
 
+      {PAYMENTS_ENABLED ? (
       <AppCard>
         <View style={styles.membershipRow}>
           <IconTile icon="ribbon-outline" size={44} />
@@ -381,6 +384,7 @@ function CoachHomeView({ data, onSessionUpdate }: { data: CoachHomeData; onSessi
           </Pressable>
         </View>
       </AppCard>
+      ) : null}
 
       <AppCard>
         <SectionHeader
@@ -410,9 +414,10 @@ function CoachHomeView({ data, onSessionUpdate }: { data: CoachHomeData; onSessi
           <Text style={styles.cardTitle}>Quick Actions</Text>
         </View>
         <View style={styles.actionRow}>
-          <ActionButton label="Assign Workout" icon="barbell-outline" variant="filled" onPress={() => router.push("/coach/plan" as never)} />
-          <ActionButton label="Create Plan" icon="clipboard-outline" onPress={() => router.push("/coach/plan" as never)} />
-          <ActionButton label="Upload Video" icon="cloud-upload-outline" onPress={() => router.push("/coach/content" as never)} />
+          {/* Short labels: three buttons share one row on a 360-390dp phone; longer labels truncated ("Assign W..."). */}
+          <ActionButton label="Workout" icon="barbell-outline" variant="filled" onPress={() => router.push("/coach/plan" as never)} />
+          <ActionButton label="Plans" icon="clipboard-outline" onPress={() => router.push("/coach/plan" as never)} />
+          <ActionButton label="Video" icon="cloud-upload-outline" onPress={() => router.push("/coach/content" as never)} />
         </View>
       </AppCard>
 

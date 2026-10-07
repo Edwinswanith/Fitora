@@ -14,6 +14,7 @@ import authRouter, { __resetLoginRateLimit } from "../src/routes/auth";
 import coachRouter from "../src/routes/coach";
 import athleteRouter from "../src/routes/athlete";
 import { env } from "../src/config/env";
+import { hashRefreshToken } from "../src/lib/tokens";
 
 let mongo: MongoMemoryServer;
 
@@ -768,9 +769,8 @@ describe("POST /api/auth/refresh", () => {
       .send({ refreshToken: oldRefreshToken, client: "native" });
     expect(rotated.status).toBe(200);
 
-    // The token that was valid a moment ago must now be rejected — only the
-    // single most-recently-issued refresh token is ever honored (the server
-    // stores exactly one refreshTokenHash per user, overwritten on rotation).
+    // The token that was valid a moment ago must now be rejected — rotation
+    // replaces that device's session hash rather than adding a second one.
     const reuse = await request(app)
       .post("/api/auth/refresh")
       .send({ refreshToken: oldRefreshToken, client: "native" });
@@ -782,10 +782,94 @@ describe("POST /api/auth/refresh", () => {
     const res = await request(buildApp()).post("/api/auth/refresh");
     expect(res.status).toBe(401);
   });
+
+  test("signing in on a second device keeps the first device signed in", async () => {
+    await makeCoach("pw");
+    const app = buildApp();
+    const phone = await request(app).post("/api/auth/login").send({ email: "coach@test.io", password: "pw", client: "native" });
+    const tablet = await request(app).post("/api/auth/login").send({ email: "coach@test.io", password: "pw", client: "native" });
+
+    const phoneRefresh = await request(app).post("/api/auth/refresh").send({ refreshToken: phone.body.refreshToken, client: "native" });
+    const tabletRefresh = await request(app).post("/api/auth/refresh").send({ refreshToken: tablet.body.refreshToken, client: "native" });
+    expect(phoneRefresh.status).toBe(200);
+    expect(tabletRefresh.status).toBe(200);
+  });
+
+  test("logging out one device keeps the other signed in", async () => {
+    await makeCoach("pw");
+    const app = buildApp();
+    const phone = await request(app).post("/api/auth/login").send({ email: "coach@test.io", password: "pw", client: "native" });
+    const tablet = await request(app).post("/api/auth/login").send({ email: "coach@test.io", password: "pw", client: "native" });
+
+    await request(app).post("/api/auth/logout").send({ refreshToken: phone.body.refreshToken, client: "native" });
+
+    const phoneRefresh = await request(app).post("/api/auth/refresh").send({ refreshToken: phone.body.refreshToken, client: "native" });
+    const tabletRefresh = await request(app).post("/api/auth/refresh").send({ refreshToken: tablet.body.refreshToken, client: "native" });
+    expect(phoneRefresh.status).toBe(401);
+    expect(tabletRefresh.status).toBe(200);
+  });
+
+  test("only the most recent sessions are kept", async () => {
+    const coach = await makeCoach("pw");
+    const app = buildApp();
+    const first = await request(app).post("/api/auth/login").send({ email: "coach@test.io", password: "pw", client: "native" });
+    for (let i = 0; i < 5; i += 1) {
+      await request(app).post("/api/auth/login").send({ email: "coach@test.io", password: "pw", client: "native" });
+    }
+    const stored = await User.findById(coach._id).lean();
+    expect(stored?.refreshTokenHashes).toHaveLength(5);
+
+    const oldest = await request(app).post("/api/auth/refresh").send({ refreshToken: first.body.refreshToken, client: "native" });
+    expect(oldest.status).toBe(401);
+  });
+
+  test("a legacy single-session hash is still honored and migrated", async () => {
+    const coach = await makeCoach("pw");
+    const app = buildApp();
+    const login = await request(app).post("/api/auth/login").send({ email: "coach@test.io", password: "pw", client: "native" });
+    const hash = hashRefreshToken(login.body.refreshToken);
+    await User.updateOne({ _id: coach._id }, { $set: { refreshTokenHash: hash, refreshTokenHashes: [] } });
+
+    const refresh = await request(app).post("/api/auth/refresh").send({ refreshToken: login.body.refreshToken, client: "native" });
+    expect(refresh.status).toBe(200);
+    const after = await User.findById(coach._id).lean();
+    expect(after?.refreshTokenHash).toBeUndefined();
+    expect(after?.refreshTokenHashes).toEqual([hashRefreshToken(refresh.body.refreshToken)]);
+  });
+
+  test("signing in on a new device keeps a legacy-session device signed in", async () => {
+    const coach = await makeCoach("pw");
+    const app = buildApp();
+    const phone = await request(app).post("/api/auth/login").send({ email: "coach@test.io", password: "pw", client: "native" });
+    await User.updateOne({ _id: coach._id }, { $set: { refreshTokenHash: hashRefreshToken(phone.body.refreshToken), refreshTokenHashes: [] } });
+
+    await request(app).post("/api/auth/login").send({ email: "coach@test.io", password: "pw", client: "native" });
+
+    const phoneRefresh = await request(app).post("/api/auth/refresh").send({ refreshToken: phone.body.refreshToken, client: "native" });
+    expect(phoneRefresh.status).toBe(200);
+  });
+
+  test("changing the password signs out other devices", async () => {
+    await makeCoach("pw");
+    const app = buildApp();
+    const phone = await request(app).post("/api/auth/login").send({ email: "coach@test.io", password: "pw", client: "native" });
+    const tablet = await request(app).post("/api/auth/login").send({ email: "coach@test.io", password: "pw", client: "native" });
+
+    const changed = await request(app)
+      .post("/api/auth/change-password")
+      .set("Authorization", `Bearer ${phone.body.accessToken}`)
+      .send({ currentPassword: "pw", newPassword: "new-password-123", client: "native" });
+    expect(changed.status).toBe(200);
+
+    const tabletRefresh = await request(app).post("/api/auth/refresh").send({ refreshToken: tablet.body.refreshToken, client: "native" });
+    expect(tabletRefresh.status).toBe(401);
+    const phoneRefresh = await request(app).post("/api/auth/refresh").send({ refreshToken: changed.body.refreshToken, client: "native" });
+    expect(phoneRefresh.status).toBe(200);
+  });
 });
 
 describe("POST /api/auth/logout", () => {
-  test("clears refreshTokenHash on the user", async () => {
+  test("clears the session hash on the user", async () => {
     const coach = await makeCoach("pw");
     const app = buildApp();
     const login = await request(app)
@@ -793,7 +877,7 @@ describe("POST /api/auth/logout", () => {
       .send({ email: "coach@test.io", password: "pw" });
 
     const before = await User.findById(coach._id).lean();
-    expect(before?.refreshTokenHash).toBeTruthy();
+    expect(before?.refreshTokenHashes).toHaveLength(1);
 
     const setCookie = login.headers["set-cookie"];
     const cookieArr = Array.isArray(setCookie) ? setCookie : [String(setCookie ?? "")];
@@ -807,10 +891,10 @@ describe("POST /api/auth/logout", () => {
 
     expect(logout.status).toBe(200);
     const after = await User.findById(coach._id).lean();
-    expect(after?.refreshTokenHash).toBeFalsy();
+    expect(after?.refreshTokenHashes).toHaveLength(0);
   });
 
-  test("native logout clears refreshTokenHash from body refresh token", async () => {
+  test("native logout clears the session hash from body refresh token", async () => {
     const coach = await makeCoach("pw");
     const app = buildApp();
     const login = await request(app)
@@ -819,7 +903,7 @@ describe("POST /api/auth/logout", () => {
 
     expect(typeof login.body.refreshToken).toBe("string");
     const before = await User.findById(coach._id).lean();
-    expect(before?.refreshTokenHash).toBeTruthy();
+    expect(before?.refreshTokenHashes).toHaveLength(1);
 
     const logout = await request(app)
       .post("/api/auth/logout")
@@ -827,6 +911,6 @@ describe("POST /api/auth/logout", () => {
 
     expect(logout.status).toBe(200);
     const after = await User.findById(coach._id).lean();
-    expect(after?.refreshTokenHash).toBeFalsy();
+    expect(after?.refreshTokenHashes).toHaveLength(0);
   });
 });

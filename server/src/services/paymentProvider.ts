@@ -250,6 +250,16 @@ export class MockPaymentProvider implements PaymentProvider {
 
 let provider: PaymentProvider | null = null;
 
+/**
+ * False when a real deployment (env.strictSecrets: production or a remote DB)
+ * is running without Razorpay credentials. The mock provider's webhook secret
+ * is a public constant, so in that state it must not start checkouts or accept
+ * webhooks — otherwise anyone could sign a fake "activated" event.
+ */
+export function paymentsAvailable(): boolean {
+  return !(env.strictSecrets && getPaymentProvider() instanceof MockPaymentProvider);
+}
+
 /** Single choke point for resolving the active payment provider. */
 export function getPaymentProvider(): PaymentProvider {
   if (!provider) {

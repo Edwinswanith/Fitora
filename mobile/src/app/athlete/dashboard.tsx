@@ -24,12 +24,16 @@ import {
 import { Avatar } from "../../components/Avatar";
 import type { MessageView } from "../../components/MessageCenter";
 import { apiFetch, apiJson } from "../../lib/api";
+import { useAuth } from "../../lib/auth";
+import { PAYMENTS_ENABLED } from "../../lib/features";
 import { exerciseVisual, mealVisual, workoutVisual, type FitoraIconAsset, type FitoraVisual } from "../../lib/fitoraIcons";
 import { colors, radius } from "../../lib/theme";
 import {
   addDays,
   dateKey,
   firstName,
+  headerDate,
+  timeOfDayGreeting,
   formatCurrency,
   formatDuration,
   loadAthleteDashboardData,
@@ -338,7 +342,7 @@ function TodayView({
 
       <ReadinessStrip score={data.daily?.readinessScore ?? null} onPress={handleReadinessPress} />
 
-      <NextWorkoutCard data={data} workout={workout} onWorkoutPress={() => goToWorkout()} onReviewPress={handleWorkoutReview} />
+      <NextWorkoutCard data={data} workout={workout} onWorkoutPress={() => goToWorkout()} onReviewPress={handleWorkoutReview} onFindCoach={() => onNavigate("coach")} />
 
       <TodayScheduleCard
         data={data}
@@ -363,8 +367,8 @@ function TodayHeader({ name, date }: { name: string; date: string }) {
   return (
     <PrimaryAppBar
       variant="today"
-      greeting={`Good morning, ${firstName(name, "there")}`}
-      title={longDate(date)}
+      greeting={`${timeOfDayGreeting()}, ${firstName(name, "there")}`}
+      title={headerDate(date)}
     />
   );
 }
@@ -397,11 +401,13 @@ function NextWorkoutCard({
   workout,
   onWorkoutPress,
   onReviewPress,
+  onFindCoach,
 }: {
   data: AthleteDashboardData;
   workout: WorkoutAssignmentSummary | null;
   onWorkoutPress: () => void;
   onReviewPress: () => void;
+  onFindCoach: () => void;
 }) {
   const exerciseCount = workoutExerciseCount(workout, data.workoutDetail);
   const completed = workout?.status === "completed";
@@ -424,6 +430,7 @@ function NextWorkoutCard({
   const ctaAction = completed && !rpeLogged ? onReviewPress : onWorkoutPress;
 
   if (!workout) {
+    const hasCoach = athleteHasCoach(data);
     return (
       <AppCard style={styles.nextWorkoutCard}>
         <View style={styles.nextWorkoutTop}>
@@ -432,10 +439,15 @@ function NextWorkoutCard({
           </View>
           <View style={styles.nextWorkoutCopy}>
             <Text style={styles.nextWorkoutEyebrow}>NEXT UP</Text>
-            <Text style={styles.nextWorkoutTitle}>No training scheduled today</Text>
-            <Text style={styles.nextWorkoutMeta}>Your coach has not assigned a workout for today.</Text>
+            <Text style={styles.nextWorkoutTitle}>{hasCoach ? "No training scheduled today" : "Get a training plan"}</Text>
+            <Text style={styles.nextWorkoutMeta}>
+              {hasCoach
+                ? "Your coach has not assigned a workout for today."
+                : "Workouts appear here once you're connected with a coach. Until then, start with your check-in, meals and water."}
+            </Text>
           </View>
         </View>
+        {hasCoach ? null : <ActionButton label="Find a Coach" icon="search-outline" onPress={onFindCoach} />}
       </AppCard>
     );
   }
@@ -912,6 +924,7 @@ function buildTodayAlert(
   coachName: string,
   actions: { membership: () => void }
 ) {
+  if (!PAYMENTS_ENABLED) return null;
   const sub = data.subscription;
   const renewalDays = daysUntil(sub?.currentPeriodEnd);
   if (sub?.status === "payment_failed") {
@@ -1128,7 +1141,7 @@ function WorkoutsView({ data }: { data: AthleteDashboardData }) {
               todayKeyValue={data.date}
             />
           ) : (
-            <TrainingNoWorkoutCard dateStr={selectedDate} todayKeyValue={data.date} />
+            <TrainingNoWorkoutCard dateStr={selectedDate} todayKeyValue={data.date} hasCoach={athleteHasCoach(data)} />
           )}
           {selectedDetail && selectedDetail.exercises.length ? <TrainingExercisePreview detail={selectedDetail} /> : null}
           <TrainingUpNextCard workout={upNextWorkout} onViewCalendar={() => setSegment("upcoming")} />
@@ -1441,9 +1454,13 @@ function TrainingUpNextCard({
   );
 }
 
-function TrainingNoWorkoutCard({ dateStr, todayKeyValue }: { dateStr: string; todayKeyValue: string }) {
+function TrainingNoWorkoutCard({ dateStr, todayKeyValue, hasCoach }: { dateStr: string; todayKeyValue: string; hasCoach: boolean }) {
   const title = dateStr === todayKeyValue ? "No training scheduled for today" : "No training scheduled";
-  const body = dateStr < todayKeyValue ? "No workout was assigned for this day." : "Future assignments will show here when your coach schedules them.";
+  const body = !hasCoach
+    ? "Workouts are planned by your coach. Connect with one from the Coach tab to get a schedule here."
+    : dateStr < todayKeyValue
+      ? "No workout was assigned for this day."
+      : "Future assignments will show here when your coach schedules them.";
   return (
     <AppCard style={styles.trainingNoWorkoutCard}>
       <IconTile icon="bed-outline" tone="primary" size={52} />
@@ -2738,7 +2755,7 @@ function CoachView({
   function confirmLeaveCoach() {
     Alert.alert(
       `Leave ${coachName}?`,
-      "You'll lose access to their workouts, meal plans, and sessions. Any active membership will be cancelled immediately.",
+      PAYMENTS_ENABLED ? "You'll lose access to their workouts, meal plans, and sessions. Any active membership will be cancelled immediately." : "You'll lose access to their workouts, meal plans, and sessions.",
       [
         { text: "Cancel", style: "cancel" },
         { text: "Leave Coach", style: "destructive", onPress: leaveCoach },
@@ -2859,6 +2876,7 @@ function CoachView({
 
           {panel === "videos" ? <CoachVideosPanel videos={data.videos} onPlay={setPlayingVideo} /> : null}
 
+          {PAYMENTS_ENABLED ? (
           <CoachMembershipCard
             subscription={subscription}
             onPress={() => {
@@ -2870,9 +2888,11 @@ function CoachView({
             }}
           />
 
-          {panel === "membership" ? <CoachMembershipDetails subscription={subscription} onFindCoach={() => router.push("/athlete/coach-discovery" as never)} /> : null}
+          ) : null}
 
-          <CoachRelationshipCard leaving={leaving} onSwitch={confirmSwitchCoach} onLeave={leaving ? undefined : confirmLeaveCoach} />
+          {PAYMENTS_ENABLED && panel === "membership" ? <CoachMembershipDetails subscription={subscription} onFindCoach={() => router.push("/athlete/coach-discovery" as never)} /> : null}
+
+          <CoachRelationshipCard leaving={leaving} onSwitch={PAYMENTS_ENABLED ? confirmSwitchCoach : undefined} onLeave={leaving ? undefined : confirmLeaveCoach} />
 
           {coachActionMessage ? <Text style={coachActionMessage.includes("sent") ? styles.successText : styles.errorText}>{coachActionMessage}</Text> : null}
         </>
@@ -3219,12 +3239,16 @@ function CoachMembershipDetails({ subscription, onFindCoach }: { subscription: A
   );
 }
 
-function CoachRelationshipCard({ leaving, onSwitch, onLeave }: { leaving: boolean; onSwitch: () => void; onLeave?: () => void }) {
+function CoachRelationshipCard({ leaving, onSwitch, onLeave }: { leaving: boolean; onSwitch?: () => void; onLeave?: () => void }) {
   return (
     <AppCard style={styles.coachRelationshipCard}>
       <Text style={styles.coachCardTitle}>Coach Relationship</Text>
-      <CoachRelationshipRow icon="swap-horizontal-outline" label="Switch Coach" onPress={onSwitch} />
-      <Divider />
+      {onSwitch ? (
+        <>
+          <CoachRelationshipRow icon="swap-horizontal-outline" label="Switch Coach" onPress={onSwitch} />
+          <Divider />
+        </>
+      ) : null}
       <CoachRelationshipRow icon="person-remove-outline" label="Leave Coach" value={leaving ? "Leaving..." : undefined} onPress={onLeave} danger />
     </AppCard>
   );
@@ -3283,18 +3307,27 @@ function CoachVideosPanel({ videos, onPlay }: { videos: CoachVideo[]; onPlay: (v
   );
 }
 
+function athleteHasCoach(data: AthleteDashboardData): boolean {
+  return Boolean(data.coachProfile || data.coaches.length);
+}
+
 function NoCoachState({ onFindCoach }: { onFindCoach: () => void }) {
+  const { user } = useAuth();
   return (
     <AppCard style={styles.noCoachCard}>
       <IconTile icon="people-outline" size={58} />
       <Text style={styles.noCoachTitle}>You don&apos;t have a coach yet</Text>
-      <Text style={styles.noCoachBody}>Connect with a coach to unlock personalized training, nutrition planning, video sessions, and direct feedback.</Text>
+      <Text style={styles.noCoachBody}>Connect with a coach to unlock personalized training, nutrition planning, and direct feedback.</Text>
       <View style={styles.noCoachBenefits}>
         <CoachBenefit icon="barbell-outline" label="Personalized training" />
         <CoachBenefit icon="nutrition-outline" label="Nutrition plan" />
-        <CoachBenefit icon="videocam-outline" label="Video sessions" />
         <CoachBenefit icon="chatbubble-outline" label="Direct feedback" />
       </View>
+      {PAYMENTS_ENABLED ? null : (
+        <Text style={styles.noCoachBody}>
+          {`Already have a coach? Share your account email${user?.email ? ` (${user.email})` : ""} with them so they can add you.`}
+        </Text>
+      )}
       <ActionButton label="Find a Coach" icon="search-outline" variant="filled" style={styles.noCoachButton} onPress={onFindCoach} />
     </AppCard>
   );

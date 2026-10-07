@@ -2,7 +2,7 @@ import { Router, type Request, type Response } from "express";
 import express from "express";
 import crypto from "crypto";
 import { PaymentWebhookEvent } from "../models/PaymentWebhookEvent";
-import { getPaymentProvider } from "../services/paymentProvider";
+import { getPaymentProvider, paymentsAvailable } from "../services/paymentProvider";
 import { applyPaymentEvent } from "../services/subscription";
 
 /**
@@ -23,6 +23,11 @@ router.post("/razorpay", express.raw({ type: "application/json" }), async (req: 
   const rawBody = req.body;
   if (!Buffer.isBuffer(rawBody)) {
     res.status(400).json({ error: "invalid_body" });
+    return;
+  }
+
+  if (!paymentsAvailable()) {
+    res.status(503).json({ error: "payments_unavailable" });
     return;
   }
 

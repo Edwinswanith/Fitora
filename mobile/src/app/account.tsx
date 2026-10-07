@@ -18,6 +18,7 @@ import {
 } from "../components/fitora";
 import { apiFetch, changePassword } from "../lib/api";
 import { useAuth } from "../lib/auth";
+import { PRIVACY_POLICY_URL, SUPPORT_URL, openExternal } from "../lib/links";
 import { colors, radius } from "../lib/theme";
 import { useNotificationPreferences, type NotificationCategories } from "../lib/notificationPreferences";
 import {
@@ -162,6 +163,7 @@ function ProfileShell({
         </Pressable>
       </View>
       {children}
+      <SupportCard />
       <SecurityCard />
       <DangerZone />
     </ScreenContainer>
@@ -221,11 +223,11 @@ function AthleteProfileContent({ data, onManageGoal }: { data: AthleteDashboardD
 
       <AppCard>
         <SectionHeader title="Personal" />
-        <SettingsRow icon="scale-outline" label="Weight" value={profile?.weightKg ? `${profile.weightKg} kg` : "Not set"} />
-        <SettingsRow icon="flag-outline" label="Target Weight" value={profile?.targetWeightKg ? `${profile.targetWeightKg} kg` : "Not set"} />
-        <SettingsRow icon="resize-outline" label="Height" value={profile?.heightCm ? `${profile.heightCm} cm` : "Not set"} />
-        <SettingsRow icon="calendar-outline" label="Age" value={profile?.dob ? String(ageFromDob(profile.dob)) : "Not set"} />
-        <SettingsRow icon="pulse-outline" label="Activity Level" value={titleCase(profile?.activityLevel) || "Not set"} />
+        <SettingsRow icon="scale-outline" label="Weight" value={profile?.weightKg ? `${profile.weightKg} kg` : "Not set"} onPress={onManageGoal} />
+        <SettingsRow icon="flag-outline" label="Target Weight" value={profile?.targetWeightKg ? `${profile.targetWeightKg} kg` : "Not set"} onPress={onManageGoal} />
+        <SettingsRow icon="resize-outline" label="Height" value={profile?.heightCm ? `${profile.heightCm} cm` : "Not set"} onPress={onManageGoal} />
+        <SettingsRow icon="calendar-outline" label="Age" value={profile?.dob ? String(ageFromDob(profile.dob)) : "Not set"} onPress={onManageGoal} />
+        <SettingsRow icon="pulse-outline" label="Activity Level" value={titleCase(profile?.activityLevel) || "Not set"} onPress={onManageGoal} />
       </AppCard>
 
       <AppCard>
@@ -262,14 +264,7 @@ function AthleteProfileContent({ data, onManageGoal }: { data: AthleteDashboardD
         </View>
       </AppCard>
 
-      <AppCard>
-        <SectionHeader title="Connected Devices" />
-        <SettingsRow icon="heart-outline" label="Apple Health" value="Not connected" />
-        <SettingsRow icon="watch-outline" label="Wearable" value="Not connected" />
-      </AppCard>
-
       <NotificationCard />
-      <PreferencesCard />
     </>
   );
 }
@@ -311,14 +306,6 @@ function CoachProfileContent({ data }: { data: CoachProfileData }) {
       </AppCard>
 
       <NotificationCard />
-      <PreferencesCard />
-
-      <AppCard>
-        <SectionHeader title="Account" />
-        <SettingsRow icon="lock-closed-outline" label="Account & Security" />
-        <SettingsRow icon="help-circle-outline" label="Help & Support" />
-        <SettingsRow icon="document-text-outline" label="Terms & Privacy" />
-      </AppCard>
     </>
   );
 }
@@ -583,14 +570,12 @@ function NotificationCard() {
   );
 }
 
-function PreferencesCard() {
+function SupportCard() {
   return (
     <AppCard>
-      <SectionHeader title="Preferences" />
-      <SettingsRow icon="resize-outline" label="Units" />
-      <SettingsRow icon="globe-outline" label="Timezone" />
-      <SettingsRow icon="sunny-outline" label="Appearance" />
-      <SettingsRow icon="shield-outline" label="Privacy" />
+      <SectionHeader title="Help & Legal" />
+      <SettingsRow icon="help-circle-outline" label="Help & Support" onPress={() => openExternal(SUPPORT_URL)} />
+      <SettingsRow icon="shield-checkmark-outline" label="Privacy Policy" onPress={() => openExternal(PRIVACY_POLICY_URL)} />
     </AppCard>
   );
 }

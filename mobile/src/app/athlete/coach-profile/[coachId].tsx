@@ -16,6 +16,8 @@ import {
   StatusChip,
 } from "../../../components/fitora";
 import { apiFetch } from "../../../lib/api";
+import { useAuth } from "../../../lib/auth";
+import { PAYMENTS_ENABLED } from "../../../lib/features";
 import { colors } from "../../../lib/theme";
 import {
   formatCurrency,
@@ -38,6 +40,7 @@ const CHECKOUT_ERROR_MESSAGES: Record<string, string> = {
   switch_already_in_progress: "You already have a coach switch in progress. Wait for it to complete before starting another.",
   pricing_plan_not_found: "This plan is no longer available. Pull to refresh and try again.",
   coach_not_found: "This coach is no longer available.",
+  payments_unavailable: "Online sign-up isn't available yet. Ask this coach to add you by your account email.",
 };
 
 type CheckoutState =
@@ -55,6 +58,7 @@ export default function CoachProfileScreen() {
   const [assignedLoaded, setAssignedLoaded] = useState(false);
   const [selectedPlanId, setSelectedPlanId] = useState<string | null>(null);
   const [checkout, setCheckout] = useState<CheckoutState>({ kind: "idle" });
+  const { user } = useAuth();
   const [submitting, setSubmitting] = useState(false);
   const [reviewsOpen, setReviewsOpen] = useState<CoachReview[]>([]);
   const [reviewsPage, setReviewsPage] = useState(1);
@@ -267,23 +271,23 @@ export default function CoachProfileScreen() {
             Weekly availability: {(profile.availableDays ?? []).map((d) => WEEKDAY_NAMES[d]).join(", ")}
           </Text>
         ) : (
-          <Text style={styles.mutedBody}>{"This coach hasn't published weekly availability yet. You can message them once you subscribe."}</Text>
+          <Text style={styles.mutedBody}>{PAYMENTS_ENABLED ? "This coach hasn't published weekly availability yet. You can message them once you subscribe." : "This coach hasn't published weekly availability yet. You can message them once they add you as a client."}</Text>
         )}
       </AppCard>
 
-      <SectionHeader title="Pricing Plans" />
+      <SectionHeader title={PAYMENTS_ENABLED ? "Pricing Plans" : "Coaching Plans"} />
       {plans.length ? (
         plans.map((plan) => (
           <PlanCard
             key={plan.id}
             plan={plan}
-            selected={selectedPlanId === plan.id}
-            onSelect={() => setSelectedPlanId(plan.id)}
+            selected={PAYMENTS_ENABLED && selectedPlanId === plan.id}
+            onSelect={PAYMENTS_ENABLED ? () => setSelectedPlanId(plan.id) : undefined}
           />
         ))
       ) : (
         <AppCard>
-          <EmptyState title="No pricing plans yet" body="This coach hasn't published a plan to subscribe to." icon="ribbon-outline" />
+          <EmptyState title="No pricing plans yet" body={PAYMENTS_ENABLED ? "This coach hasn't published a plan to subscribe to." : "This coach hasn't published a coaching plan yet."} icon="ribbon-outline" />
         </AppCard>
       )}
 
@@ -325,7 +329,14 @@ export default function CoachProfileScreen() {
       ) : null}
       {checkout.kind === "error" ? <AlertBanner tone="danger" title="Could not complete this" body={checkout.message} /> : null}
 
-      {isCurrentCoach ? null : plans.length ? (
+      {!PAYMENTS_ENABLED && !isCurrentCoach ? (
+        <AlertBanner
+          tone="primary"
+          title={`Work with ${profile.name}`}
+          body={`Online sign-up is coming soon. To start now, share your account email${user?.email ? ` (${user.email})` : ""} with ${profile.name}. Once they add you as a client, they'll appear in your Coach tab.`}
+        />
+      ) : null}
+      {!PAYMENTS_ENABLED || isCurrentCoach ? null : plans.length ? (
         <ActionButton
           label={
             submitting
@@ -344,7 +355,7 @@ export default function CoachProfileScreen() {
           }}
         />
       ) : null}
-      {isSwitchTarget && !isCurrentCoach ? (
+      {PAYMENTS_ENABLED && isSwitchTarget && !isCurrentCoach ? (
         <Text style={styles.switchNote}>
           {"You're currently coached by "}{currentCoachName ?? "another coach"}{". Subscribing here starts a switch — your current coach stays active and billed until this one is confirmed."}
         </Text>
@@ -366,16 +377,16 @@ function BackHeader({ title }: { title: string }) {
   );
 }
 
-function PlanCard({ plan, selected, onSelect }: { plan: PricingPlan; selected: boolean; onSelect: () => void }) {
+function PlanCard({ plan, selected, onSelect }: { plan: PricingPlan; selected: boolean; onSelect?: () => void }) {
   return (
-    <Pressable onPress={onSelect} style={({ pressed }) => [pressed ? styles.pressed : null]}>
+    <Pressable onPress={onSelect} disabled={!onSelect} style={({ pressed }) => [pressed ? styles.pressed : null]}>
       <AppCard style={[styles.planCard, selected ? styles.planCardSelected : null]}>
         <View style={styles.planHeader}>
           <View style={{ flex: 1, minWidth: 0 }}>
             <Text style={styles.planName}>{plan.name}</Text>
             <Text style={styles.planPrice}>{formatCurrency(plan.monthlyPrice, plan.currency)} / month</Text>
           </View>
-          <View style={[styles.radio, selected ? styles.radioOn : null]} />
+          {onSelect ? <View style={[styles.radio, selected ? styles.radioOn : null]} /> : null}
         </View>
         {plan.description ? <Text style={styles.planDescription}>{plan.description}</Text> : null}
         <View style={styles.planFeatureList}>
