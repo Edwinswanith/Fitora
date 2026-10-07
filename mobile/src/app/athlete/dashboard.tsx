@@ -33,6 +33,7 @@ import { useAuth } from "../../lib/auth";
 import { PAYMENTS_ENABLED } from "../../lib/features";
 import { celebrate, showError } from "../../lib/feedback";
 import { joinSessionCall } from "../../lib/videoCall";
+import { loadMyJoinRequest, type JoinRequest } from "../../lib/joinRequests";
 import { eligibleDays, judgeRate, localDayOf, windowStart } from "../../lib/progressWindow";
 import { exerciseVisual, mealVisual, workoutVisual, type FitoraVisual } from "../../lib/fitoraIcons";
 import { colors, metricColors, radius, type MetricKey } from "../../lib/theme";
@@ -76,6 +77,12 @@ const NAV_ITEMS = [
   { key: "coach", label: "Coach", icon: "people-outline" as const },
   { key: "progress", label: "Progress", icon: "bar-chart-outline" as const },
 ];
+
+/** "Coach Priya", or "Your coach" when the name is unknown (never an invented name). */
+function coachLabel(name?: string | null): string {
+  const first = (name ?? "").trim().split(/\s+/)[0];
+  return first && first.toLowerCase() !== "your" ? `Coach ${first}` : "Your coach";
+}
 
 function normalizeTab(value?: string | string[]): AthleteTab {
   const raw = Array.isArray(value) ? value[0] : value;
@@ -362,14 +369,8 @@ function TodayView({
         <NextWorkoutCard data={data} workout={workout} onWorkoutPress={() => goToWorkout()} onReviewPress={handleWorkoutReview} onFindCoach={() => onNavigate("coach")} />
       ) : null}
 
-      <SectionLabel title="Today" />
-      <TodayScheduleCard
-        data={data}
-        workout={workout}
-        session={todaySession}
-        onViewAll={() => onNavigate("workouts")}
-        onPressItem={handleSchedulePress}
-      />
+      <SectionLabel title="Today" action={workout ? "View all" : undefined} onAction={() => onNavigate("workouts")} />
+      <TodayScheduleCard data={data} workout={workout} session={todaySession} onPressItem={handleSchedulePress} />
 
       {sessionExpanded && todaySession ? (
         <SessionCard session={todaySession} coachName={activeCoach} expanded={sessionExpanded} onExpandedChange={setSessionExpanded} />
@@ -407,7 +408,7 @@ function TodayMetrics({
           metric="readiness"
           label="Readiness"
           value={readiness != null ? String(Math.round(readiness)) : "--"}
-          sub={readiness != null ? readinessLabel(readiness) : "Check in"}
+          sub={readiness != null ? readinessLabel(readiness) : undefined}
           progress={readiness != null ? readiness / 100 : null}
           onPress={onReadiness}
         />
@@ -415,7 +416,7 @@ function TodayMetrics({
           metric="nutrition"
           label="Calories"
           value={consumed > 0 ? consumed.toLocaleString() : "--"}
-          sub={targetCalories ? `of ${targetCalories.toLocaleString()}` : consumed > 0 ? "kcal" : "Log a meal"}
+          sub={targetCalories ? `of ${targetCalories.toLocaleString()}` : "kcal"}
           progress={targetCalories ? consumed / targetCalories : null}
           onPress={onNutrition}
         />
@@ -428,16 +429,15 @@ function TodayMetrics({
           onPress={onWater}
         />
       </MetricRow>
-      <Pressable onPress={onProgress} accessibilityRole="button" style={({ pressed }) => [styles.streakRow, pressed ? { opacity: 0.8 } : null]}>
-        <View style={styles.streakCopy}>
-          <Text style={styles.streakTitle}>Check-in streak</Text>
-          <Text style={styles.streakSub}>{streak ? "Keep it going with today's check-in." : "Check in today to start a streak."}</Text>
-        </View>
-        <View style={styles.streakChip}>
-          <Ionicons name="flame" size={15} color={colors.energy} />
-          <Text style={styles.streakChipText}>{streak ? `${streak} day${streak === 1 ? "" : "s"}` : "Start"}</Text>
-        </View>
-      </Pressable>
+      {streak ? (
+        <Pressable onPress={onProgress} accessibilityRole="button" style={({ pressed }) => [styles.streakRow, pressed ? { opacity: 0.8 } : null]}>
+          <Text style={[styles.streakTitle, styles.streakCopy]}>Check-in streak</Text>
+          <View style={styles.streakChip}>
+            <Ionicons name="flame" size={15} color={colors.energy} />
+            <Text style={styles.streakChipText}>{`${streak} day${streak === 1 ? "" : "s"}`}</Text>
+          </View>
+        </Pressable>
+      ) : null}
     </>
   );
 }
@@ -495,8 +495,8 @@ function TodayHero({
         calm
         icon="checkmark-done-outline"
         eyebrow="All set"
-        title="You're caught up for today"
-        body={hasCoach ? "Nice work. Check your progress or rest up for tomorrow." : "Nice work. Want a plan? A coach can set your workouts and meals."}
+        title="You're caught up"
+        body={hasCoach ? "Nice work. Rest up for tomorrow." : "Want a plan? A coach can set your workouts and meals."}
         actionLabel={hasCoach ? "See Progress" : "Find a Coach"}
         onAction={hasCoach ? onProgress : onFindCoach}
       />
@@ -619,7 +619,7 @@ type TodayScheduleItem = {
   kind: TodayScheduleKind;
   icon: keyof typeof Ionicons.glyphMap;
   title: string;
-  subtitle: string;
+  subtitle?: string;
   completed: boolean;
   statusLabel?: string;
   statusTone?: "success" | "primary" | "neutral" | "warning";
@@ -631,28 +631,17 @@ function TodayScheduleCard({
   data,
   workout,
   session,
-  onViewAll,
   onPressItem,
 }: {
   data: AthleteDashboardData;
   workout: WorkoutAssignmentSummary | null;
   session: CoachSession | null;
-  onViewAll: () => void;
   onPressItem: (item: TodayScheduleItem) => void;
 }) {
   const items = buildTodayScheduleItems(data, workout, session);
 
   return (
     <AppCard style={styles.scheduleCard}>
-      <View style={styles.todaySectionHeader}>
-        <Text style={styles.todaySectionTitle}>{"Today's Schedule"}</Text>
-        {workout ? (
-          <Pressable onPress={onViewAll} hitSlop={8} style={styles.todaySectionAction}>
-            <Text style={styles.todaySectionActionText}>View All</Text>
-            <Ionicons name="chevron-forward" size={17} color={colors.primary} />
-          </Pressable>
-        ) : null}
-      </View>
       {items.map((item, index) => (
         <ScheduleRow key={item.id} item={item} index={index} total={items.length} onPress={() => onPressItem(item)} />
       ))}
@@ -686,7 +675,7 @@ function ScheduleRow({
       </View>
       <View style={styles.scheduleCopy}>
         <Text style={styles.scheduleTitle} numberOfLines={item.kind === "workout" ? 2 : 1}>{item.title}</Text>
-        <Text style={styles.scheduleSubtitle} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.86}>{item.subtitle}</Text>
+        {item.subtitle ? <Text style={styles.scheduleSubtitle} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.86}>{item.subtitle}</Text> : null}
       </View>
       <View style={styles.scheduleRight}>
         {item.statusLabel ? (
@@ -723,38 +712,38 @@ function CoachUpdateCard({
 }) {
   const comment = data.coachComments[0] ?? null;
   const hasCoach = Boolean(data.coachProfile || data.coaches.length);
-  if (!comment && !hasCoach && !tomorrow) return null;
+  if (!comment && !tomorrow) return null;
 
   return (
     <AppCard style={styles.coachUpdateCard}>
+      {comment ? (
       <View style={styles.coachUpdateRow}>
         <View style={styles.coachUpdateAvatarWrap}>
-          {comment || hasCoach ? (
+          {hasCoach ? (
             <Avatar avatar={data.coachProfile?.avatar} name={coachName} size={34} accentSoft={colors.primarySoft} accentStrong={colors.primary} />
           ) : (
             <IconTile icon="calendar-outline" size={34} />
           )}
-          {comment ? <View style={styles.coachUnreadDot} /> : null}
+          <View style={styles.coachUnreadDot} />
         </View>
         <View style={styles.coachUpdateCopy}>
           <View style={styles.coachUpdateTitleRow}>
-            <Text style={styles.coachUpdateTitle}>Coach Update</Text>
-            {comment ? <Text style={styles.coachUpdateTime}>{relativeTime(comment.createdAt ?? comment.date)}</Text> : null}
+            <Text style={styles.coachUpdateTitle}>{hasCoach ? coachName : "Coach update"}</Text>
+            <Text style={styles.coachUpdateTime}>{relativeTime(comment.createdAt ?? comment.date)}</Text>
           </View>
           <Text style={styles.coachUpdateBody} numberOfLines={3}>
-            {comment?.body ?? "No new coach updates today."}
+            {comment.body}
           </Text>
-          {comment ? (
-            <Pressable onPress={onReply} hitSlop={8} style={styles.replyButton}>
-              <Ionicons name="chatbubble-outline" size={17} color={colors.primary} />
-              <Text style={styles.replyText}>Reply</Text>
-            </Pressable>
-          ) : null}
+          <Pressable onPress={onReply} hitSlop={8} style={styles.replyButton}>
+            <Ionicons name="chatbubble-outline" size={17} color={colors.primary} />
+            <Text style={styles.replyText}>Reply</Text>
+          </Pressable>
         </View>
       </View>
+      ) : null}
       {tomorrow ? (
         <>
-          <Divider />
+          {comment ? <Divider /> : null}
           <Pressable onPress={onTomorrowPress} style={({ pressed }) => [styles.tomorrowRow, pressed ? { opacity: 0.72 } : null]}>
             <View style={styles.tomorrowIcon}>
               <Ionicons name="calendar-outline" size={20} color={colors.inkMuted} />
@@ -819,10 +808,9 @@ function buildTodayScheduleItems(data: AthleteDashboardData, workout: WorkoutAss
       id: "checkin",
       kind: "checkin",
       icon: "clipboard-outline",
-      title: "Morning Check-in",
-      subtitle: readinessDone ? "Readiness updated" : "How are you feeling today?",
+      title: "Check-in",
       completed: readinessDone,
-      statusLabel: readinessDone ? "Completed" : "Due",
+      statusLabel: readinessDone ? "Done" : "Due",
       statusTone: readinessDone ? "success" : "warning",
     },
   ];
@@ -839,34 +827,6 @@ function buildTodayScheduleItems(data: AthleteDashboardData, workout: WorkoutAss
       completed: status.completed,
       statusLabel: status.label,
       statusTone: status.tone,
-    });
-  }
-
-  if (data.water) {
-    const reached = data.water.goalMl > 0 && data.water.totalMl >= data.water.goalMl;
-    items.push({
-      id: "water",
-      kind: "water",
-      icon: "water-outline",
-      title: "Water Goal",
-      subtitle: "Track your hydration",
-      completed: reached,
-      value: `${formatLiters(data.water.totalMl)} / ${formatLiters(data.water.goalMl)} L`,
-      chevron: true,
-    });
-  }
-
-  if (data.target) {
-    const consumed = consumedCalories(data);
-    items.push({
-      id: "nutrition",
-      kind: "nutrition",
-      icon: "restaurant-outline",
-      title: "Nutrition Goal",
-      subtitle: "Log your food intake",
-      completed: consumed >= data.target.calories,
-      value: `${consumed} / ${data.target.calories} kcal`,
-      chevron: true,
     });
   }
 
@@ -1548,7 +1508,7 @@ function WorkoutHero({
           <Text style={styles.workoutHeroMeta}>
             {detailLoading ? "Loading exercises..." : `${exerciseCount} exercise${exerciseCount === 1 ? "" : "s"} · ${estimatedWorkoutDuration(exerciseCount)}`}
           </Text>
-          <Text style={styles.workoutHeroCoach}>Coach {firstName(coachName, "Alex")}</Text>
+          <Text style={styles.workoutHeroCoach}>{coachLabel(coachName)}</Text>
         </View>
         <View style={styles.workoutBodyIcon}>
           <Ionicons name={visual.icon} size={62} color={metricColors.training.to} />
@@ -1927,7 +1887,7 @@ function NutritionView({
               <View>
                 <Text style={styles.nutritionCardTitle}>Coach Meal Plan</Text>
                 <Text style={styles.muted}>
-                  Coach {firstName(coachName, "Coach")} · {plannedCalories > 0 ? `${plannedCalories.toLocaleString()} kcal planned` : shortDate(data.date)}
+                  {coachLabel(coachName)} · {plannedCalories > 0 ? `${plannedCalories.toLocaleString()} kcal planned` : shortDate(data.date)}
                 </Text>
               </View>
             </View>
@@ -2323,8 +2283,8 @@ function NutritionSetupCardV2({ profile, onComplete }: { profile: AthleteDashboa
       title="Get your daily calorie target"
       body={
         missing.length
-          ? `Add your ${missing.slice(0, 4).map((item) => item.toLowerCase()).join(", ")} and we'll calculate calories and macros for you.`
-          : "Complete your profile and we'll calculate calories and macros for you."
+          ? `Add your ${missing.slice(0, 4).map((item) => item.toLowerCase()).join(", ")}.`
+          : "Finish your profile to get calories and macros."
       }
       actionLabel="Complete Profile"
       onAction={onComplete}
@@ -2516,7 +2476,7 @@ function CoachMealPlanCardV2({
         </View>
         <View style={styles.nutritionCoachCopy}>
           <Text style={styles.nutritionCardTitle}>Coach Meal Plan</Text>
-          <Text style={styles.nutritionMealMuted}>Coach {firstName(coachName, "Coach")} planned this for {shortDate(date)}.</Text>
+          <Text style={styles.nutritionMealMuted}>Planned by {coachLabel(coachName).toLowerCase() === "your coach" ? "your coach" : coachLabel(coachName)} for {shortDate(date)}.</Text>
           <Text style={styles.nutritionCoachSummary}>{planSummary}</Text>
         </View>
         <Pressable style={({ pressed }) => [styles.nutritionPlanButton, pressed ? { opacity: 0.78 } : null]} onPress={onToggleExpanded}>
@@ -2860,11 +2820,13 @@ function CoachView({
             />
           ) : null}
 
-          <SectionLabel title="Sessions" />
+          <SectionLabel
+            title="Sessions"
+            action={data.sessions.length > 0 ? (panel === "sessions" ? "Hide" : "View all") : undefined}
+            onAction={() => setPanel((current) => (current === "sessions" ? null : "sessions"))}
+          />
           <NextCoachSessionCard
             session={nextSession}
-            sessionCount={data.sessions.length}
-            onViewAll={() => setPanel((current) => (current === "sessions" ? null : "sessions"))}
             onBook={
               coachId
                 ? () => router.push({ pathname: "/athlete/book-session", params: { coachId, coachName } } as never)
@@ -2874,14 +2836,18 @@ function CoachView({
 
           {panel === "sessions" ? <CoachSessionsPanel sessions={data.sessions} /> : null}
 
-          <SectionLabel title="Messages" />
-          <LatestCoachMessageCard
-            coachName={coachName}
-            coachAvatar={data.coachProfile?.avatar}
-            coachId={coachId}
-            message={latestMessage}
-            onReply={openConversation}
-          />
+          {latestMessage ? (
+            <>
+              <SectionLabel title="Latest message" />
+              <LatestCoachMessageCard
+                coachName={coachName}
+                coachAvatar={data.coachProfile?.avatar}
+                coachId={coachId}
+                message={latestMessage}
+                onReply={openConversation}
+              />
+            </>
+          ) : null}
 
           <SectionLabel title="Your program" />
           <AthleteProgramCard
@@ -2948,7 +2914,6 @@ function CoachHeroCard({
     <AppCard style={styles.coachHeroCard}>
       <View style={styles.coachHeroWash} />
       <Ionicons name="barbell-outline" size={37} color="#8ad4ca" style={styles.coachHeroMark} />
-      <Text style={styles.coachHeroScribble}>Stronger{"\n"}Every Day</Text>
       <View style={styles.coachHeroIdentity}>
         <Avatar
           avatar={profile?.avatar}
@@ -3040,13 +3005,9 @@ function CoachConversationPanel({
 
 function NextCoachSessionCard({
   session,
-  sessionCount,
-  onViewAll,
   onBook,
 }: {
   session: CoachSession | null;
-  sessionCount: number;
-  onViewAll: () => void;
   onBook?: () => void;
 }) {
   const [expanded, setExpanded] = useState(false);
@@ -3069,7 +3030,6 @@ function NextCoachSessionCard({
 
   return (
     <AppCard style={styles.nextCoachSessionCard}>
-      <CoachSectionHeader title="Next Session" action={sessionCount > 0 ? "View All" : undefined} onAction={sessionCount > 0 ? onViewAll : undefined} />
       {session ? (
         <View style={styles.nextCoachSessionBody}>
           <IconTile icon="calendar-outline" size={56} />
@@ -3092,8 +3052,7 @@ function NextCoachSessionCard({
         <View style={styles.nextCoachEmptyBody}>
           <IconTile icon="calendar-outline" size={48} />
           <View style={styles.nextCoachSessionCopy}>
-            <Text style={styles.nextCoachSessionTitle}>No upcoming sessions</Text>
-            <Text style={styles.nextCoachSessionMeta}>Book a video session with your coach.</Text>
+            <Text style={styles.nextCoachSessionTitle}>No sessions booked</Text>
           </View>
         </View>
       )}
@@ -3125,10 +3084,6 @@ function LatestCoachMessageCard({
 }) {
   return (
     <AppCard style={styles.latestCoachMessageCard}>
-      <View style={styles.coachMessageHeader}>
-        <Text style={styles.coachCardTitle}>Latest Message</Text>
-        {message?.at ? <Text style={styles.coachMessageTime}>{relativeTime(message.at)}</Text> : null}
-      </View>
       <View style={styles.latestCoachMessageRow}>
         <Avatar
           avatar={coachAvatar}
@@ -3139,9 +3094,12 @@ function LatestCoachMessageCard({
           photoPath={coachId ? `/api/marketplace/coaches/${coachId}/avatar/file` : undefined}
         />
         <View style={styles.latestCoachMessageCopy}>
-          <Text style={styles.latestCoachMessageName}>{message?.senderName ?? coachName}</Text>
+          <Text style={styles.latestCoachMessageName}>
+            {message?.senderName ?? coachName}
+            {message?.at ? <Text style={styles.coachMessageTime}>{`  ${relativeTime(message.at)}`}</Text> : null}
+          </Text>
           <Text style={styles.latestCoachMessageBody} numberOfLines={3}>
-            {message?.body ?? "No coach messages yet."}
+            {message?.body}
           </Text>
           <Pressable onPress={onReply} style={styles.coachReplyButton} hitSlop={8}>
             <Ionicons name="chatbubble-outline" size={17} color={colors.primary} />
@@ -3169,7 +3127,6 @@ function AthleteProgramCard({
   const videoCount = data.videos.length;
   return (
     <AppCard style={styles.coachProgramCard}>
-      <Text style={styles.coachCardTitle}>Your Program</Text>
       <CoachProgramRow icon="barbell-outline" tone="primary" title="Training" subtitle={training} onPress={onTraining} />
       <Divider />
       <CoachProgramRow icon="nutrition-outline" tone="success" title="Nutrition" subtitle={nutrition} onPress={onNutrition} />
@@ -3251,7 +3208,6 @@ function CoachMembershipDetails({ subscription, onFindCoach }: { subscription: A
 function CoachRelationshipCard({ leaving, onSwitch, onLeave }: { leaving: boolean; onSwitch?: () => void; onLeave?: () => void }) {
   return (
     <AppCard style={styles.coachRelationshipCard}>
-      <Text style={styles.coachCardTitle}>Coach Relationship</Text>
       {onSwitch ? (
         <>
           <CoachRelationshipRow icon="swap-horizontal-outline" label="Switch Coach" onPress={onSwitch} />
@@ -3321,23 +3277,47 @@ function athleteHasCoach(data: AthleteDashboardData): boolean {
 }
 
 function NoCoachState({ onFindCoach }: { onFindCoach: () => void }) {
+  const router = useRouter();
   const { user } = useAuth();
+  const [request, setRequest] = useState<JoinRequest | null>(null);
+  useEffect(() => {
+    if (PAYMENTS_ENABLED) return;
+    let active = true;
+    void loadMyJoinRequest().then((latest) => active && setRequest(latest));
+    return () => {
+      active = false;
+    };
+  }, []);
+
+  if (request?.status === "pending") {
+    return (
+      <HeroCard
+        calm
+        icon="time-outline"
+        eyebrow="Request sent"
+        title={`Waiting on ${request.coach.name}`}
+        body="You'll get a notification when they reply."
+        actionLabel="View Coach"
+        onAction={() => router.push({ pathname: "/athlete/coach-profile/[coachId]", params: { coachId: request.coach.id } } as never)}
+      />
+    );
+  }
   return (
     <AppCard style={styles.noCoachCard}>
       <IconTile icon="people-outline" size={58} />
       <Text style={styles.noCoachTitle}>You don&apos;t have a coach yet</Text>
-      <Text style={styles.noCoachBody}>Connect with a coach to unlock personalized training, nutrition planning, and direct feedback.</Text>
+      <Text style={styles.noCoachBody}>
+        {request?.status === "declined" ? `${request.coach.name} couldn't take you on. Try another coach.` : "A coach plans your training and meals and gives you feedback."}
+      </Text>
       <View style={styles.noCoachBenefits}>
         <CoachBenefit icon="barbell-outline" label="Personalized training" />
         <CoachBenefit icon="nutrition-outline" label="Nutrition plan" />
         <CoachBenefit icon="chatbubble-outline" label="Direct feedback" />
       </View>
-      {PAYMENTS_ENABLED ? null : (
-        <Text style={styles.noCoachBody}>
-          {`Already have a coach? Share your account email${user?.email ? ` (${user.email})` : ""} with them so they can add you.`}
-        </Text>
-      )}
       <ActionButton label="Find a Coach" icon="search-outline" variant="filled" style={styles.noCoachButton} onPress={onFindCoach} />
+      {PAYMENTS_ENABLED ? null : (
+        <Text style={styles.noCoachBody}>{`Coach not listed? Share your email${user?.email ? ` (${user.email})` : ""} so they can add you.`}</Text>
+      )}
     </AppCard>
   );
 }
@@ -3347,20 +3327,6 @@ function CoachBenefit({ icon, label }: { icon: keyof typeof Ionicons.glyphMap; l
     <View style={styles.noCoachBenefitRow}>
       <Ionicons name={icon} size={17} color={colors.primary} />
       <Text style={styles.noCoachBenefitText}>{label}</Text>
-    </View>
-  );
-}
-
-function CoachSectionHeader({ title, action, onAction }: { title: string; action?: string; onAction?: () => void }) {
-  return (
-    <View style={styles.coachSectionHeader}>
-      <Text style={styles.coachCardTitle}>{title}</Text>
-      {action ? (
-        <Pressable onPress={onAction} disabled={!onAction} style={styles.coachSectionAction} hitSlop={8}>
-          <Text style={styles.coachSectionActionText}>{action}</Text>
-          <Ionicons name="chevron-forward" size={18} color={colors.primary} />
-        </Pressable>
-      ) : null}
     </View>
   );
 }
@@ -3416,7 +3382,7 @@ function coachProfessionalTitle(profile: AthleteDashboardData["coachProfile"]): 
 function coachRatingLabel(profile: AthleteDashboardData["coachProfile"]): string {
   const reviews = profile?.reviewCount ?? 0;
   const reviewText = `${reviews} review${reviews === 1 ? "" : "s"}`;
-  return profile?.avgRating ? `${profile.avgRating.toFixed(1)} rating - ${reviewText}` : `No rating yet - ${reviewText}`;
+  return profile?.avgRating ? `${profile.avgRating.toFixed(1)} rating · ${reviewText}` : "New coach";
 }
 
 function coachExperience(profile: AthleteDashboardData["coachProfile"]): string | null {
@@ -3667,6 +3633,24 @@ function ProgressView({ data, onNavigate }: { data: AthleteDashboardData; onNavi
   const summary = buildProgressSummary(training, nutrition, recovery);
   const rangeLabel = progressRangeLabel(range);
 
+  if (!summary.hasData) {
+    // Nothing logged yet: one starter card instead of a grid of dashes and zeros.
+    return (
+      <>
+        <ProgressHeader onCalendar={() => router.push("/athlete/trends" as never)} />
+        <HeroCard
+          calm
+          icon="trending-up-outline"
+          eyebrow="Progress"
+          title="Your trends start here"
+          body="Log a few days of check-ins, workouts or meals."
+          actionLabel="Check In"
+          onAction={() => router.push("/athlete/check-in" as never)}
+        />
+      </>
+    );
+  }
+
   return (
     <>
       <ProgressHeader onCalendar={() => router.push("/athlete/trends" as never)} />
@@ -3696,11 +3680,12 @@ function ProgressView({ data, onNavigate }: { data: AthleteDashboardData; onNavi
         recovery={recovery}
       />
 
-      <SectionLabel title="From your coach" />
-      <ProgressFeedbackCard
-        comments={data.coachComments}
-        onOpen={data.coachComments.length ? () => onNavigate("coach") : undefined}
-      />
+      {data.coachComments.length ? (
+        <>
+          <SectionLabel title="From your coach" />
+          <ProgressFeedbackCard comments={data.coachComments} onOpen={() => onNavigate("coach")} />
+        </>
+      ) : null}
     </>
   );
 }
@@ -3709,7 +3694,6 @@ function ProgressHeader({ onCalendar }: { onCalendar: () => void }) {
   return (
     <PrimaryAppBar
       title="Progress"
-      subtitle="Track your performance and see your growth."
       showNotifications={false}
       showAvatar={false}
       rightIcon="calendar-outline"
@@ -3832,10 +3816,12 @@ function ProgressSummaryCard({
         <ProgressSummaryMetric metric="nutrition" icon="nutrition-outline" title="Days Logged" value={formatPercent(nutrition.loggedDayRate)} tone={nutrition.loggedDayTone} onPress={() => onSelectCategory("nutrition")} />
         <ProgressSummaryMetric metric="readiness" icon="heart-outline" title="Recovery" value={recovery.currentLabel} tone={recovery.currentTone} onPress={() => onSelectCategory("recovery")} />
       </View>
-      <View style={styles.progressInsightLine}>
-        <Ionicons name="bulb-outline" size={20} color={colors.primary} />
-        <Text style={styles.progressInsightLineText} numberOfLines={2}>{summary.insight}</Text>
-      </View>
+      {summary.insight ? (
+        <View style={styles.progressInsightLine}>
+          <Ionicons name="bulb-outline" size={20} color={colors.primary} />
+          <Text style={styles.progressInsightLineText} numberOfLines={2}>{summary.insight}</Text>
+        </View>
+      ) : null}
     </AppCard>
   );
 }
@@ -3940,27 +3926,15 @@ function ProgressDetailCard({
   return <TrainingProgressCard training={training} rangeLabel={rangeLabel} loading={loading} />;
 }
 
-function ProgressDetailHeader({ title, subtitle, rangeLabel, loading }: { title: string; subtitle: string; rangeLabel?: string; loading?: boolean }) {
-  return (
-    <View style={styles.progressDetailHeader}>
-      <View style={styles.progressDetailHeaderCopy}>
-        <Text style={styles.progressDetailTitle}>{title}</Text>
-        <Text style={styles.progressDetailSubtitle}>{subtitle}</Text>
-      </View>
-      {rangeLabel ? (
-        <View style={styles.progressRangePill}>
-          <Text style={styles.progressRangePillText}>{loading ? "Updating..." : rangeLabel}</Text>
-          <Ionicons name="chevron-down" size={14} color={colors.inkMuted} />
-        </View>
-      ) : null}
-    </View>
-  );
+function ProgressDetailHeader({ rangeLabel, loading }: { rangeLabel?: string; loading?: boolean }) {
+  if (!rangeLabel) return null;
+  return <Text style={styles.progressDetailSubtitle}>{loading ? "Updating..." : rangeLabel}</Text>;
 }
 
 function TrainingProgressCard({ training, rangeLabel, loading }: { training: TrainingProgressModel; rangeLabel: string; loading: boolean }) {
   return (
     <AppCard style={styles.progressDetailCard}>
-      <ProgressDetailHeader title="Training" subtitle={`Your training over the ${rangeLabel.toLowerCase()}.`} rangeLabel={rangeLabel} loading={loading} />
+      <ProgressDetailHeader rangeLabel={rangeLabel} loading={loading} />
       <View style={styles.progressPrimaryChartRow}>
         <View style={styles.progressPrimaryMetric}>
           <IconTile icon="barbell-outline" tone="primary" size={44} />
@@ -3995,7 +3969,6 @@ function BodyProgressCard({ body }: { body: BodyProgressModel }) {
   const router = useRouter();
   return (
     <AppCard style={styles.progressDetailCard}>
-      <ProgressDetailHeader title="Body" subtitle="Your current body metrics from profile data." />
       {body.currentWeight == null && body.targetWeight == null ? (
         <>
           <Text style={styles.progressEmptyText}>No body metrics are saved yet.</Text>
@@ -4016,7 +3989,6 @@ function BodyProgressCard({ body }: { body: BodyProgressModel }) {
 function NutritionProgressCard({ nutrition }: { nutrition: NutritionProgressModel }) {
   return (
     <AppCard style={styles.progressDetailCard}>
-      <ProgressDetailHeader title="Nutrition" subtitle="Your nutrition consistency from logged meals." />
       <View style={styles.progressPrimaryChartRow}>
         <View style={styles.progressPrimaryMetric}>
           <IconTile icon="nutrition-outline" tone="success" size={44} />
@@ -4040,7 +4012,7 @@ function NutritionProgressCard({ nutrition }: { nutrition: NutritionProgressMode
 function RecoveryProgressCard({ recovery, rangeLabel, loading }: { recovery: RecoveryProgressModel; rangeLabel: string; loading: boolean }) {
   return (
     <AppCard style={styles.progressDetailCard}>
-      <ProgressDetailHeader title="Recovery" subtitle={`Your recovery trend over the ${rangeLabel.toLowerCase()}.`} rangeLabel={rangeLabel} loading={loading} />
+      <ProgressDetailHeader rangeLabel={rangeLabel} loading={loading} />
       <View style={styles.progressPrimaryChartRow}>
         <View style={styles.progressPrimaryMetric}>
           <IconTile icon="heart-outline" tone={recovery.currentTone} size={44} />
@@ -4276,6 +4248,7 @@ type BodyProgressModel = {
 
 type ProgressSummaryModel = {
   headline: string;
+  hasData: boolean;
   body: string;
   insight: string;
   badge: string | null;
@@ -4401,17 +4374,17 @@ function buildProgressSummary(training: TrainingProgressModel, nutrition: Nutrit
   }
   const body =
     headline === "Strong progress"
-      ? "Consistency is building and the trend is moving in the right direction."
+      ? "Consistent, and trending the right way."
       : headline === "Steady progress"
-        ? "You are building a base. Keep the routine predictable."
+        ? "Building a base. Keep the routine steady."
         : headline === "Needs attention"
-          ? "Recovery or consistency needs attention before pushing harder."
+          ? "Recover before pushing harder."
           : headline === "Mixed progress"
-            ? "Some areas are moving well while others need a steadier rhythm."
-            : "Complete workouts, check-ins, and meals to unlock clear progress trends.";
+            ? "Some areas strong, others slipping."
+            : "Log a few days to see your trends.";
   const trainingInsight =
     training.consistency == null
-      ? "Add workout history for training insight."
+      ? ""
       : training.consistency >= 0.8
         ? "Training is consistent."
         : "Training consistency needs attention.";
@@ -4420,7 +4393,7 @@ function buildProgressSummary(training: TrainingProgressModel, nutrition: Nutrit
       ? "Recovery needs attention."
       : recovery.currentScore != null
         ? "Recovery is holding steady."
-        : "Add check-ins for recovery insight.";
+        : "";
   const badge =
     recovery.readinessDelta != null
       ? `${formatSigned(recovery.readinessDelta)} pts`
@@ -4429,8 +4402,9 @@ function buildProgressSummary(training: TrainingProgressModel, nutrition: Nutrit
         : null;
   return {
     headline,
+    hasData,
     body,
-    insight: `${trainingInsight} ${recoveryInsight}`,
+    insight: [trainingInsight, recoveryInsight].filter(Boolean).join(" "),
     badge,
     badgeIcon: recovery.readinessDelta != null && recovery.readinessDelta < 0 ? "arrow-down-outline" : "arrow-up-outline",
     badgeTone: recovery.readinessDelta == null ? training.consistencyTone : recovery.readinessDelta >= 0 ? "success" : "warning",
@@ -4636,10 +4610,6 @@ const styles = StyleSheet.create({
   nextWorkoutButton: { flex: 0, minHeight: 38, borderRadius: 10 },
   nextWorkoutButtonDisabled: { backgroundColor: colors.surfaceInset, borderColor: colors.lineStrong },
   nextWorkoutButtonText: { fontSize: 14, lineHeight: 18 },
-  todaySectionHeader: { minHeight: 22, flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: 10, marginBottom: 4 },
-  todaySectionTitle: { color: colors.ink, fontSize: 15, lineHeight: 19, fontWeight: "900" },
-  todaySectionAction: { flexDirection: "row", alignItems: "center", gap: 2, minHeight: 24 },
-  todaySectionActionText: { color: colors.primary, fontSize: 13, lineHeight: 17, fontWeight: "800" },
   scheduleCard: { paddingHorizontal: 12, paddingVertical: 10 },
   scheduleRow: { minHeight: 42, flexDirection: "row", alignItems: "center", gap: 8, paddingVertical: 1 },
   timelineCell: { width: 20, alignSelf: "stretch", alignItems: "center", justifyContent: "center", position: "relative" },
@@ -4930,7 +4900,6 @@ const styles = StyleSheet.create({
   },
   streakCopy: { flex: 1, minWidth: 0 },
   streakTitle: { color: colors.ink, fontSize: 15, fontWeight: "800" },
-  streakSub: { color: colors.inkFaint, fontSize: 13, marginTop: 2 },
   streakChip: { flexDirection: "row", alignItems: "center", gap: 5, paddingVertical: 6, paddingHorizontal: 11, borderRadius: 999, backgroundColor: colors.energySoft },
   streakChipText: { color: colors.energyInk, fontSize: 13, fontWeight: "900" },
   sectionInline: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: 12 },
@@ -4986,9 +4955,6 @@ const styles = StyleSheet.create({
   coachComposer: { minHeight: 70, borderRadius: 10, borderWidth: 1, borderColor: colors.lineStrong, backgroundColor: "#ffffff", color: colors.ink, fontSize: 13, lineHeight: 18, paddingHorizontal: 11, paddingVertical: 9, textAlignVertical: "top" },
   coachSendButton: { minHeight: 40, borderRadius: 9 },
   nextCoachSessionCard: { paddingHorizontal: 13, paddingVertical: 11, gap: 7 },
-  coachSectionHeader: { minHeight: 28, flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: 10 },
-  coachSectionAction: { minHeight: 28, flexDirection: "row", alignItems: "center", gap: 2 },
-  coachSectionActionText: { color: colors.primary, fontSize: 13, lineHeight: 17, fontWeight: "900" },
   nextCoachSessionBody: { minHeight: 62, flexDirection: "row", alignItems: "center", gap: 12 },
   nextCoachEmptyBody: { minHeight: 66, flexDirection: "row", alignItems: "center", gap: 12 },
   nextCoachSessionCopy: { flex: 1, minWidth: 0 },
@@ -5000,7 +4966,6 @@ const styles = StyleSheet.create({
   coachSessionDetailBox: { borderTopWidth: 1, borderTopColor: colors.line, paddingTop: 8, gap: 6 },
   coachDetailRow: { minHeight: 24, flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: 10 },
   latestCoachMessageCard: { paddingHorizontal: 13, paddingVertical: 13, gap: 12 },
-  coachMessageHeader: { minHeight: 24, flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: 10 },
   coachMessageTime: { color: colors.inkFaint, fontSize: 12, lineHeight: 16, fontWeight: "700" },
   latestCoachMessageRow: { flexDirection: "row", alignItems: "flex-start", gap: 13 },
   latestCoachMessageCopy: { flex: 1, minWidth: 0 },
@@ -5114,12 +5079,7 @@ const styles = StyleSheet.create({
   progressTinyTrack: { height: 4, borderRadius: 2, backgroundColor: "#dfedeb", overflow: "hidden", marginTop: 1 },
   progressTinyFill: { height: "100%", borderRadius: 3 },
   progressDetailCard: { paddingHorizontal: 11, paddingVertical: 11, gap: 10 },
-  progressDetailHeader: { minHeight: 38, flexDirection: "row", alignItems: "flex-start", justifyContent: "space-between", gap: 8 },
-  progressDetailHeaderCopy: { flex: 1, minWidth: 0 },
-  progressDetailTitle: { color: colors.ink, fontSize: 20, lineHeight: 24, fontWeight: "900", letterSpacing: 0 },
   progressDetailSubtitle: { color: colors.inkMuted, fontSize: 12, lineHeight: 15, fontWeight: "600", marginTop: 1 },
-  progressRangePill: { minHeight: 30, borderRadius: 9, borderWidth: 1, borderColor: colors.line, backgroundColor: "#fcfefe", paddingHorizontal: 9, flexDirection: "row", alignItems: "center", gap: 4 },
-  progressRangePillText: { color: colors.inkMuted, fontSize: 12, lineHeight: 16, fontWeight: "800" },
   progressPrimaryChartRow: { minHeight: 102, borderRadius: 10, borderWidth: 1, borderColor: colors.line, backgroundColor: "#ffffff", paddingHorizontal: 9, paddingVertical: 8, flexDirection: "row", alignItems: "center", gap: 8 },
   progressPrimaryMetric: { width: 98, alignItems: "flex-start", gap: 4 },
   progressPrimaryLabel: { color: colors.ink, fontSize: 12, lineHeight: 16, fontWeight: "900" },

@@ -1,5 +1,4 @@
 import fs from "fs";
-import path from "path";
 import { randomUUID } from "crypto";
 import multer from "multer";
 import { Types, type HydratedDocument } from "mongoose";
@@ -11,6 +10,7 @@ import { MealFood } from "../models/MealFood";
 import type { MealType } from "../models/PlannedMeal";
 import { getMealVisionConverter, sanitizeMealVisionItems } from "./mealVisionConverter";
 import { suggestMealType } from "./mealClassification";
+import { withLocalObjectCopy } from "./objectStorage";
 
 const ALLOWED_SCAN_MIME_TYPES = ["image/jpeg", "image/png", "image/webp"] as const;
 const EXT_BY_MIME: Record<(typeof ALLOWED_SCAN_MIME_TYPES)[number], string> = {
@@ -36,11 +36,6 @@ export const mealScanUpload = multer({
   },
 });
 
-export function mealScanFilePath(doc: Pick<MealScanDoc, "storedFilename">): string {
-  const resolved = path.join(env.upload.dir, doc.storedFilename);
-  if (path.dirname(resolved) !== env.upload.dir) throw new Error("invalid_stored_filename");
-  return resolved;
-}
 
 // Below this average confidence, items are real enough to have survived
 // sanitization but not trustworthy enough to present as "here's your meal" —
@@ -60,11 +55,9 @@ const LOW_CONFIDENCE_THRESHOLD = 0.35;
  */
 export async function processScan(scan: HydratedDocument<MealScanDoc>, hourOfDay: number): Promise<HydratedDocument<MealScanDoc>> {
   try {
-    const result = await getMealVisionConverter().convert({
-      filePath: mealScanFilePath(scan),
-      mimeType: scan.mimeType,
-      originalName: scan.originalName,
-    });
+    const result = await withLocalObjectCopy(scan.storedFilename, (filePath) =>
+      getMealVisionConverter().convert({ filePath, mimeType: scan.mimeType, originalName: scan.originalName })
+    );
 
     scan.rawModelOutputRef = result as unknown as MealScanDoc["rawModelOutputRef"];
 

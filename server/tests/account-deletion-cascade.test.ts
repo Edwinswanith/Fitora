@@ -1,6 +1,7 @@
 import mongoose, { Types } from "mongoose";
 import { MongoMemoryServer } from "mongodb-memory-server";
 import fs from "fs";
+import path from "path";
 import { User } from "../src/models/User";
 import { AthleteProfile } from "../src/models/AthleteProfile";
 import { CoachAthleteAssignment } from "../src/models/CoachAthleteAssignment";
@@ -15,8 +16,13 @@ import { CoachSessionSlotLock } from "../src/models/CoachSessionSlotLock";
 import { CoachVideo } from "../src/models/CoachVideo";
 import { CoachVideoProgress } from "../src/models/CoachVideoProgress";
 import { CoachReview } from "../src/models/CoachReview";
+import { Meal } from "../src/models/Meal";
+import { MealFood } from "../src/models/MealFood";
+import { MealScan } from "../src/models/MealScan";
+import { MealScanItem } from "../src/models/MealScanItem";
+import { NutritionTarget } from "../src/models/NutritionTarget";
+import { TrainingSession } from "../src/models/TrainingSession";
 import { permanentlyDeleteAccount } from "../src/services/accountDeletion";
-import { coachVideoFilePath } from "../src/services/coachVideo";
 import { env } from "../src/config/env";
 
 // Phase 11 hardening: accountDeletion.ts previously cleaned up none of the 12
@@ -75,7 +81,7 @@ async function setupFullRelationship() {
   const lock = await CoachSessionSlotLock.create({ coachId: coach._id, bucketStart: new Date(), sessionId: session._id });
 
   const video = await CoachVideo.create({ coachId: coach._id, title: "Test Video", category: "mobility", originalName: "x.mp4", storedFilename: `cascade-test-${Date.now()}.mp4`, mimeType: "video/mp4", sizeBytes: 10 });
-  const videoFilePath = coachVideoFilePath(video);
+  const videoFilePath = path.join(env.upload.dir, video.storedFilename);
   await fs.promises.writeFile(videoFilePath, "test video bytes");
   const progress = await CoachVideoProgress.create({ videoId: video._id, athleteId: profile._id, status: "viewed", progressPercent: 50, lastPositionSec: 30 });
 
@@ -135,6 +141,37 @@ describe("account deletion cascade — athlete", () => {
     expect(await CoachAthleteAssignment.countDocuments({ athleteId: ctx.profile._id })).toBe(0);
     expect(await AthleteProfile.countDocuments({ _id: ctx.profile._id })).toBe(0);
     expect(await User.countDocuments({ _id: ctx.athleteUser._id })).toBe(0);
+  });
+
+  test("deleting an athlete also removes nutrition rows, meal scans and their uploaded photos", async () => {
+    const ctx = await setupFullRelationship();
+    const athleteId = ctx.profile._id;
+    const meal = await Meal.create({ athleteId, date: new Date(), mealType: "lunch", source: "ad_hoc" });
+    await MealFood.create({ mealId: meal._id, name: "Rice", quantity: 1, unit: "cup", calories: 200, proteinG: 4, carbsG: 44, fatG: 0 });
+    const scanFile = `cascade-scan-${Date.now()}.jpg`;
+    const photoFile = `cascade-photo-${Date.now()}.jpg`;
+    await fs.promises.writeFile(path.join(env.upload.dir, scanFile), "scan bytes");
+    await fs.promises.writeFile(path.join(env.upload.dir, photoFile), "photo bytes");
+    const scan = await MealScan.create({ athleteId, storedFilename: scanFile, originalName: "plate.jpg", mimeType: "image/jpeg", sizeBytes: 10 });
+    await MealScanItem.create({ scanId: scan._id, foodName: "Rice", quantity: 1, unit: "cup", calories: 200, proteinG: 4, carbsG: 44, fatG: 0 });
+    await NutritionTarget.create({ athleteId, goal: "maintain_weight", goalIntensity: "moderate", calories: 2200, proteinG: 120, carbsG: 250, fatG: 70, effectiveFrom: new Date() });
+    await TrainingSession.create({
+      athleteId,
+      date: new Date(),
+      slot: "AM",
+      photos: [{ _id: new Types.ObjectId(), storedFilename: photoFile, originalName: "p.jpg", mimeType: "image/jpeg", sizeBytes: 11, uploadedAt: new Date() }],
+    });
+
+    await permanentlyDeleteAccount((await User.findById(ctx.athleteUser._id))!);
+
+    expect(await Meal.countDocuments({ athleteId })).toBe(0);
+    expect(await MealFood.countDocuments({ mealId: meal._id })).toBe(0);
+    expect(await MealScan.countDocuments({ athleteId })).toBe(0);
+    expect(await MealScanItem.countDocuments({ scanId: scan._id })).toBe(0);
+    expect(await NutritionTarget.countDocuments({ athleteId })).toBe(0);
+    expect(fs.existsSync(path.join(env.upload.dir, scanFile))).toBe(false);
+    expect(fs.existsSync(path.join(env.upload.dir, photoFile))).toBe(false);
+    await fs.promises.unlink(ctx.videoFilePath).catch(() => undefined);
   });
 
   test("deleting the athlete leaves the coach's own profile/plan/other videos untouched", async () => {

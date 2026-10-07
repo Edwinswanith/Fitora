@@ -1,4 +1,3 @@
-import fs from "fs";
 import { Types } from "mongoose";
 import { Announcement } from "../models/Announcement";
 import { AthleteNote } from "../models/AthleteNote";
@@ -34,18 +33,46 @@ import { CoachPricingPlan } from "../models/CoachPricingPlan";
 import { CoachProfile } from "../models/CoachProfile";
 import { ExerciseMedia } from "../models/ExerciseMedia";
 import { WorkoutTemplate } from "../models/WorkoutTemplate";
+import { CoachSwitchIntent } from "../models/CoachSwitchIntent";
+import { CoachJoinRequest } from "../models/CoachJoinRequest";
+import { Meal } from "../models/Meal";
+import { MealFood } from "../models/MealFood";
+import { MealScan } from "../models/MealScan";
+import { MealScanItem } from "../models/MealScanItem";
+import { NutritionTarget } from "../models/NutritionTarget";
+import { PlannedMeal } from "../models/PlannedMeal";
+import { Routine } from "../models/Routine";
+import { VoiceActionReceipt } from "../models/VoiceActionReceipt";
 import { deletePriorAvatarFile } from "./avatar";
-import { mediaFilePath } from "./media";
-import { coachVideoFilePath } from "./coachVideo";
-import { exerciseMediaFilePath } from "./exerciseMedia";
+import { deleteStoredObject } from "./objectStorage";
+
+async function deleteObjects(keys: (string | null | undefined)[]): Promise<void> {
+  await Promise.all(keys.map((key) => deleteStoredObject(key)));
+}
 
 async function deleteMediaFiles(filter: Record<string, unknown>): Promise<void> {
   const media = await WorkoutMedia.find(filter).select("storedFilename").lean();
-  await Promise.all(
-    media.map((item) =>
-      fs.promises.unlink(mediaFilePath(item)).catch(() => undefined)
-    )
-  );
+  await deleteObjects(media.map((item) => item.storedFilename));
+}
+
+/** Meals and meal scans own child rows (foods, scan items) and scan photos. */
+async function deleteNutritionData(athleteId: Types.ObjectId): Promise<void> {
+  const [meals, scans] = await Promise.all([
+    Meal.find({ athleteId }).select("_id").lean(),
+    MealScan.find({ athleteId }).select("_id storedFilename").lean(),
+  ]);
+  await deleteObjects(scans.map((scan) => scan.storedFilename));
+  await Promise.all([
+    MealFood.deleteMany({ mealId: { $in: meals.map((meal) => meal._id) } }),
+    MealScanItem.deleteMany({ scanId: { $in: scans.map((scan) => scan._id) } }),
+  ]);
+  await Promise.all([
+    Meal.deleteMany({ athleteId }),
+    MealScan.deleteMany({ athleteId }),
+    NutritionTarget.deleteMany({ athleteId }),
+    PlannedMeal.deleteMany({ athleteId }),
+    Routine.deleteMany({ athleteId }),
+  ]);
 }
 
 /** Payment rows have no direct athleteId/coachId of their own — they're reached only through their owning subscriptions. */
@@ -70,6 +97,9 @@ async function deleteSessionsAndLocks(filter: Record<string, unknown>): Promise<
 
 async function deleteAthleteData(athleteId: Types.ObjectId): Promise<void> {
   await deleteMediaFiles({ athleteId });
+  const sessions = await TrainingSession.find({ athleteId }).select("photos.storedFilename").lean();
+  await deleteObjects(sessions.flatMap((session) => (session.photos ?? []).map((photo) => photo.storedFilename)));
+  await deleteNutritionData(athleteId);
   await Promise.all([
     AthleteNote.deleteMany({ athleteId }),
     Attendance.deleteMany({ athleteId }),
@@ -88,6 +118,8 @@ async function deleteAthleteData(athleteId: Types.ObjectId): Promise<void> {
     deleteSessionsAndLocks({ athleteId }),
     CoachVideoProgress.deleteMany({ athleteId }),
     CoachReview.deleteMany({ athleteId }),
+    CoachSwitchIntent.deleteMany({ athleteId }),
+    CoachJoinRequest.deleteMany({ athleteId }),
   ]);
   await AthleteProfile.deleteOne({ _id: athleteId });
 }
@@ -97,6 +129,7 @@ export async function permanentlyDeleteAccount(user: UserDoc): Promise<void> {
   const userId = user._id as Types.ObjectId;
 
   await deletePriorAvatarFile(user);
+  await VoiceActionReceipt.deleteMany({ userId });
 
   if (user.role === "athlete") {
     const profile = await AthleteProfile.findOne({ userId }).select("_id").lean();
@@ -104,9 +137,12 @@ export async function permanentlyDeleteAccount(user: UserDoc): Promise<void> {
   } else if (user.role === "coach") {
     await deleteMediaFiles({ coachId: userId });
     const coachVideos = await CoachVideo.find({ coachId: userId }).select("storedFilename").lean();
-    await Promise.all(coachVideos.map((v) => fs.promises.unlink(coachVideoFilePath(v)).catch(() => undefined)));
+    await deleteObjects(coachVideos.map((v) => v.storedFilename));
     const exerciseMedia = await ExerciseMedia.find({ coachId: userId }).select("storedFilename").lean();
-    await Promise.all(exerciseMedia.map((m) => fs.promises.unlink(exerciseMediaFilePath(m)).catch(() => undefined)));
+    await deleteObjects(exerciseMedia.map((m) => m.storedFilename));
+    // A pending switch to this coach can never complete now.
+    await CoachSwitchIntent.deleteMany({ toCoachId: userId });
+    await CoachJoinRequest.deleteMany({ coachId: userId });
     await Promise.all([
       Announcement.deleteMany({ coachId: userId }),
       CoachAthleteAssignment.deleteMany({

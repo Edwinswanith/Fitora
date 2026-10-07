@@ -3,6 +3,7 @@ import AsyncStorage from "@react-native-async-storage/async-storage";
 import { apiJson } from "./api";
 import type { AvatarInfo } from "../components/Avatar";
 import type { SessionSlot } from "./sessions";
+import type { JoinRequest } from "./joinRequests";
 
 export type Band = "green" | "amber" | "red";
 
@@ -364,6 +365,8 @@ export type CoachHomeData = {
   sessions: CoachSession[];
   squadSeries: { date: string; avgReadiness: number | null; attendanceRate: number | null; avgLoad: number | null; redFlags: number; athleteCount: number }[];
   notesInbox: { openCount: number; notes: { noteId: string; athleteId: string; athleteName: string; body: string; date: string; needsReply: boolean }[] } | null;
+  /** Athletes asking to join (payments-off path). Optional: older saved data won't have it. */
+  joinRequests?: JoinRequest[];
   partialIssues: string[];
 };
 
@@ -853,8 +856,8 @@ export function deriveNextAction(data: AthleteDashboardData): NextAction {
     return {
       kind: "checkin",
       eyebrow: "Next up",
-      title: "Daily Check-in",
-      body: "Complete your wellness check before training.",
+      title: "Check in",
+      body: "Under a minute. It sets your readiness.",
       ctaLabel: "Check In",
     };
   }
@@ -887,7 +890,7 @@ export function deriveNextAction(data: AthleteDashboardData): NextAction {
           kind: "rpe",
           eyebrow: "Next up",
           title: "Daily review",
-          body: "Training completed. Log your session effort.",
+          body: "How hard was today's session?",
           ctaLabel: "Log RPE",
         };
       }
@@ -911,7 +914,7 @@ export function deriveNextAction(data: AthleteDashboardData): NextAction {
       kind: "meal",
       eyebrow: "Next up",
       title: pendingMeal.name || titleCase(pendingMeal.mealType) || "Meal",
-      body: `${titleCase(pendingMeal.mealType)} planned by your coach`,
+      body: `${titleCase(pendingMeal.mealType)} from your plan`,
       ctaLabel: "Log Meal",
     };
   }
@@ -921,7 +924,7 @@ export function deriveNextAction(data: AthleteDashboardData): NextAction {
       kind: "hydration",
       eyebrow: "Next up",
       title: "Hydration",
-      body: `${(Math.max(0, data.water.goalMl - data.water.totalMl) / 1000).toFixed(1)} L left to reach your goal`,
+      body: `${(Math.max(0, data.water.goalMl - data.water.totalMl) / 1000).toFixed(1)} L to go`,
       ctaLabel: "Log Water",
     };
   }
@@ -930,7 +933,7 @@ export function deriveNextAction(data: AthleteDashboardData): NextAction {
     kind: "complete",
     eyebrow: "All set",
     title: "Day complete",
-    body: "Nice work — you're all caught up for today.",
+    body: "Nice work. Nothing left for today.",
     ctaLabel: "",
   };
 }
@@ -1099,12 +1102,13 @@ export async function loadMoreCoachReviews(coachId: string, page: number): Promi
 export async function loadCoachHomeData(): Promise<CoachHomeData> {
   const date = todayKey();
   const issues: string[] = [];
-  const [dashboard, roster, sessions, squad, notes] = await Promise.all([
+  const [dashboard, roster, sessions, squad, notes, joinRequests] = await Promise.all([
     optional("dashboard", apiJson<{ cards: DailyCard[] }>(`/api/coach/dashboard?date=${date}`), issues),
     optional("clients", apiJson<{ athletes: CoachRosterAthlete[] }>("/api/coach/athletes"), issues),
     optional("sessions", apiJson<{ sessions: CoachSession[] }>("/api/coach/sessions"), issues),
     optional("squad analytics", apiJson<{ series: CoachHomeData["squadSeries"] }>("/api/coach/analytics/squad?days=7"), issues),
     optional("notes", apiJson<CoachHomeData["notesInbox"]>("/api/coach/notes-inbox?days=14"), issues),
+    optional("client requests", apiJson<{ requests: JoinRequest[] }>("/api/coach/join-requests"), issues),
   ]);
   const rosterRows = roster?.athletes ?? [];
   const athleteNames = new Map(rosterRows.map((athlete) => [athlete.athleteId, athlete.name]));
@@ -1120,6 +1124,7 @@ export async function loadCoachHomeData(): Promise<CoachHomeData> {
     sessions: enrichedSessions,
     squadSeries: squad?.series ?? [],
     notesInbox: notes,
+    joinRequests: joinRequests?.requests ?? [],
     partialIssues: issues,
   };
 }

@@ -319,3 +319,17 @@ export function buildAthleteLeftForCoach(input: { athleteName: string; initiated
     link: "/coach/athletes",
   };
 }
+
+// --- Request to join a coach ---
+
+export function buildJoinRequested(input: { athleteName: string }): TemplateResult {
+  return { title: "New client request", body: `${input.athleteName} wants to train with you.`, link: "/coach/dashboard" };
+}
+
+export function buildJoinAccepted(input: { coachName: string }): TemplateResult {
+  return { title: "You're in", body: `${input.coachName} accepted your request. Say hello!`, link: "/athlete/dashboard?section=coach" };
+}
+
+export function buildJoinDeclined(input: { coachName: string }): TemplateResult {
+  return { title: "Request not accepted", body: `${input.coachName} can't take you on right now. You can ask another coach.`, link: "/athlete/coach-discovery" };
+}

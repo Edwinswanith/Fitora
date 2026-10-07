@@ -219,7 +219,7 @@ export default function MealPlanEditor() {
   return (
     <EditorScreen>
       <EditorHeader
-        title={isEdit ? "Edit meal plan" : "New meal plan"}
+        title={isEdit ? "Edit meal plan" : "New Meal Plan"}
         subtitle={
           isEdit
             ? "Saving day changes creates a new version. Plans you already assigned keep their original copy."
@@ -285,10 +285,10 @@ export default function MealPlanEditor() {
         />
       ))}
 
-      <PrimaryButton label={canAddDay ? "+ Add day" : "All days filled"} tone="outline" onPress={addDay} disabled={!canAddDay} />
+      <PrimaryButton label={canAddDay ? "+ Add Day" : "All Days Filled"} tone="outline" onPress={addDay} disabled={!canAddDay} />
 
       <ErrorList title="Fix these before saving" errors={errors} />
-      <PrimaryButton label={isEdit ? "Save changes" : "Create meal plan"} onPress={save} busy={saving} disabled={archiving} />
+      <PrimaryButton label={isEdit ? "Save Changes" : "Create Meal Plan"} onPress={save} busy={saving} disabled={archiving} />
       {isEdit ? (
         <PrimaryButton
           label={archiving ? "Working..." : isArchived ? "Restore meal plan" : "Archive meal plan"}

@@ -21,10 +21,11 @@ import {
   NutritionTargetError,
 } from "../services/nutritionTarget";
 import { macrosReconcileToCalories } from "../services/nutritionEngine";
-import { mealScanUpload, mealScanFilePath, processScan, confirmScan, serializeScan, type ReviewedFoodInput } from "../services/mealScan";
+import { mealScanUpload, processScan, confirmScan, serializeScan, type ReviewedFoodInput } from "../services/mealScan";
 import { generateDeterministicRoutine } from "../services/routineGenerator";
 import { resolveTimezoneForUser } from "../services/timezone";
 import { minuteOfDayInZone } from "../services/timezone";
+import { discardUpload, persistUpload } from "../services/objectStorage";
 
 const router = Router();
 router.use(requireAuth, requireRole("athlete"), loadScope);
@@ -310,7 +311,14 @@ router.post(
 
     const timezone = await resolveTimezoneForUser({ userId: req.actor.userId, role: "athlete" });
     const hourOfDay = Math.floor(minuteOfDayInZone(new Date(), timezone) / 60);
+    // Analyse from the temp file first, then move the photo to storage. It's
+    // kept only as a record (never served back), so a storage failure here is
+    // logged rather than failing a scan the athlete has already been shown.
     const processed = await processScan(scan, hourOfDay);
+    await persistUpload(req.file).catch(async (err) => {
+      console.error("[mealScan] storing scan photo failed:", (err as Error).message);
+      await discardUpload(req.file);
+    });
     const items = await MealScanItem.find({ scanId: processed._id }).lean();
     res.status(201).json({ scan: serializeScan(processed.toObject(), items as never) });
   }

@@ -63,7 +63,7 @@ import {
   clampMsgLimit,
 } from "../services/messaging";
 import { WorkoutMedia, type WorkoutMediaDoc } from "../models/WorkoutMedia";
-import { mediaUpload, mediaFilePath, serializeMedia } from "../services/media";
+import { mediaUpload, serializeMedia } from "../services/media";
 import { enrichVoiceIntentResult, getVoiceIntentInterpreter, type VoicePendingIntent } from "../services/voiceIntentInterpreter";
 import { logVoiceEvent } from "../lib/voiceObservability";
 import { withIdempotency } from "../lib/voiceIdempotency";
@@ -72,6 +72,7 @@ import { resolveTimezoneForUser } from "../services/timezone";
 import { buildReadinessRiskFlag } from "../services/notificationTemplates";
 import multer from "multer";
 import fs from "fs";
+import { sendStoredObject, persistUploadOrRespond } from "../services/objectStorage";
 
 const router = Router();
 
@@ -1108,6 +1109,7 @@ router.post(
       await fs.promises.unlink(file.path).catch(() => undefined);
       return;
     }
+    if (!(await persistUploadOrRespond(file, res))) return;
     const photo = {
       _id: new Types.ObjectId(),
       storedFilename: file.filename,
@@ -1146,14 +1148,7 @@ router.get("/training/:slot/photos/:photoId/file", async (req: Request, res: Res
     res.status(404).json({ error: "photo_not_found" });
     return;
   }
-  const filePath = mediaFilePath(photo);
-  res.type(photo.mimeType);
-  res.setHeader("Cache-Control", "private, max-age=0, no-store");
-  res.sendFile(filePath, (err) => {
-    if (err && !res.headersSent) {
-      res.status(404).json({ error: "file_missing" });
-    }
-  });
+  await sendStoredObject(res, photo.storedFilename, photo.mimeType);
 });
 
 /**
@@ -1788,14 +1783,7 @@ router.get("/media/:mediaId", async (req: Request, res: Response) => {
 router.get("/media/:mediaId/file", async (req: Request, res: Response) => {
   const media = await loadSentMedia(req, res);
   if (!media) return;
-  const filePath = mediaFilePath(media);
-  res.type(media.mimeType);
-  res.setHeader("Cache-Control", "private, max-age=0, no-store");
-  res.sendFile(filePath, (err) => {
-    if (err && !res.headersSent) {
-      res.status(404).json({ error: "file_missing" });
-    }
-  });
+  await sendStoredObject(res, media.storedFilename, media.mimeType);
 });
 
 export default router;

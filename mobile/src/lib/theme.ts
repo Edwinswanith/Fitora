@@ -50,7 +50,7 @@ export type RoleTheme = {
 export const ROLE_THEMES: Record<Role, RoleTheme> = {
   athlete: {
     role: "athlete",
-    label: "User",
+    label: "Athlete",
     heading: "Your coaching day, simplified.",
     subcopy: "Workout, nutrition, coaching and progress in one place.",
     tagline: "Fitness, nutrition and coaching",

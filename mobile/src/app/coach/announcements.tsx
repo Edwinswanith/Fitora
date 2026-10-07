@@ -130,14 +130,14 @@ export default function Announcements() {
               <View style={styles.composeMetaLeft}>
                 <Ionicons name="people-outline" size={14} color={accent} />
                 <Text style={styles.helper}>
-                  Goes to all {recipientCount} assigned athlete{recipientCount === 1 ? "" : "s"}
+                  Goes to all {recipientCount} client{recipientCount === 1 ? "" : "s"}
                 </Text>
               </View>
               <Text style={styles.helper}>{1000 - draft.length}</Text>
             </View>
             {postError ? <Text style={styles.errorText}>{postError}</Text> : null}
             <ActionButton
-              label={posting ? "Sending..." : `Send to ${recipientCount} athlete${recipientCount === 1 ? "" : "s"}`}
+              label={posting ? "Sending..." : `Send to ${recipientCount} client${recipientCount === 1 ? "" : "s"}`}
               icon="paper-plane"
               variant="filled"
               onPress={post}

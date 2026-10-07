@@ -5,11 +5,11 @@ import { writeRateLimit } from "../middleware/rateLimit";
 import { User } from "../models/User";
 import {
   avatarUpload,
-  avatarFilePath,
   deletePriorAvatarFile,
   avatarSummary,
   isValidAvatarDefaultId,
 } from "../services/avatar";
+import { sendStoredObject, persistUploadOrRespond, discardUpload } from "../services/objectStorage";
 
 /**
  * Self-service profile-avatar management — available to every role (coach,
@@ -48,9 +48,11 @@ router.post(
     }
     const user = await User.findById(req.actor.userId);
     if (!user) {
+      await discardUpload(file);
       res.status(404).json({ error: "user_not_found" });
       return;
     }
+    if (!(await persistUploadOrRespond(file, res))) return;
     await deletePriorAvatarFile(user);
     user.avatarKind = "photo";
     user.avatarStoredFilename = file.filename;
@@ -117,14 +119,7 @@ router.get("/avatar/file", async (req: Request, res: Response) => {
     res.status(404).json({ error: "no_avatar_photo" });
     return;
   }
-  const filePath = avatarFilePath(user);
-  res.type(user.avatarMimeType ?? "image/jpeg");
-  res.setHeader("Cache-Control", "private, max-age=0, no-store");
-  res.sendFile(filePath, (err) => {
-    if (err && !res.headersSent) {
-      res.status(404).json({ error: "file_missing" });
-    }
-  });
+  await sendStoredObject(res, user.avatarStoredFilename, user.avatarMimeType ?? "image/jpeg");
 });
 
 export default router;

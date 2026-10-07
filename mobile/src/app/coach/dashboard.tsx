@@ -6,7 +6,6 @@ import {
   ActionButton,
   AlertBanner,
   AppCard,
-  EmptyState,
   ErrorState,
   HeroCard,
   IconTile,
@@ -27,6 +26,7 @@ import { combineLocalDateTime, isInFuture, isoToLocalParts, todayLocalDate } fro
 import { apiFetch } from "../../lib/api";
 import { PAYMENTS_ENABLED } from "../../lib/features";
 import { joinSessionCall } from "../../lib/videoCall";
+import { decideJoinRequest, type JoinRequest } from "../../lib/joinRequests";
 import { celebrate, errorFeedback } from "../../lib/feedback";
 import { useAuth } from "../../lib/auth";
 import { colors } from "../../lib/theme";
@@ -75,12 +75,28 @@ export default function CoachHome() {
   return (
     <ScreenContainer refreshing={state.refreshing} onRefresh={state.reload}>
       {state.stale ? <StaleDataNotice onRetry={state.reload} /> : null}
-      <CoachHomeView data={state.data} onSessionUpdate={patchSession} />
+      <CoachHomeView
+        data={state.data}
+        onSessionUpdate={patchSession}
+        onJoinDecided={(requestId, accepted) => {
+          state.setData((prev) => (prev ? { ...prev, joinRequests: (prev.joinRequests ?? []).filter((r) => r.id !== requestId) } : prev));
+          // A new client changes the roster, cards and plan gaps.
+          if (accepted) state.reload();
+        }}
+      />
     </ScreenContainer>
   );
 }
 
-function CoachHomeView({ data, onSessionUpdate }: { data: CoachHomeData; onSessionUpdate: (sessionId: string, patch: Partial<CoachSession>) => void }) {
+function CoachHomeView({
+  data,
+  onSessionUpdate,
+  onJoinDecided,
+}: {
+  data: CoachHomeData;
+  onSessionUpdate: (sessionId: string, patch: Partial<CoachSession>) => void;
+  onJoinDecided: (requestId: string, accepted: boolean) => void;
+}) {
   const router = useRouter();
   const { user } = useAuth();
   const [sessionPanel, setSessionPanel] = useState(false);
@@ -93,6 +109,7 @@ function CoachHomeView({ data, onSessionUpdate }: { data: CoachHomeData; onSessi
   const [cancelNote, setCancelNote] = useState("");
   const [completeSummary, setCompleteSummary] = useState("");
   const [completeNotes, setCompleteNotes] = useState("");
+  const joinRequests = data.joinRequests ?? [];
   const attention = useMemo(
     () => [...data.cards].filter((card) => attentionRank(card) < 2.5).sort((a, b) => attentionRank(a) - attentionRank(b)).slice(0, 4),
     [data.cards]
@@ -107,7 +124,8 @@ function CoachHomeView({ data, onSessionUpdate }: { data: CoachHomeData; onSessi
     return { total, paid, unpaid: total - paid };
   }, [data.roster]);
   const latestSquadPoint = data.squadSeries.length ? data.squadSeries[data.squadSeries.length - 1] : null;
-  const nextSession = nextFutureSession(data.sessions);
+  // Pending requests have their own card; "next session" means one that is actually on.
+  const nextSession = nextFutureSession(data.sessions.filter((session) => session.status !== "requested"));
   const sessionsToday = data.sessions.filter((session) => session.scheduledStart.slice(0, 10) === data.date && session.status !== "cancelled").length;
   const trainingToday = data.cards.filter((card) => Object.values(card.sessions ?? {}).some((session) => session?.status)).length;
   const activityRows = buildActivityRows(data);
@@ -270,7 +288,14 @@ function CoachHomeView({ data, onSessionUpdate }: { data: CoachHomeData; onSessi
         title={longDate(data.date)}
       />
 
-      {data.roster.length === 0 ? <CoachGettingStartedCard /> : (
+      {joinRequests.length ? (
+        <HeroCard
+          icon="person-add-outline"
+          eyebrow="New clients"
+          title={joinRequests.length === 1 ? `${joinRequests[0].athlete.name} wants to join` : `${joinRequests.length} people want to join`}
+          body="Accept or decline below."
+        />
+      ) : data.roster.length === 0 ? <CoachGettingStartedCard /> : (
         <CoachHomeHero
           data={data}
           nextSession={nextSession}
@@ -281,6 +306,13 @@ function CoachHomeView({ data, onSessionUpdate }: { data: CoachHomeData; onSessi
           onPlan={() => router.push("/coach/plan" as never)}
         />
       )}
+
+      {joinRequests.length ? (
+        <>
+          <SectionLabel title="Client requests" />
+          <JoinRequestsCard requests={joinRequests} onDecided={onJoinDecided} />
+        </>
+      ) : null}
 
       <SectionLabel title="Today" />
       <SessionRequestsCard sessions={data.sessions} today={data.date} onSessionUpdate={onSessionUpdate} />
@@ -345,12 +377,12 @@ function CoachHomeView({ data, onSessionUpdate }: { data: CoachHomeData; onSessi
                   style={styles.inputHalf}
                 />
               </View>
-              <TextInput value={rescheduleNote} onChangeText={setRescheduleNote} style={styles.input} placeholder="Note to athlete (optional)" placeholderTextColor={colors.inkFaint} />
+              <TextInput value={rescheduleNote} onChangeText={setRescheduleNote} style={styles.input} placeholder="Note to client (optional)" placeholderTextColor={colors.inkFaint} />
               <ActionButton label={sessionBusy === "reschedule" ? "Moving..." : "Reschedule"} onPress={rescheduleSession} />
 
               <View style={styles.sessionDivider} />
               <Text style={styles.formLabel}>Mark Complete</Text>
-              <TextInput value={completeSummary} onChangeText={setCompleteSummary} style={styles.input} placeholder="Summary (visible to athlete)" placeholderTextColor={colors.inkFaint} />
+              <TextInput value={completeSummary} onChangeText={setCompleteSummary} style={styles.input} placeholder="Summary (visible to client)" placeholderTextColor={colors.inkFaint} />
               <TextInput value={completeNotes} onChangeText={setCompleteNotes} style={styles.input} placeholder="Private coach notes" placeholderTextColor={colors.inkFaint} />
               <ActionButton label={sessionBusy === "complete" ? "Saving..." : "Complete"} variant="filled" onPress={completeSession} />
             </View>
@@ -373,15 +405,11 @@ function CoachHomeView({ data, onSessionUpdate }: { data: CoachHomeData; onSessi
         </AppCard>
       ) : null}
 
-      <SectionLabel title="Clients" />
+      {attention.length ? (
+      <>
+      <SectionLabel title="Needs attention" action="View all" onAction={() => router.push("/coach/athletes" as never)} />
       <AppCard>
-        <SectionHeader
-          title={`Needs Attention${attention.length ? ` - ${attention.length}` : ""}`}
-          action={attention.length ? "View all" : undefined}
-          onAction={() => router.push("/coach/athletes" as never)}
-        />
-        {attention.length ? (
-          attention.map((card, index) => (
+        {attention.map((card, index) => (
             <View key={card.athleteId}>
               <AttentionRow
                 card={card}
@@ -390,16 +418,15 @@ function CoachHomeView({ data, onSessionUpdate }: { data: CoachHomeData; onSessi
               />
               {index < attention.length - 1 ? <Divider /> : null}
             </View>
-          ))
-        ) : (
-          <Text style={styles.muted}>{data.roster.length ? "No clients need urgent review right now." : "No clients yet. Add one to see their check-ins here."}</Text>
-        )}
+        ))}
       </AppCard>
+      </>
+      ) : null}
 
       <SectionLabel title="At a glance" />
       {data.squadSeries.length ? (
         <AppCard>
-          <SectionHeader title="Squad Readiness - 7 Days" />
+          <SectionHeader title="Squad readiness, 7 days" />
           <MiniLineChart values={data.squadSeries.map((point) => point.avgReadiness)} height={72} />
           <View style={styles.squadStatRow}>
             <Text style={styles.muted}>Attendance today: {latestSquadPoint?.attendanceRate == null ? "--" : `${latestSquadPoint.attendanceRate}%`}</Text>
@@ -438,14 +465,11 @@ function CoachHomeView({ data, onSessionUpdate }: { data: CoachHomeData; onSessi
       </AppCard>
       ) : null}
 
+      {activityRows.length ? (
+      <>
+      <SectionLabel title="Today's activity" />
       <AppCard>
-        <SectionHeader
-          title="Today's Activity"
-          action={activityRows.length ? "View all" : undefined}
-          onAction={() => router.push("/coach/athletes" as never)}
-        />
-        {activityRows.length ? (
-          activityRows.slice(0, 5).map((item, index) => (
+        {activityRows.slice(0, 5).map((item, index) => (
             <View key={`${item.title}-${index}`}>
               <View style={styles.activityRow}>
                 <Text style={styles.timeText}>{item.time}</Text>
@@ -454,24 +478,10 @@ function CoachHomeView({ data, onSessionUpdate }: { data: CoachHomeData; onSessi
               </View>
               {index < Math.min(activityRows.length, 5) - 1 ? <Divider /> : null}
             </View>
-          ))
-        ) : (
-          <EmptyState title="No activity yet" body="Client check-ins, sessions and completions will appear here." icon="pulse-outline" />
-        )}
+        ))}
       </AppCard>
-
-      <AppCard>
-        <View style={styles.quickTitleRow}>
-          <IconTile icon="flash-outline" size={38} />
-          <Text style={styles.cardTitle}>Quick Actions</Text>
-        </View>
-        <View style={styles.actionRow}>
-          {/* Short labels: three buttons share one row on a 360-390dp phone; longer labels truncated ("Assign W..."). */}
-          <ActionButton label="Workout" icon="barbell-outline" variant="filled" onPress={() => router.push("/coach/plan" as never)} />
-          <ActionButton label="Plans" icon="clipboard-outline" onPress={() => router.push("/coach/plan" as never)} />
-          <ActionButton label="Video" icon="cloud-upload-outline" onPress={() => router.push("/coach/content" as never)} />
-        </View>
-      </AppCard>
+      </>
+      ) : null}
 
       {data.partialIssues.length ? (
         <AlertBanner
@@ -509,13 +519,12 @@ function CoachHomeHero({
     .filter((session) => session.status === "requested" && session.scheduledEnd >= data.date)
     .sort((a, b) => a.scheduledStart.localeCompare(b.scheduledStart));
   if (requests.length) {
-    const first = requests[0];
     return (
       <HeroCard
         icon="calendar-outline"
         eyebrow="Waiting on you"
         title={requests.length === 1 ? "1 session request" : `${requests.length} session requests`}
-        body={`${first.athleteName || "A client"} · ${titleCase(first.type)} · ${new Date(first.scheduledStart).toLocaleString(undefined, { weekday: "short", hour: "numeric", minute: "2-digit" })}. Confirm or decline below.`}
+        body="Confirm or decline below."
       />
     );
   }
@@ -526,7 +535,7 @@ function CoachHomeHero({
         icon="videocam-outline"
         eyebrow="Today's session"
         title={`${nextSession.athleteName || "Client"} at ${new Date(nextSession.scheduledStart).toLocaleTimeString(undefined, { hour: "numeric", minute: "2-digit" })}`}
-        body={`${titleCase(nextSession.type)}. You can join from 10 minutes before it starts.`}
+        body={`${titleCase(nextSession.type)}. Opens 10 min before.`}
         actionLabel={isConfirmed ? (starting ? "Starting..." : "Start Session") : undefined}
         onAction={isConfirmed ? onStartSession : undefined}
       />
@@ -551,11 +560,71 @@ function CoachHomeHero({
       icon="checkmark-done-outline"
       eyebrow="All good"
       title={`All ${data.roster.length} client${data.roster.length === 1 ? "" : "s"} on track`}
-      body="No requests or alerts right now. A good time to plan tomorrow."
+      body="No requests or alerts."
       actionLabel="Plan Tomorrow"
       onAction={onPlan}
     />
   );
+}
+
+/** Athletes asking to join this coach. Accepting creates the client relationship. */
+function JoinRequestsCard({ requests, onDecided }: { requests: JoinRequest[]; onDecided: (requestId: string, accepted: boolean) => void }) {
+  const [busy, setBusy] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
+
+  async function decide(request: JoinRequest, decision: "accept" | "decline") {
+    setBusy(`${request.id}:${decision}`);
+    setError(null);
+    const result = await decideJoinRequest(request.id, decision);
+    setBusy(null);
+    if (!result.ok) {
+      errorFeedback();
+      setError(result.error);
+      // Already answered elsewhere, or now coached by someone else: drop it.
+      // Anything else (e.g. offline) leaves it in place to retry.
+      if (result.code === "request_not_found" || result.code === "athlete_has_active_coach") onDecided(request.id, false);
+      return;
+    }
+    if (decision === "accept") celebrate({ title: `${firstName(request.athlete.name, "New client")} added`, body: "They're now in your Clients list." });
+    onDecided(request.id, decision === "accept");
+  }
+
+  return (
+    <AppCard>
+      {requests.map((request, index) => (
+        <View key={request.id} style={[styles.joinRow, index > 0 ? styles.joinRowDivider : null]}>
+          <Text style={styles.cardTitle}>{request.athlete.name}</Text>
+          <Text style={styles.muted}>{[request.athlete.sport ? titleCase(request.athlete.sport) : null, relativeAge(request.createdAt)].filter(Boolean).join(" · ")}</Text>
+          {request.message ? <Text style={styles.joinMessage}>{`"${request.message}"`}</Text> : null}
+          <View style={styles.actionRow}>
+            <ActionButton
+              label={busy === `${request.id}:accept` ? "Accepting..." : "Accept"}
+              variant="filled"
+              disabled={Boolean(busy)}
+              onPress={() => void decide(request, "accept")}
+            />
+            <ActionButton
+              label={busy === `${request.id}:decline` ? "Declining..." : "Decline"}
+              disabled={Boolean(busy)}
+              onPress={() => void decide(request, "decline")}
+              style={styles.cancelButton}
+              textStyle={styles.cancelButtonText}
+            />
+          </View>
+        </View>
+      ))}
+      {error ? <Text style={styles.errorText}>{error}</Text> : null}
+    </AppCard>
+  );
+}
+
+function relativeAge(iso: string): string {
+  const minutes = Math.max(0, Math.round((Date.now() - new Date(iso).getTime()) / 60000));
+  if (minutes < 60) return minutes <= 1 ? "just now" : `${minutes} min ago`;
+  const hours = Math.round(minutes / 60);
+  if (hours < 24) return `${hours} hr ago`;
+  const days = Math.round(hours / 24);
+  return `${days} day${days === 1 ? "" : "s"} ago`;
 }
 
 /** First-day guide for a coach with no clients yet, instead of a wall of zeros. */
@@ -639,7 +708,7 @@ function SessionRequestsCard({
           kind: "error",
           text:
             json.error === "relationship_ended"
-              ? "This athlete is no longer your client."
+              ? "This person is no longer your client."
               : json.error === "invalid_transition"
                 ? "This request was already handled. Pull to refresh."
                 : `Could not ${action === "confirm" ? "confirm" : "decline"} this request.`,
@@ -658,7 +727,7 @@ function SessionRequestsCard({
 
   return (
     <AppCard>
-      <SectionHeader title={`Session Requests${requests.length ? ` - ${requests.length}` : ""}`} />
+      <SectionHeader title="Session requests" />
       {requests.map((session, index) => (
         <View key={session.id}>
           <View style={styles.requestRow}>
@@ -749,6 +818,9 @@ function Divider() {
 }
 
 const styles = StyleSheet.create({
+  joinRow: { gap: 6, paddingVertical: 4 },
+  joinRowDivider: { borderTopWidth: 1, borderTopColor: colors.line, paddingTop: 12, marginTop: 6 },
+  joinMessage: { color: colors.ink, fontSize: 14, lineHeight: 20, fontStyle: "italic" },
   cardTitle: { color: colors.ink, fontSize: 15, lineHeight: 19, fontWeight: "900" },
   blueTitle: { color: colors.primary, fontSize: 14, lineHeight: 18, fontWeight: "900" },
   muted: { color: colors.inkMuted, fontSize: 12, lineHeight: 16 },
@@ -772,7 +844,6 @@ const styles = StyleSheet.create({
   membershipCopy: { flex: 1, minWidth: 0 },
   reviewButton: { width: 86, minHeight: 36, borderRadius: 10, borderWidth: 1, borderColor: colors.primary, alignItems: "center", justifyContent: "center" },
   reviewButtonText: { color: colors.primary, fontSize: 13, fontWeight: "900" },
-  quickTitleRow: { flexDirection: "row", alignItems: "center", gap: 10 },
   activityRow: { minHeight: 42, flexDirection: "row", alignItems: "center", gap: 9 },
   timeText: { width: 48, color: colors.inkMuted, fontSize: 12, fontWeight: "700" },
   activityText: { flex: 1, color: colors.ink, fontSize: 12, lineHeight: 16, fontWeight: "700" },

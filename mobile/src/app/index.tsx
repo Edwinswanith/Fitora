@@ -15,7 +15,6 @@ type RoleOption = {
   label: string;
   sub: string;
   icon: keyof typeof Ionicons.glyphMap;
-  popular?: boolean;
 };
 
 type Feature = {
@@ -28,10 +27,9 @@ type Feature = {
 const ROLE_OPTIONS: RoleOption[] = [
   {
     role: "athlete",
-    label: "User",
-    sub: "Fitness, nutrition\nand coaching",
+    label: "Athlete",
+    sub: "Train, eat well\nand get coached",
     icon: "person-outline",
-    popular: true,
   },
   {
     role: "coach",
@@ -45,25 +43,25 @@ const FEATURES: Feature[] = [
   {
     icon: "calendar-outline",
     title: "Daily coaching plan",
-    sub: "Workouts, meals, sessions, and coach tasks in one place.",
+    sub: "Workouts, meals and sessions in one place.",
     tone: "blue",
   },
   {
     icon: "shield-checkmark-outline",
     title: "Readiness and risk flags",
-    sub: "Clear signals for training, recovery, and attention.",
+    sub: "Know when to push and when to rest.",
     tone: "purple",
   },
   {
     icon: "restaurant-outline",
     title: "Nutrition support",
-    sub: "Track targets, planned meals, water, and coach changes.",
+    sub: "Calorie targets, meals and water.",
     tone: "green",
   },
   {
     icon: "trending-up-outline",
     title: "Progress views",
-    sub: "Review adherence, weight trends, readiness, and feedback.",
+    sub: "Trends and feedback from your coach.",
     tone: "gold",
   },
 ];
@@ -114,11 +112,6 @@ export default function Landing() {
                   pressed ? styles.pressed : null,
                 ]}
               >
-                {option.popular ? (
-                  <View style={styles.popularPill}>
-                    <Text style={styles.popularText}>MOST POPULAR</Text>
-                  </View>
-                ) : null}
                 <View style={styles.roleIconTile}>
                   <Ionicons name={option.icon} size={31} color={colors.primary} />
                 </View>
@@ -137,7 +130,7 @@ export default function Landing() {
             <Ionicons name="shield-checkmark-outline" size={17} color="#406e68" />
           </View>
           <Text style={styles.noticeText}>
-            Existing accounts keep their saved role.{"\n"}New Google users are created from the role you pick.
+            Your role is set when you first sign up.
           </Text>
         </View>
 
@@ -247,23 +240,6 @@ const styles = StyleSheet.create({
     borderColor: colors.primary,
     borderWidth: 1.5,
     backgroundColor: "#fcfefe",
-  },
-  popularPill: {
-    position: "absolute",
-    top: 7,
-    minHeight: 17,
-    borderRadius: 5,
-    backgroundColor: colors.primary,
-    paddingHorizontal: 8,
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  popularText: {
-    color: "#ffffff",
-    fontSize: 12,
-    lineHeight: 16,
-    fontWeight: "800",
-    letterSpacing: 0.8,
   },
   roleIconTile: {
     width: 59,

@@ -69,8 +69,8 @@ type Party = {
 };
 
 function athleteMeta(athlete?: Athlete): string {
-  if (!athlete) return "Assigned athlete";
-  return [athlete.sport, athlete.position].filter(Boolean).join(" / ") || athlete.email || "Assigned athlete";
+  if (!athlete) return "Client";
+  return [athlete.sport, athlete.position].filter(Boolean).join(" / ") || athlete.email || "Client";
 }
 
 function messageTime(iso?: string): string {
@@ -138,7 +138,7 @@ export default function CoachMessages() {
       const athlete = athleteById.get(thread.partyId);
       return {
         id: thread.partyId,
-        name: thread.partyName || athlete?.name || "Athlete",
+        name: thread.partyName || athlete?.name || "Client",
         subtitle: athleteMeta(athlete),
       };
     });
@@ -146,7 +146,7 @@ export default function CoachMessages() {
 
   const selectedParty =
     parties.find((p) => p.id === selectedId) ??
-    (selectedId ? { id: selectedId, name: athletes.find((a) => a.athleteId === selectedId)?.name ?? "Athlete", subtitle: athleteMeta(athletes.find((a) => a.athleteId === selectedId)) } : null);
+    (selectedId ? { id: selectedId, name: athletes.find((a) => a.athleteId === selectedId)?.name ?? "Client", subtitle: athleteMeta(athletes.find((a) => a.athleteId === selectedId)) } : null);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -415,7 +415,7 @@ export default function CoachMessages() {
               <Text style={styles.chatAvatarText}>{(selectedParty?.name || "?").charAt(0).toUpperCase()}</Text>
             </View>
             <View style={{ flex: 1, minWidth: 0 }}>
-              <Text style={styles.chatName} numberOfLines={1}>{selectedParty?.name || "Athlete"}</Text>
+              <Text style={styles.chatName} numberOfLines={1}>{selectedParty?.name || "Client"}</Text>
               <Text style={styles.chatSubtitle} numberOfLines={1}>{selectedParty?.subtitle || "Direct message"}</Text>
             </View>
           </View>
@@ -735,7 +735,7 @@ function MessagesHome({
           <TextInput
             value={query}
             onChangeText={onQueryChange}
-            placeholder="Search athlete or message"
+            placeholder="Search clients or messages"
             placeholderTextColor={colors.inkFaint}
             style={styles.searchInput}
             autoCapitalize="none"
@@ -770,7 +770,7 @@ function MessagesHome({
         <Card style={styles.emptyCard}>
           <Ionicons name="chatbubble-outline" size={19} color={colors.inkFaint} />
           <Text style={styles.emptyTitle}>No conversations yet</Text>
-          <Text style={styles.emptySub}>Start one with an athlete below.</Text>
+          <Text style={styles.emptySub}>Start one with a client below.</Text>
         </Card>
       ) : (
         <View>
@@ -792,7 +792,7 @@ function MessagesHome({
                   <PersonAvatar id={thread.partyId} name={thread.partyName} avatar={athleteById.get(thread.partyId)?.avatar} />
                   <View style={{ flex: 1, minWidth: 0 }}>
                     <View style={styles.threadTop}>
-                      <Text style={styles.threadName} numberOfLines={1}>{thread.partyName || "Athlete"}</Text>
+                      <Text style={styles.threadName} numberOfLines={1}>{thread.partyName || "Client"}</Text>
                       <Text style={styles.threadTime}>{messageTime(thread.lastAt)}</Text>
                     </View>
                     <Text style={styles.threadPreview} numberOfLines={1}>
@@ -822,8 +822,8 @@ function MessagesHome({
             {filteredStarters.map((athlete) => (
               <Pressable key={athlete.athleteId} onPress={() => onSelect(athlete.athleteId)} style={styles.starterCard}>
                 <PersonAvatar id={athlete.athleteId} name={athlete.name} avatar={athlete.avatar} size={52} />
-                <Text style={styles.starterName} numberOfLines={1}>{athlete.name || "Athlete"}</Text>
-                <Text style={styles.starterMeta} numberOfLines={1}>{athlete.position || athlete.sport || "Athlete"}</Text>
+                <Text style={styles.starterName} numberOfLines={1}>{athlete.name || "Client"}</Text>
+                <Text style={styles.starterMeta} numberOfLines={1}>{athlete.position || athlete.sport || "Client"}</Text>
                 <View style={styles.starterChatButton}>
                   <Ionicons name="chatbubble-outline" size={14} color={theme.accent} />
                 </View>
@@ -841,7 +841,7 @@ function PersonAvatar({ id, name, avatar, size = 40 }: { id: string; name: strin
   return (
     <PhotoAvatar
       avatar={avatar}
-      name={name || "Athlete"}
+      name={name || "Client"}
       size={size}
       accentSoft={bg}
       accentStrong={fg}

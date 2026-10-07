@@ -1,9 +1,9 @@
 import fs from "fs";
-import path from "path";
 import { randomUUID } from "crypto";
 import multer from "multer";
-import { Types, type HydratedDocument } from "mongoose";
+import { Types } from "mongoose";
 import { env } from "../config/env";
+import { deleteStoredObject } from "./objectStorage";
 import { CoachVideo, type CoachVideoDoc, ALLOWED_COACH_VIDEO_MIME_TYPES, type AllowedCoachVideoMimeType } from "../models/CoachVideo";
 import { CoachAthleteAssignment } from "../models/CoachAthleteAssignment";
 import { AthleteCoachSubscription } from "../models/AthleteCoachSubscription";
@@ -35,16 +35,8 @@ export const coachVideoUpload = multer({
   },
 });
 
-export function coachVideoFilePath(doc: Pick<CoachVideoDoc, "storedFilename">): string {
-  const resolved = path.join(env.upload.dir, doc.storedFilename);
-  if (path.dirname(resolved) !== env.upload.dir) {
-    throw new Error("invalid_stored_filename");
-  }
-  return resolved;
-}
-
-export async function deleteCoachVideoFile(doc: HydratedDocument<CoachVideoDoc>): Promise<void> {
-  await fs.promises.unlink(coachVideoFilePath(doc)).catch(() => undefined);
+export async function deleteCoachVideoFile(doc: Pick<CoachVideoDoc, "storedFilename">): Promise<void> {
+  await deleteStoredObject(doc.storedFilename);
 }
 
 export type CoachVideoView = {

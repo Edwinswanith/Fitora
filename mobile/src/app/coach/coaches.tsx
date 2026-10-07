@@ -143,7 +143,7 @@ export default function Coaches() {
                 />
               </View>
               {formError ? <Text style={styles.errorText}>{formError}</Text> : null}
-              <ActionButton label={saving ? "Creating..." : "Create coach"} icon="person-add-outline" variant="filled" onPress={submit} disabled={saving} />
+              <ActionButton label={saving ? "Creating..." : "Create Coach"} icon="person-add-outline" variant="filled" onPress={submit} disabled={saving} />
             </AppCard>
           ) : null}
 

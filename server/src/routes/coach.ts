@@ -52,7 +52,7 @@ import {
   buildCoachNotesInbox,
 } from "../services/analytics";
 import { parseDateOrNull } from "../lib/trainingCategories";
-import { avatarFilePath, avatarSummary } from "../services/avatar";
+import { avatarSummary } from "../services/avatar";
 import {
   fetchThread,
   sendMessage,
@@ -71,12 +71,12 @@ import {
 } from "../models/WorkoutMedia";
 import {
   mediaUpload,
-  mediaFilePath,
   serializeMedia,
   markMediaSent,
   convertMediaToTable,
   updateMediaTable,
 } from "../services/media";
+import { sendStoredObject, persistUploadOrRespond } from "../services/objectStorage";
 
 const router = Router();
 
@@ -281,14 +281,7 @@ router.get(
       res.status(404).json({ error: "no_avatar_photo" });
       return;
     }
-    const filePath = avatarFilePath(user);
-    res.type(user.avatarMimeType ?? "image/jpeg");
-    res.setHeader("Cache-Control", "private, max-age=0, no-store");
-    res.sendFile(filePath, (err) => {
-      if (err && !res.headersSent) {
-        res.status(404).json({ error: "file_missing" });
-      }
-    });
+    await sendStoredObject(res, user.avatarStoredFilename, user.avatarMimeType ?? "image/jpeg");
   }
 );
 
@@ -1271,6 +1264,7 @@ router.post(
       await fs.promises.unlink(file.path).catch(() => undefined);
       return;
     }
+    if (!(await persistUploadOrRespond(file, res))) return;
     const athleteId = new Types.ObjectId(req.params.athleteId);
     const photo = {
       _id: new Types.ObjectId(),
@@ -1304,14 +1298,7 @@ router.get(
       res.status(404).json({ error: "photo_not_found" });
       return;
     }
-    const filePath = mediaFilePath(photo);
-    res.type(photo.mimeType);
-    res.setHeader("Cache-Control", "private, max-age=0, no-store");
-    res.sendFile(filePath, (err) => {
-      if (err && !res.headersSent) {
-        res.status(404).json({ error: "file_missing" });
-      }
-    });
+    await sendStoredObject(res, photo.storedFilename, photo.mimeType);
   }
 );
 
@@ -1448,6 +1435,7 @@ router.post(
       res.status(400).json({ error: "invalid_context" });
       return;
     }
+    if (!(await persistUploadOrRespond(file, res))) return;
     const created = await WorkoutMedia.create({
       coachId: req.actor.userId,
       athleteId: new Types.ObjectId(req.params.athleteId),
@@ -1492,14 +1480,7 @@ router.get("/media/:mediaId", async (req: Request, res: Response) => {
 router.get("/media/:mediaId/file", async (req: Request, res: Response) => {
   const media = await loadOwnedMedia(req, res);
   if (!media) return;
-  const filePath = mediaFilePath(media);
-  res.type(media.mimeType);
-  res.setHeader("Cache-Control", "private, max-age=0, no-store");
-  res.sendFile(filePath, (err) => {
-    if (err && !res.headersSent) {
-      res.status(404).json({ error: "file_missing" });
-    }
-  });
+  await sendStoredObject(res, media.storedFilename, media.mimeType);
 });
 
 /**

@@ -4,12 +4,10 @@ import { useLocalSearchParams, useRouter } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
 import { Text } from "../../../components/AppText";
 import {
-  ActionButton,
   AppCard,
   EmptyState,
   ErrorState,
   HeroCard,
-  IconTile,
   LoadingState,
   MetricRing,
   ScreenContainer,
@@ -116,7 +114,7 @@ function ClientsView({ data }: { data: CoachHomeData }) {
           icon="person-add-outline"
           eyebrow="Get started"
           title="Add your first client"
-          body="Create their account, or link an athlete who already signed up, using their email."
+          body="Create their account, or link one by email."
           actionLabel="Add Client"
           onAction={() => router.push("/coach/athletes/new" as never)}
         />
@@ -138,7 +136,6 @@ function ClientsView({ data }: { data: CoachHomeData }) {
           icon="checkmark-done-outline"
           eyebrow="All good"
           title={`All ${data.roster.length} client${data.roster.length === 1 ? "" : "s"} on track`}
-          body="No low readiness, missed check-ins or injuries flagged today."
         />
       )}
 
@@ -189,17 +186,6 @@ function ClientsView({ data }: { data: CoachHomeData }) {
           <EmptyState title="No clients found" body="Try a different search or filter." icon="people-outline" />
         )}
       </AppCard>
-
-      <AppCard>
-        <View style={styles.summaryRow}>
-          <IconTile icon="people-outline" size={40} />
-          <View style={{ flex: 1 }}>
-            <Text style={styles.cardTitle}>{data.roster.length} Active Clients</Text>
-            <Text style={styles.attentionText}>{attentionCount} need your attention</Text>
-          </View>
-          <ActionButton label="View Insights" icon="bar-chart-outline" onPress={() => router.push("/coach/dashboard" as never)} />
-        </View>
-      </AppCard>
     </>
   );
 }
@@ -236,7 +222,7 @@ function ClientRow({
         <Text style={styles.goalText} numberOfLines={1}>{athlete.sport || "General Fitness"}</Text>
         <View style={styles.clientMetrics}>
           <SmallMetric icon={workoutIcon.icon} label="Workout" value={planned ? `${completed} / ${planned}` : "No plan"} color={metricColors.training.ink} />
-          <SmallMetric icon={sessionIcon.icon} label="Next session" value={lastSession?.type ? titleCase(lastSession.type) : "None"} tone={sessionIcon.tone} />
+          {lastSession?.type ? <SmallMetric icon={sessionIcon.icon} label="Session" value={titleCase(lastSession.type)} tone={sessionIcon.tone} /> : null}
         </View>
       </View>
       <View style={styles.readinessCol} accessibilityLabel={readiness == null ? "Readiness not logged" : `Readiness ${readiness} out of 100`}>
@@ -298,8 +284,5 @@ const styles = StyleSheet.create({
   smallMetricLabel: { color: colors.inkMuted, fontSize: 12, lineHeight: 16 },
   smallMetricValue: { color: colors.ink, fontSize: 12, lineHeight: 16, fontWeight: "800" },
   divider: { height: 1, backgroundColor: colors.line },
-  summaryRow: { flexDirection: "row", alignItems: "center", gap: 12 },
-  cardTitle: { color: colors.ink, fontSize: 18, lineHeight: 23, fontWeight: "900" },
-  attentionText: { color: colors.warn, fontSize: 15, lineHeight: 20, marginTop: 2 },
   pressed: { opacity: 0.72 },
 });
