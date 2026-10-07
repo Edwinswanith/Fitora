@@ -17,6 +17,7 @@ import {
   PrimaryAppBar,
   RowLink,
   ScreenContainer,
+  SegmentedControl,
   SectionHeader,
   SettingsRow,
   StatusChip,
@@ -56,6 +57,8 @@ export default function CoachProfile() {
   const [reviewsOpen, setReviewsOpen] = useState(false);
   const [reviewsPage, setReviewsPage] = useState(1);
   const [loadingMoreReviews, setLoadingMoreReviews] = useState(false);
+  // What athletes see vs. the coach's own account settings, so neither page is a wall of cards.
+  const [section, setSection] = useState<"public" | "settings">("public");
 
   async function loadMoreReviews() {
     const coachId = state.data?.profile?.coachId ?? state.data?.profile?.id;
@@ -138,6 +141,17 @@ export default function CoachProfile() {
     <ScreenContainer refreshing={state.refreshing} onRefresh={state.reload}>
       <PrimaryAppBar title="Profile" showNotifications={false} showAvatar={false} actionLabel="Edit" onAction={() => router.push("/account" as never)} />
 
+      <SegmentedControl
+        value={section}
+        onChange={setSection}
+        options={[
+          { value: "public", label: "Public Profile", icon: "person-circle-outline" },
+          { value: "settings", label: "Settings", icon: "settings-outline" },
+        ]}
+      />
+
+      {section === "public" ? (
+        <>
       <ProfileReadinessHero
         hasBio={Boolean(profile?.bio?.trim() || profile?.philosophy?.trim())}
         hasSpecializations={Boolean(profile?.specializations?.length)}
@@ -216,6 +230,15 @@ export default function CoachProfile() {
             />
           )}
         </View>
+      </AppCard>
+
+      <AppCard>
+        <SectionHeader title="Professional details" />
+        <SettingsRow icon="briefcase-outline" label="Experience" value={profile?.yearsExperience != null ? `${profile.yearsExperience} Years` : "Not set"} />
+        <SettingsRow icon="ribbon-outline" label="Certifications" value={String(profile?.certifications?.length ?? 0)} />
+        <SettingsRow icon="barbell-outline" label="Specializations" value={String(profile?.specializations?.length ?? 0)} />
+        <SettingsRow icon="globe-outline" label="Languages" value={(profile?.languages ?? []).join(", ") || "Not set"} />
+        <SettingsRow icon="chatbubble-outline" label="Coaching Philosophy" value={profile?.philosophy ? "Added" : "Not set"} />
       </AppCard>
 
       <AppCard>
@@ -335,16 +358,9 @@ export default function CoachProfile() {
           />
         </AppCard>
       ) : null}
-
-      <AppCard>
-        <SectionHeader title="Professional Details" />
-        <SettingsRow icon="briefcase-outline" label="Experience" value={profile?.yearsExperience != null ? `${profile.yearsExperience} Years` : "Not set"} />
-        <SettingsRow icon="ribbon-outline" label="Certifications" value={String(profile?.certifications?.length ?? 0)} />
-        <SettingsRow icon="barbell-outline" label="Specializations" value={String(profile?.specializations?.length ?? 0)} />
-        <SettingsRow icon="globe-outline" label="Languages" value={(profile?.languages ?? []).join(", ") || "Not set"} />
-        <SettingsRow icon="chatbubble-outline" label="Coaching Philosophy" value={profile?.philosophy ? "Added" : "Not set"} />
-      </AppCard>
-
+        </>
+      ) : (
+        <>
       {PAYMENTS_ENABLED ? (
       <AppCard>
         <SectionHeader title="Payments & Membership" />
@@ -354,14 +370,18 @@ export default function CoachProfile() {
         <SettingsRow icon="document-text-outline" label="Invoices" />
       </AppCard>
       ) : null}
-
       <AppCard>
-        <SectionHeader title="Settings" />
+        <SectionHeader title="Account" />
         <SettingsRow icon="notifications-outline" label="Notifications" onPress={() => router.push("/account" as never)} />
         <SettingsRow icon="lock-closed-outline" label="Account & Security" onPress={() => router.push("/account" as never)} />
         <SettingsRow icon="help-circle-outline" label="Help & Support" onPress={() => openExternal(SUPPORT_URL)} />
         <SettingsRow icon="shield-checkmark-outline" label="Privacy Policy" onPress={() => openExternal(PRIVACY_POLICY_URL)} />
       </AppCard>
+      <Pressable onPress={onSignOut} style={styles.logout}>
+        <Text style={styles.logoutText}>Log Out</Text>
+      </Pressable>
+        </>
+      )}
 
       {data.partialIssues.length ? (
         <Text style={styles.partialText}>Some data could not load: {data.partialIssues.slice(0, 3).join(", ")}</Text>
@@ -369,9 +389,6 @@ export default function CoachProfile() {
 
       {actionMessage ? <Text style={styles.successText}>{actionMessage}</Text> : null}
 
-      <Pressable onPress={onSignOut} style={styles.logout}>
-        <Text style={styles.logoutText}>Log Out</Text>
-      </Pressable>
     </ScreenContainer>
   );
 }
