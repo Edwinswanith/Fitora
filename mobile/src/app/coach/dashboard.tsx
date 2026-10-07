@@ -20,6 +20,8 @@ import {
 } from "../../components/fitora";
 import { Ionicons } from "@expo/vector-icons";
 import { Avatar } from "../../components/Avatar";
+import { DateField, TimeField } from "../../components/DateTimeField";
+import { combineLocalDateTime, isInFuture, isoToLocalParts, todayLocalDate } from "../../lib/dateTimeValues";
 import { apiFetch } from "../../lib/api";
 import { PAYMENTS_ENABLED } from "../../lib/features";
 import { joinSessionCall } from "../../lib/videoCall";
@@ -84,6 +86,7 @@ function CoachHomeView({ data, onSessionUpdate }: { data: CoachHomeData; onSessi
   const [sessionBusy, setSessionBusy] = useState<string | null>(null);
   const [rescheduleDate, setRescheduleDate] = useState("");
   const [rescheduleTime, setRescheduleTime] = useState("");
+  const [rescheduleMinDate, setRescheduleMinDate] = useState(() => todayLocalDate());
   const [rescheduleNote, setRescheduleNote] = useState("");
   const [cancelNote, setCancelNote] = useState("");
   const [completeSummary, setCompleteSummary] = useState("");
@@ -193,19 +196,19 @@ function CoachHomeView({ data, onSessionUpdate }: { data: CoachHomeData; onSessi
 
   async function rescheduleSession() {
     if (!nextSession) return;
-    const trimmedDate = rescheduleDate.trim();
-    const trimmedTime = rescheduleTime.trim() || "09:00";
-    if (!/^\d{4}-\d{2}-\d{2}$/.test(trimmedDate)) {
-      setSessionMessage("Enter the new date as YYYY-MM-DD.");
+    if (!rescheduleDate || !rescheduleTime) {
+      setSessionMessage("Pick a new date and time first.");
       return;
     }
-    if (!/^\d{2}:\d{2}$/.test(trimmedTime)) {
-      setSessionMessage("Enter the new time as HH:MM (24-hour).");
-      return;
-    }
-    const nextStart = new Date(`${trimmedDate}T${trimmedTime}:00`);
-    if (Number.isNaN(nextStart.getTime())) {
+    // The pickers return the coach's LOCAL date and time; build the instant
+    // from those local fields, then send it to the server as UTC ISO.
+    const nextStart = combineLocalDateTime(rescheduleDate, rescheduleTime);
+    if (!nextStart) {
       setSessionMessage("That date and time aren't valid.");
+      return;
+    }
+    if (!isInFuture(nextStart)) {
+      setSessionMessage("Pick a time in the future.");
       return;
     }
     setSessionBusy("reschedule");
@@ -216,7 +219,15 @@ function CoachHomeView({ data, onSessionUpdate }: { data: CoachHomeData; onSessi
         body: JSON.stringify({ scheduledStart: nextStart.toISOString(), note: rescheduleNote.trim() || undefined }),
       });
       if (!res.ok) {
-        setSessionMessage("Could not reschedule this session.");
+        const json = (await res.json().catch(() => ({}))) as { error?: string };
+        const reasons: Record<string, string> = {
+          outside_availability: "That time is outside your working hours. Pick a time within your availability.",
+          slot_conflict: "You already have a session at that time. Pick another slot.",
+          // Avoid "confirmed"/"rescheduled" etc. here: the message color below keys off those words.
+          invalid_transition: "This session can't be moved right now. If it's still a request, accept it first.",
+          relationship_ended: "You no longer coach this client, so the session can't be moved.",
+        };
+        setSessionMessage((json.error && reasons[json.error]) || "Could not reschedule this session.");
         return;
       }
       onSessionUpdate(nextSession.id, { status: "rescheduled", scheduledStart: nextStart.toISOString() });
@@ -229,15 +240,16 @@ function CoachHomeView({ data, onSessionUpdate }: { data: CoachHomeData; onSessi
   }
 
   function toggleSessionPanel() {
-    setSessionPanel((value) => {
-      const next = !value;
-      if (next && nextSession) {
-        const start = new Date(nextSession.scheduledStart);
-        setRescheduleDate(start.toISOString().slice(0, 10));
-        setRescheduleTime(start.toISOString().slice(11, 16));
-      }
-      return next;
-    });
+    const next = !sessionPanel;
+    if (next && nextSession) {
+      // Pre-fill with the session's LOCAL date/time (toISOString() slices
+      // would show UTC, e.g. 5:30 behind for a coach in India).
+      const local = isoToLocalParts(nextSession.scheduledStart);
+      setRescheduleDate(local.date);
+      setRescheduleTime(local.time);
+      setRescheduleMinDate(todayLocalDate());
+    }
+    setSessionPanel(next);
   }
 
   return (
@@ -294,8 +306,22 @@ function CoachHomeView({ data, onSessionUpdate }: { data: CoachHomeData; onSessi
               <View style={styles.sessionDivider} />
               <Text style={styles.formLabel}>Reschedule</Text>
               <View style={styles.actionRow}>
-                <TextInput value={rescheduleDate} onChangeText={setRescheduleDate} style={[styles.input, styles.inputHalf]} placeholder="YYYY-MM-DD" placeholderTextColor={colors.inkFaint} />
-                <TextInput value={rescheduleTime} onChangeText={setRescheduleTime} style={[styles.input, styles.inputHalf]} placeholder="HH:MM" placeholderTextColor={colors.inkFaint} />
+                <DateField
+                  value={rescheduleDate}
+                  onChange={setRescheduleDate}
+                  accessibilityLabel="New session date"
+                  placeholder="New date"
+                  minimumDate={rescheduleMinDate}
+                  style={styles.inputHalf}
+                />
+                <TimeField
+                  value={rescheduleTime}
+                  onChange={setRescheduleTime}
+                  accessibilityLabel="New session start time"
+                  placeholder="New time"
+                  minuteInterval={5}
+                  style={styles.inputHalf}
+                />
               </View>
               <TextInput value={rescheduleNote} onChangeText={setRescheduleNote} style={styles.input} placeholder="Note to athlete (optional)" placeholderTextColor={colors.inkFaint} />
               <ActionButton label={sessionBusy === "reschedule" ? "Moving..." : "Reschedule"} onPress={rescheduleSession} />

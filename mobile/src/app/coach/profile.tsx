@@ -4,6 +4,9 @@ import { useRouter } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
 import { Text } from "../../components/AppText";
 import { Avatar } from "../../components/Avatar";
+import { DateField, TimeField } from "../../components/DateTimeField";
+import { deviceTimeZone, displayDate, minutesToTime, timeToMinutes, todayLocalDate } from "../../lib/dateTimeValues";
+import { celebrate, errorFeedback, selectionFeedback } from "../../lib/feedback";
 import {
   ActionButton,
   AppCard,
@@ -242,33 +245,11 @@ export default function CoachProfile() {
 
       <View style={styles.twoCol}>
         <AppCard style={styles.splitCard}>
-          <SectionHeader title="Availability" action="Manage" onAction={() => setAvailabilityOpen((value) => !value)} />
-          {availabilityOpen ? (
-            <AvailabilityEditor
-              rules={data.availabilityRules}
-              onSaved={(rules) => {
-                setActionMessage("Availability updated.");
-                state.setData((prev) => (prev ? { ...prev, availabilityRules: rules } : prev));
-              }}
-            />
-          ) : null}
+          <SectionHeader title="Availability" action={availabilityOpen ? "Close" : "Manage"} onAction={() => setAvailabilityOpen((value) => !value)} />
           <AvailabilityList rules={data.availabilityRules} />
           <Pressable onPress={() => setExceptionsOpen((value) => !value)} style={styles.exceptionsToggle}>
             <Text style={styles.linkText}>{exceptionsOpen ? "Hide date overrides" : "Manage date overrides"}</Text>
           </Pressable>
-          {exceptionsOpen ? (
-            <AvailabilityExceptionsEditor
-              exceptions={data.availabilityExceptions}
-              onChanged={(message, patch) => {
-                setActionMessage(message);
-                state.setData((prev) => {
-                  if (!prev) return prev;
-                  if ("added" in patch) return { ...prev, availabilityExceptions: [...prev.availabilityExceptions, patch.added] };
-                  return { ...prev, availabilityExceptions: prev.availabilityExceptions.filter((e) => e.id !== patch.removedId) };
-                });
-              }}
-            />
-          ) : null}
         </AppCard>
         <AppCard style={styles.splitCard}>
           <SectionHeader
@@ -296,6 +277,53 @@ export default function CoachProfile() {
           ) : null}
         </AppCard>
       </View>
+
+      {/* The editors open full width below the half-width cards so the time
+          fields and option chips have room on a phone. */}
+      {availabilityOpen ? (
+        <AppCard style={styles.editorCard}>
+          <View style={styles.editorHeader}>
+            <Text style={styles.cardTitle}>Edit Availability</Text>
+            <Pressable onPress={() => setAvailabilityOpen(false)} hitSlop={10} accessibilityRole="button">
+              <Text style={styles.linkText}>Close</Text>
+            </Pressable>
+          </View>
+          <AvailabilityEditor
+            rules={data.availabilityRules}
+            onSaved={(rules) => {
+              setActionMessage("Availability updated.");
+              setAvailabilityOpen(false);
+              state.setData((prev) => (prev ? { ...prev, availabilityRules: rules } : prev));
+            }}
+          />
+        </AppCard>
+      ) : null}
+
+      {exceptionsOpen ? (
+        <AppCard style={styles.editorCard}>
+          <View style={styles.editorHeader}>
+            <Text style={styles.cardTitle}>Date Overrides</Text>
+            <Pressable onPress={() => setExceptionsOpen(false)} hitSlop={10} accessibilityRole="button">
+              <Text style={styles.linkText}>Close</Text>
+            </Pressable>
+          </View>
+          <AvailabilityExceptionsEditor
+            exceptions={data.availabilityExceptions}
+            onChanged={(message, patch) => {
+              setActionMessage(message);
+              state.setData((prev) => {
+                if (!prev) return prev;
+                if ("added" in patch) {
+                  // The server upserts one override per date: replace any existing row for that date.
+                  const others = prev.availabilityExceptions.filter((e) => e.id !== patch.added.id && e.date !== patch.added.date);
+                  return { ...prev, availabilityExceptions: [...others, patch.added].sort((a, b) => a.date.localeCompare(b.date)) };
+                }
+                return { ...prev, availabilityExceptions: prev.availabilityExceptions.filter((e) => e.id !== patch.removedId) };
+              });
+            }}
+          />
+        </AppCard>
+      ) : null}
 
       <AppCard>
         <SectionHeader title="Professional Details" />
@@ -482,39 +510,97 @@ function PricingEditor({
   );
 }
 
+const SESSION_LENGTH_OPTIONS = [15, 30, 45, 60, 90];
+const BUFFER_OPTIONS = [0, 5, 10, 15];
+
+/** Plain-language text for PUT /api/coach/availability error codes. */
+function availabilityErrorMessage(code: string | undefined): string {
+  switch (code) {
+    case "invalid_startMinute":
+      return "The start time isn't valid. Pick a start time again.";
+    case "invalid_endMinute":
+      return "The end time must be later than the start time on the same day.";
+    case "invalid_sessionDurationMin":
+      return "Session length must be between 5 minutes and 4 hours.";
+    case "invalid_bufferMin":
+      return "Break between sessions must be 2 hours or less.";
+    case "invalid_dayOfWeek":
+    case "invalid_rules":
+      return "Those days couldn't be saved. Re-select your days and try again.";
+    case "too_many_requests":
+      return "Too many saves in a row. Wait a minute and try again.";
+    default:
+      return "Could not save your availability. Please try again.";
+  }
+}
+
 function AvailabilityEditor({ rules, onSaved }: { rules: CoachAvailabilityRule[]; onSaved: (rules: CoachAvailabilityRule[]) => void }) {
+  // Pre-fill from the first saved rule (earliest day/start); the editor applies
+  // one range to every selected day, so warn when saved days currently differ.
+  const first = rules[0];
   const [selectedDays, setSelectedDays] = useState<number[]>(() => Array.from(new Set(rules.map((rule) => rule.dayOfWeek))));
+  const [startTime, setStartTime] = useState(() => minutesToTime(first?.startMinute ?? 9 * 60));
+  const [endTime, setEndTime] = useState(() => (first && first.endMinute < 1440 ? minutesToTime(first.endMinute) : first ? "23:59" : "18:00"));
+  const [sessionLength, setSessionLength] = useState(first?.sessionDurationMin ?? 30);
+  const [buffer, setBuffer] = useState(first?.bufferMin ?? 10);
+  const [timezone] = useState(() => deviceTimeZone(first?.timezone));
   const [saving, setSaving] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
 
+  const mixedHours = rules.some(
+    (rule) =>
+      rule.startMinute !== first?.startMinute ||
+      rule.endMinute !== first?.endMinute ||
+      rule.sessionDurationMin !== first?.sessionDurationMin ||
+      rule.bufferMin !== first?.bufferMin
+  ) || rules.length !== new Set(rules.map((rule) => rule.dayOfWeek)).size;
+  const lengthOptions = SESSION_LENGTH_OPTIONS.includes(sessionLength) ? SESSION_LENGTH_OPTIONS : [...SESSION_LENGTH_OPTIONS, sessionLength].sort((a, b) => a - b);
+  const bufferOptions = BUFFER_OPTIONS.includes(buffer) ? BUFFER_OPTIONS : [...BUFFER_OPTIONS, buffer].sort((a, b) => a - b);
+
   function toggleDay(day: number) {
+    selectionFeedback();
     setSelectedDays((current) => current.includes(day) ? current.filter((item) => item !== day) : [...current, day].sort());
   }
 
   async function save() {
-    setSaving(true);
     setMessage(null);
+    const startMinute = timeToMinutes(startTime);
+    const endMinute = timeToMinutes(endTime);
+    if (startMinute == null || endMinute == null) {
+      setMessage("Pick a start and end time.");
+      return;
+    }
+    if (endMinute <= startMinute) {
+      setMessage("End time must be later than start time (hours can't run past midnight).");
+      return;
+    }
+    if (endMinute - startMinute < sessionLength) {
+      setMessage(`Your hours are shorter than one ${sessionLength}-minute session.`);
+      return;
+    }
+    setSaving(true);
     try {
-      const existingByDay = new Map(rules.map((rule) => [rule.dayOfWeek, rule]));
-      const nextRules = selectedDays.map((day) => {
-        const existing = existingByDay.get(day);
-        return {
-          dayOfWeek: day,
-          startMinute: existing?.startMinute ?? 9 * 60,
-          endMinute: existing?.endMinute ?? 18 * 60,
-          timezone: existing?.timezone ?? "Asia/Kolkata",
-          sessionDurationMin: existing?.sessionDurationMin ?? 30,
-          bufferMin: existing?.bufferMin ?? 10,
-        };
-      });
+      // Exactly the fields PUT /api/coach/availability validates. The whole
+      // array replaces the coach's rules; no days selected clears availability.
+      const nextRules = selectedDays.map((day) => ({
+        dayOfWeek: day,
+        startMinute,
+        endMinute,
+        timezone,
+        sessionDurationMin: sessionLength,
+        bufferMin: buffer,
+      }));
       const res = await apiFetch("/api/coach/availability", { method: "PUT", body: JSON.stringify({ rules: nextRules }) });
+      const json = (await res.json().catch(() => ({}))) as { rules?: CoachAvailabilityRule[]; error?: string };
       if (!res.ok) {
-        setMessage("Could not update availability.");
+        errorFeedback();
+        setMessage(availabilityErrorMessage(json.error));
         return;
       }
-      const json = (await res.json().catch(() => ({}))) as { rules?: CoachAvailabilityRule[] };
+      celebrate({ title: "Availability saved" });
       onSaved(json.rules ?? []);
     } catch {
+      errorFeedback();
       setMessage("Network error while saving availability.");
     } finally {
       setSaving(false);
@@ -523,19 +609,82 @@ function AvailabilityEditor({ rules, onSaved }: { rules: CoachAvailabilityRule[]
 
   return (
     <View style={styles.editorBlock}>
-      <Text style={styles.editorTitle}>Recurring Days</Text>
+      <Text style={styles.editorTitle}>Working Days</Text>
       <View style={styles.dayGrid}>
-        {[1, 2, 3, 4, 5, 6, 0].map((day) => (
-          <Pressable key={day} onPress={() => toggleDay(day)} style={[styles.dayChip, selectedDays.includes(day) ? styles.dayChipActive : null]}>
-            <Text style={[styles.dayChipText, selectedDays.includes(day) ? styles.dayChipTextActive : null]}>{DAY_LABELS[day]}</Text>
-          </Pressable>
+        {[1, 2, 3, 4, 5, 6, 0].map((day) => {
+          const on = selectedDays.includes(day);
+          return (
+            <Pressable
+              key={day}
+              onPress={() => toggleDay(day)}
+              accessibilityRole="checkbox"
+              accessibilityLabel={DAY_LABELS[day]}
+              accessibilityState={{ checked: on }}
+              style={[styles.dayChip, on ? styles.dayChipActive : null]}
+            >
+              <Text style={[styles.dayChipText, on ? styles.dayChipTextActive : null]}>{DAY_LABELS[day]}</Text>
+            </Pressable>
+          );
+        })}
+      </View>
+
+      <Text style={styles.editorTitle}>Working Hours</Text>
+      <View style={styles.formGrid}>
+        <TimeField label="Start" accessibilityLabel="Working hours start" value={startTime} onChange={setStartTime} minuteInterval={5} style={styles.formField} />
+        <TimeField label="End" accessibilityLabel="Working hours end" value={endTime} onChange={setEndTime} minuteInterval={5} style={styles.formField} />
+      </View>
+      <Text style={styles.muted}>Applies to every selected day. Times are in {timezone}.</Text>
+      {first && first.timezone !== timezone ? (
+        <Text style={styles.warnText}>Your saved hours use {first.timezone}. Saving will switch them to this device&apos;s timezone ({timezone}).</Text>
+      ) : null}
+      {mixedHours ? <Text style={styles.warnText}>Your days currently have different hours. Saving sets these hours for all selected days.</Text> : null}
+
+      <Text style={styles.formLabel}>Session length</Text>
+      <View style={styles.toggleRow}>
+        {lengthOptions.map((minutes) => (
+          <OptionChip
+            key={minutes}
+            label={`${minutes} min`}
+            accessibilityLabel={`${minutes} minute sessions`}
+            active={sessionLength === minutes}
+            onPress={() => { selectionFeedback(); setSessionLength(minutes); }}
+          />
         ))}
       </View>
+
+      <Text style={styles.formLabel}>Break between sessions</Text>
+      <View style={styles.toggleRow}>
+        {bufferOptions.map((minutes) => (
+          <OptionChip
+            key={minutes}
+            label={minutes === 0 ? "None" : `${minutes} min`}
+            accessibilityLabel={minutes === 0 ? "No break between sessions" : `${minutes} minute break between sessions`}
+            active={buffer === minutes}
+            onPress={() => { selectionFeedback(); setBuffer(minutes); }}
+          />
+        ))}
+      </View>
+
+      {selectedDays.length === 0 ? <Text style={styles.warnText}>No days selected. Saving will hide all your bookable times.</Text> : null}
       {message ? <Text style={styles.errorText}>{message}</Text> : null}
-      <Pressable onPress={save} disabled={saving} style={[styles.saveButton, saving ? styles.disabled : null]}>
+      <Pressable onPress={save} disabled={saving} accessibilityRole="button" style={[styles.saveButton, styles.saveButtonTall, saving ? styles.disabled : null]}>
         {saving ? <ActivityIndicator color="#fff" /> : <Text style={styles.saveText}>Save Availability</Text>}
       </Pressable>
     </View>
+  );
+}
+
+function OptionChip({ label, accessibilityLabel, active, onPress }: { label: string; accessibilityLabel: string; active: boolean; onPress: () => void }) {
+  return (
+    <Pressable
+      onPress={onPress}
+      accessibilityRole="radio"
+      accessibilityLabel={accessibilityLabel}
+      accessibilityState={{ selected: active, checked: active }}
+      style={[styles.toggleChip, active ? styles.toggleChipActive : null]}
+    >
+      <Text style={[styles.toggleChipText, active ? styles.toggleChipTextActive : null]}>{label}</Text>
+    </Pressable>
   );
 }
 
@@ -598,8 +747,18 @@ function AvailabilityList({ rules }: { rules: CoachAvailabilityRule[] }) {
           </View>
         );
       })}
+      <Text style={styles.availabilitySummary}>{availabilitySummary(rules)}</Text>
     </View>
   );
+}
+
+/** e.g. "30-min sessions, 10-min break · Asia/Kolkata" (lists each distinct setting if days differ). */
+function availabilitySummary(rules: CoachAvailabilityRule[]): string {
+  const unique = (values: string[]) => Array.from(new Set(values)).join(" / ");
+  const lengths = unique(rules.map((rule) => `${rule.sessionDurationMin}-min sessions`));
+  const breaks = unique(rules.map((rule) => (rule.bufferMin ? `${rule.bufferMin}-min break` : "no break")));
+  const zones = unique(rules.map((rule) => rule.timezone));
+  return `${lengths}, ${breaks} · ${zones}`;
 }
 
 function AvailabilityExceptionsEditor({
@@ -610,6 +769,7 @@ function AvailabilityExceptionsEditor({
   onChanged: (message: string, patch: { added: CoachAvailabilityException } | { removedId: string }) => void;
 }) {
   const [date, setDate] = useState("");
+  const [minDate] = useState(() => todayLocalDate());
   const [type, setType] = useState<"unavailable" | "custom_hours">("unavailable");
   const [startTime, setStartTime] = useState("09:00");
   const [endTime, setEndTime] = useState("17:00");
@@ -618,27 +778,22 @@ function AvailabilityExceptionsEditor({
   const [deletingId, setDeletingId] = useState<string | null>(null);
   const [message, setMessage] = useState<string | null>(null);
 
-  function timeToMinute(value: string): number | null {
-    const match = /^(\d{2}):(\d{2})$/.exec(value.trim());
-    if (!match) return null;
-    const hour = Number(match[1]);
-    const minute = Number(match[2]);
-    if (hour < 0 || hour > 23 || minute < 0 || minute > 59) return null;
-    return hour * 60 + minute;
-  }
-
   async function addException() {
     setMessage(null);
-    if (!/^\d{4}-\d{2}-\d{2}$/.test(date.trim())) {
-      setMessage("Enter the date as YYYY-MM-DD.");
+    if (!date) {
+      setMessage("Pick a date first.");
       return;
     }
-    const body: Record<string, unknown> = { date: date.trim(), type, reason: reason.trim() || undefined };
+    const body: Record<string, unknown> = { date, type, reason: reason.trim() || undefined };
     if (type === "custom_hours") {
-      const startMinute = timeToMinute(startTime);
-      const endMinute = timeToMinute(endTime);
-      if (startMinute == null || endMinute == null || endMinute <= startMinute) {
-        setMessage("Enter valid start/end times (HH:MM), with end after start.");
+      const startMinute = timeToMinutes(startTime);
+      const endMinute = timeToMinutes(endTime);
+      if (startMinute == null || endMinute == null) {
+        setMessage("Pick a start and end time.");
+        return;
+      }
+      if (endMinute <= startMinute) {
+        setMessage("End time must be later than start time.");
         return;
       }
       body.startMinute = startMinute;
@@ -648,7 +803,16 @@ function AvailabilityExceptionsEditor({
     try {
       const res = await apiFetch("/api/coach/availability/exceptions", { method: "POST", body: JSON.stringify(body) });
       if (!res.ok) {
-        setMessage("Could not save this override.");
+        const json = (await res.json().catch(() => ({}))) as { error?: string };
+        setMessage(
+          json.error === "invalid_endMinute"
+            ? "End time must be later than start time."
+            : json.error === "invalid_date"
+              ? "That date isn't valid. Pick it again."
+              : json.error === "too_many_requests"
+                ? "Too many changes in a row. Wait a minute and try again."
+                : "Could not save this override."
+        );
         return;
       }
       const json = (await res.json().catch(() => ({}))) as { exception?: CoachAvailabilityException };
@@ -681,13 +845,13 @@ function AvailabilityExceptionsEditor({
 
   return (
     <View style={styles.editorBlock}>
-      <Text style={styles.editorTitle}>Date Overrides</Text>
+      <Text style={styles.editorTitle}>Upcoming overrides</Text>
       {exceptions.length ? (
         exceptions.map((exception) => (
           <View key={exception.id} style={styles.exceptionRow}>
             <View style={{ flex: 1, minWidth: 0 }}>
               <Text style={styles.dayValue} numberOfLines={1}>
-                {exception.date} - {exception.type === "unavailable" ? "Unavailable" : `Custom ${minuteClock(exception.startMinute ?? 0)} - ${minuteClock(exception.endMinute ?? 0)}`}
+                {displayDate(exception.date)} - {exception.type === "unavailable" ? "Unavailable" : `Custom ${minuteClock(exception.startMinute ?? 0)} - ${minuteClock(exception.endMinute ?? 0)}`}
               </Text>
               {exception.reason ? <Text style={styles.muted} numberOfLines={1}>{exception.reason}</Text> : null}
             </View>
@@ -700,15 +864,16 @@ function AvailabilityExceptionsEditor({
         <Text style={styles.muted}>No date overrides in the next 60 days.</Text>
       )}
 
-      <FormInput label="Date" value={date} onChangeText={setDate} />
+      <Text style={styles.editorTitle}>Add an override</Text>
+      <DateField label="Date" accessibilityLabel="Override date" placeholder="Select a date" value={date} onChange={setDate} minimumDate={minDate} />
       <View style={styles.toggleRow}>
         <ToggleChip label="Unavailable" active={type === "unavailable"} onPress={() => setType("unavailable")} />
         <ToggleChip label="Custom Hours" active={type === "custom_hours"} onPress={() => setType("custom_hours")} />
       </View>
       {type === "custom_hours" ? (
         <View style={styles.formGrid}>
-          <FormInput label="Start (HH:MM)" value={startTime} onChangeText={setStartTime} />
-          <FormInput label="End (HH:MM)" value={endTime} onChangeText={setEndTime} />
+          <TimeField label="Start" accessibilityLabel="Override start time" value={startTime} onChange={setStartTime} minuteInterval={5} style={styles.formField} />
+          <TimeField label="End" accessibilityLabel="Override end time" value={endTime} onChange={setEndTime} minuteInterval={5} style={styles.formField} />
         </View>
       ) : null}
       <FormInput label="Reason (optional)" value={reason} onChangeText={setReason} />
@@ -721,7 +886,7 @@ function AvailabilityExceptionsEditor({
 }
 
 function minuteClock(minutes: number) {
-  const hour24 = Math.floor(minutes / 60);
+  const hour24 = Math.floor(minutes / 60) % 24; // 1440 (end of day) reads as 12:00 AM
   const mins = minutes % 60;
   const ampm = hour24 >= 12 ? "PM" : "AM";
   const hour = hour24 % 12 || 12;
@@ -753,6 +918,9 @@ const styles = StyleSheet.create({
   dayValue: { flex: 1, minWidth: 0, color: colors.ink, fontSize: 12, lineHeight: 17 },
   availabilityDot: { width: 9, height: 9, borderRadius: 5, backgroundColor: colors.inkFaint },
   availabilityDotOn: { backgroundColor: colors.ok },
+  availabilitySummary: { marginTop: 6, color: colors.inkMuted, fontSize: 12, lineHeight: 16 },
+  warnText: { color: colors.warn, fontSize: 12, lineHeight: 16, fontWeight: "800" },
+  saveButtonTall: { minHeight: 44, flex: 0 },
   exceptionsToggle: { marginTop: 10, alignSelf: "flex-start" },
   exceptionRow: { flexDirection: "row", alignItems: "center", gap: 8, paddingVertical: 7, borderBottomWidth: 1, borderBottomColor: colors.line },
   partialText: { color: colors.inkMuted, fontSize: 12, lineHeight: 17 },
