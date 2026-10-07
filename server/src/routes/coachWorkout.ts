@@ -19,7 +19,6 @@ import { parseDateOrNull } from "../lib/trainingCategories";
 import { dayRange } from "../services/dashboard";
 import {
   exerciseMediaUpload,
-  exerciseMediaFilePath,
   serializeExerciseMedia,
   kindForMime,
   deleteExerciseMediaFile,
@@ -28,6 +27,7 @@ import { checkFeatureEntitlement } from "../services/subscription";
 import { Meal } from "../models/Meal";
 import { MealFood } from "../models/MealFood";
 import { getCurrentTarget, serializeTarget } from "../services/nutritionTarget";
+import { sendStoredObject, persistUploadOrRespond } from "../services/objectStorage";
 
 const router = Router();
 router.use(requireAuth, requireRole("coach"), loadScope);
@@ -235,6 +235,7 @@ router.post(
   },
   async (req: Request, res: Response) => {
     if (!req.actor || !req.file) return void res.status(400).json({ error: "file_required" });
+    if (!(await persistUploadOrRespond(req.file, res))) return;
     const media = await ExerciseMedia.create({
       coachId: req.actor.userId,
       originalName: req.file.originalname,
@@ -277,11 +278,7 @@ async function loadOwnExerciseMedia(req: Request, res: Response) {
 router.get("/exercise-media/:mediaId/file", async (req: Request, res: Response) => {
   const media = await loadOwnExerciseMedia(req, res);
   if (!media) return;
-  res.type(media.mimeType);
-  res.setHeader("Cache-Control", "private, max-age=0, no-store");
-  res.sendFile(exerciseMediaFilePath(media), (err) => {
-    if (err && !res.headersSent) res.status(404).json({ error: "file_missing" });
-  });
+  await sendStoredObject(res, media.storedFilename, media.mimeType);
 });
 
 /** DELETE /exercise-media/:mediaId — only if not referenced by any template. */

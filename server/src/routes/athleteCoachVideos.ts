@@ -7,12 +7,12 @@ import { writeRateLimit } from "../middleware/rateLimit";
 import { CoachVideo } from "../models/CoachVideo";
 import { CoachVideoProgress } from "../models/CoachVideoProgress";
 import {
-  coachVideoFilePath,
   serializeCoachVideo,
   loadAthleteVideoAccessContext,
   isVideoVisible,
   canAthleteAccessVideo,
 } from "../services/coachVideo";
+import { sendStoredObject } from "../services/objectStorage";
 
 const router = Router();
 router.use(requireAuth, requireRole("athlete"), loadScope);
@@ -72,12 +72,7 @@ router.get("/coach-videos/:videoId/stream", async (req: Request, res: Response) 
     return void res.status(404).json({ error: "video_not_found" });
   }
 
-  const filePath = coachVideoFilePath(video as never);
-  res.type(video.mimeType);
-  res.setHeader("Cache-Control", "private, max-age=0, no-store");
-  res.sendFile(filePath, (err) => {
-    if (err && !res.headersSent) res.status(404).json({ error: "file_missing" });
-  });
+  await sendStoredObject(res, video.storedFilename, video.mimeType);
 });
 
 /**

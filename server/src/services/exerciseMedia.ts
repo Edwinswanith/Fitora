@@ -1,9 +1,9 @@
 import fs from "fs";
-import path from "path";
 import { randomUUID } from "crypto";
 import multer from "multer";
 import { Types, type HydratedDocument } from "mongoose";
 import { env } from "../config/env";
+import { deleteStoredObject } from "./objectStorage";
 import {
   ExerciseMedia,
   type ExerciseMediaDoc,
@@ -54,14 +54,6 @@ export const exerciseMediaUpload = multer({
   },
 });
 
-export function exerciseMediaFilePath(doc: Pick<ExerciseMediaDoc, "storedFilename">): string {
-  const resolved = path.join(env.upload.dir, doc.storedFilename);
-  if (path.dirname(resolved) !== env.upload.dir) {
-    throw new Error("invalid_stored_filename");
-  }
-  return resolved;
-}
-
 export type ExerciseMediaView = {
   id: string;
   coachId: string;
@@ -87,5 +79,5 @@ export function serializeExerciseMedia(m: ExerciseMediaDoc): ExerciseMediaView {
 }
 
 export async function deleteExerciseMediaFile(doc: HydratedDocument<ExerciseMediaDoc>): Promise<void> {
-  await fs.promises.unlink(exerciseMediaFilePath(doc)).catch(() => undefined);
+  await deleteStoredObject(doc.storedFilename);
 }

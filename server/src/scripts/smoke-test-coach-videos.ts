@@ -2,9 +2,10 @@
  * One-off manual verification against the REAL fitora Atlas database — proves
  * the Phase 9 content library persists correctly: upload, visibility
  * resolution (subscribers tier, backward-compatible legacy relationship),
- * and progress checkpointing (upsert, not duplicate rows). Writes a real
- * file to disk under env.upload.dir as part of the flow. Cleans up
- * everything it creates, including the file.
+ * and progress checkpointing (upsert, not duplicate rows). Stores a real
+ * object through services/objectStorage.ts (Google Cloud Storage when
+ * OBJECT_STORAGE_BUCKET is set, else local disk) and reads it back. Cleans up
+ * everything it creates, including the object.
  */
 import mongoose from "mongoose";
 import bcrypt from "bcryptjs";
@@ -14,8 +15,11 @@ import { AthleteProfile } from "../models/AthleteProfile";
 import { CoachAthleteAssignment } from "../models/CoachAthleteAssignment";
 import { CoachVideo } from "../models/CoachVideo";
 import { CoachVideoProgress } from "../models/CoachVideoProgress";
-import { coachVideoFilePath, deleteCoachVideoFile, isVideoVisible, loadAthleteVideoAccessContext } from "../services/coachVideo";
+import { deleteCoachVideoFile, isVideoVisible, loadAthleteVideoAccessContext } from "../services/coachVideo";
+import { getObjectStorageProvider, persistUpload, readStoredObject } from "../services/objectStorage";
+import { env } from "../config/env";
 import fs from "fs";
+import path from "path";
 
 async function run() {
   await connectMongo();
@@ -39,9 +43,12 @@ async function run() {
     sizeBytes: 42,
     durationSec: 100,
   });
-  const filePath = coachVideoFilePath(video);
-  await fs.promises.writeFile(filePath, "not a real video, just bytes for the smoke test");
-  console.log("[smoke-coach-videos] file written to disk:", fs.existsSync(filePath));
+  const bytes = "not a real video, just bytes for the smoke test";
+  const tempPath = path.join(env.upload.dir, storedFilename);
+  await fs.promises.writeFile(tempPath, bytes);
+  await persistUpload({ path: tempPath, filename: storedFilename, mimetype: "video/mp4" });
+  const storedOk = (await readStoredObject(storedFilename)).toString() === bytes;
+  console.log(`[smoke-coach-videos] stored via ${getObjectStorageProvider().name}, read back intact:`, storedOk);
 
   const context = await loadAthleteVideoAccessContext(coach._id, profile._id);
   const visibleLegacy = isVideoVisible(video, profile._id, context);
@@ -61,7 +68,7 @@ async function run() {
   const finalProgress = await CoachVideoProgress.findOne({ videoId: video._id, athleteId: profile._id }).lean();
   console.log("[smoke-coach-videos] progress rows (expect 1, upsert not duplicate):", progressCount, "final status:", finalProgress?.status);
 
-  const ok = visibleLegacy === true && progressCount === 1 && finalProgress?.status === "completed" && fs.existsSync(filePath);
+  const ok = visibleLegacy === true && progressCount === 1 && finalProgress?.status === "completed" && storedOk;
 
   await deleteCoachVideoFile(video);
   await Promise.all([
@@ -72,7 +79,8 @@ async function run() {
     User.deleteOne({ _id: coach._id }),
     User.deleteOne({ _id: athleteUser._id }),
   ]);
-  console.log("[smoke-coach-videos] cleanup complete — database and disk left as found, file still exists:", fs.existsSync(filePath));
+  const objectGone = await readStoredObject(storedFilename).then(() => false, () => true);
+  console.log("[smoke-coach-videos] cleanup complete — database and storage left as found, object deleted:", objectGone);
 
   if (!ok) throw new Error("smoke test assertions failed");
   console.log("[smoke-coach-videos] ALL ASSERTIONS PASSED");

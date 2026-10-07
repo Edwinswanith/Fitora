@@ -19,7 +19,7 @@ import {
 import { EXERCISE_PROGRESS_STATUS } from "../models/ExerciseProgress";
 import { parseDateOrNull } from "../lib/trainingCategories";
 import { dayRange } from "../services/dashboard";
-import { exerciseMediaFilePath } from "../services/exerciseMedia";
+import { sendStoredObject } from "../services/objectStorage";
 
 const router = Router();
 router.use(requireAuth, requireRole("athlete"), loadScope);
@@ -200,11 +200,7 @@ router.get("/exercise-media/:mediaId/file", async (req: Request, res: Response) 
   });
   if (!authorized) return void res.status(403).json({ error: "not_authorized" });
 
-  res.type(media.mimeType);
-  res.setHeader("Cache-Control", "private, max-age=0, no-store");
-  res.sendFile(exerciseMediaFilePath(media), (err) => {
-    if (err && !res.headersSent) res.status(404).json({ error: "file_missing" });
-  });
+  await sendStoredObject(res, media.storedFilename, media.mimeType);
 });
 
 export default router;

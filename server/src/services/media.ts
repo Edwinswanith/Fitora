@@ -1,5 +1,4 @@
 import fs from "fs";
-import path from "path";
 import { randomUUID } from "crypto";
 import multer from "multer";
 import { Types, type HydratedDocument } from "mongoose";
@@ -12,6 +11,7 @@ import {
   type AllowedMediaMimeType,
 } from "../models/WorkoutMedia";
 import { getWorkoutImageConverter, sanitizeWorkoutTableRows, type WorkoutTableRow } from "./workoutImageConverter";
+import { withLocalObjectCopy } from "./objectStorage";
 
 const EXT_BY_MIME: Record<AllowedMediaMimeType, string> = {
   "image/jpeg": ".jpg",
@@ -23,8 +23,9 @@ const EXT_BY_MIME: Record<AllowedMediaMimeType, string> = {
 fs.mkdirSync(env.upload.dir, { recursive: true });
 
 /**
- * Multer instance for coach media uploads. Storage is local disk under
- * env.upload.dir — never a statically-served directory (see index.ts). The
+ * Multer instance for coach media uploads. Multer writes a temp file under
+ * env.upload.dir (never statically served); routes then hand it to
+ * services/objectStorage.ts via persistUploadOrRespond. The
  * stored filename is a generated UUID, never derived from the client-supplied
  * originalname, so there is no path-traversal or filename-collision surface.
  */
@@ -45,17 +46,6 @@ export const mediaUpload = multer({
     cb(null, true);
   },
 });
-
-/** Absolute path of the stored file, guaranteed to stay within the upload dir. */
-export function mediaFilePath(doc: Pick<WorkoutMediaDoc, "storedFilename">): string {
-  const resolved = path.join(env.upload.dir, doc.storedFilename);
-  if (path.dirname(resolved) !== env.upload.dir) {
-    // Defense in depth — storedFilename is always a server-generated UUID, so
-    // this should be unreachable, but never stream a path outside the dir.
-    throw new Error("invalid_stored_filename");
-  }
-  return resolved;
-}
 
 export type MediaView = {
   id: string;
@@ -128,11 +118,9 @@ export async function convertMediaToTable(
   await media.save();
 
   try {
-    const rows = await getWorkoutImageConverter().convert({
-      filePath: mediaFilePath(media),
-      mimeType: media.mimeType,
-      originalName: media.originalName,
-    });
+    const rows = await withLocalObjectCopy(media.storedFilename, (filePath) =>
+      getWorkoutImageConverter().convert({ filePath, mimeType: media.mimeType, originalName: media.originalName })
+    );
     media.conversion!.status = "completed";
     media.conversion!.table = rows as unknown as NonNullable<WorkoutMediaDoc["conversion"]>["table"];
     media.conversion!.convertedAt = new Date();

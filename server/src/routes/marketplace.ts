@@ -6,8 +6,8 @@ import { CoachProfile } from "../models/CoachProfile";
 import { CoachPricingPlan } from "../models/CoachPricingPlan";
 import { CoachReview } from "../models/CoachReview";
 import { listMarketplaceCoaches, serializePublicCoachProfile, loadAvailableDays } from "../services/coachProfile";
-import { avatarFilePath } from "../services/avatar";
 import { serializeReview } from "../services/coachReview";
+import { sendStoredObject } from "../services/objectStorage";
 
 /**
  * Coach discovery — available to ANY authenticated User regardless of role
@@ -101,12 +101,7 @@ router.get("/coaches/:coachId/avatar/file", async (req: Request, res: Response) 
     res.status(404).json({ error: "no_avatar_photo" });
     return;
   }
-  const filePath = avatarFilePath(user);
-  res.type(user.avatarMimeType ?? "image/jpeg");
-  res.setHeader("Cache-Control", "private, max-age=0, no-store");
-  res.sendFile(filePath, (err) => {
-    if (err && !res.headersSent) res.status(404).json({ error: "file_missing" });
-  });
+  await sendStoredObject(res, user.avatarStoredFilename, user.avatarMimeType ?? "image/jpeg");
 });
 
 export default router;

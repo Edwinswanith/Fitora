@@ -124,6 +124,15 @@ export const env = {
     // default, same disk/dir as everything else.
     coachVideoMaxSizeBytes: Number(process.env.MAX_COACH_VIDEO_SIZE_MB ?? 250) * 1024 * 1024,
   },
+  // Durable storage for those uploads. Setting OBJECT_STORAGE_BUCKET switches
+  // services/objectStorage.ts to Google Cloud Storage; the local upload dir is
+  // then only a temp landing spot for multer. Credentials: a service-account
+  // key (GCS_SERVICE_ACCOUNT_JSON), else the Cloud Run metadata server.
+  objectStorage: {
+    bucket: (process.env.OBJECT_STORAGE_BUCKET ?? "").trim(),
+    prefix: (process.env.OBJECT_STORAGE_PREFIX ?? "uploads/").trim(),
+    serviceAccountJson: process.env.GCS_SERVICE_ACCOUNT_JSON ?? "",
+  },
   // Vision engine for turning a coach's workout image into a structured table.
   // When GEMINI_API_KEY is set, the real Gemini converter reads the actual image
   // and returns only the workout rows; otherwise a placeholder mock is used (see

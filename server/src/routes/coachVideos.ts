@@ -7,11 +7,12 @@ import { CoachVideo, COACH_VIDEO_CATEGORIES, COACH_VIDEO_VISIBILITIES } from "..
 import { CoachVideoProgress } from "../models/CoachVideoProgress";
 import { AthleteProfile } from "../models/AthleteProfile";
 import { User } from "../models/User";
-import { coachVideoUpload, coachVideoFilePath, deleteCoachVideoFile, serializeCoachVideo } from "../services/coachVideo";
+import { coachVideoUpload, deleteCoachVideoFile, serializeCoachVideo } from "../services/coachVideo";
 import { evaluateAndDispatch } from "../services/notificationEligibility";
 import { resolveTimezoneForUser } from "../services/timezone";
 import { categoryForType } from "../lib/notificationTypes";
 import { buildCoachVideoAssigned } from "../services/notificationTemplates";
+import { sendStoredObject, persistUploadOrRespond, discardUpload } from "../services/objectStorage";
 
 /**
  * Fires `coach_video_assigned` only to athletes NEWLY added to
@@ -101,11 +102,15 @@ router.post(
     if (!req.file) return void res.status(400).json({ error: "file_required" });
 
     const title = reqStr(req.body?.title);
-    if (!title || title.length > 160) return void res.status(400).json({ error: "invalid_title" });
     const category = req.body?.category;
-    if (!COACH_VIDEO_CATEGORIES.includes(category)) return void res.status(400).json({ error: "invalid_category" });
     const description = reqStr(req.body?.description);
-    if (description.length > 2000) return void res.status(400).json({ error: "invalid_description" });
+    const invalid =
+      !title || title.length > 160 ? "invalid_title" : !COACH_VIDEO_CATEGORIES.includes(category) ? "invalid_category" : description.length > 2000 ? "invalid_description" : null;
+    if (invalid) {
+      await discardUpload(req.file);
+      return void res.status(400).json({ error: invalid });
+    }
+    if (!(await persistUploadOrRespond(req.file, res))) return;
 
     const video = await CoachVideo.create({
       coachId: req.actor!.userId,
@@ -186,19 +191,14 @@ router.delete("/videos/:videoId", writeRateLimit({ windowMs: 60_000, max: 20 }),
   res.json({ ok: true });
 });
 
-/** GET /videos/:id/stream — coach's own preview playback (range-request capable via res.sendFile, same as other media routes). */
+/** GET /videos/:id/stream — coach's own preview playback (Range requests supported via sendStoredObject, same as other media routes). */
 router.get("/videos/:videoId/stream", async (req: Request, res: Response) => {
   const id = req.params.videoId;
   if (!Types.ObjectId.isValid(id)) return void res.status(400).json({ error: "invalid_video_id" });
   const video = await CoachVideo.findOne({ _id: id, coachId: req.actor!.userId }).lean();
   if (!video) return void res.status(404).json({ error: "video_not_found" });
 
-  const filePath = coachVideoFilePath(video as never);
-  res.type(video.mimeType);
-  res.setHeader("Cache-Control", "private, max-age=0, no-store");
-  res.sendFile(filePath, (err) => {
-    if (err && !res.headersSent) res.status(404).json({ error: "file_missing" });
-  });
+  await sendStoredObject(res, video.storedFilename, video.mimeType);
 });
 
 export default router;
