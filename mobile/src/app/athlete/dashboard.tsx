@@ -9,6 +9,8 @@ import {
   ActionButton,
   AlertBanner,
   HeroCard,
+  MetricRow,
+  MetricTileRing,
   SectionLabel,
   StaleDataNotice,
   AppCard,
@@ -100,13 +102,6 @@ function readinessLabel(score: number | null | undefined): string {
   if (score >= 75) return "Good";
   if (score >= 60) return "Moderate";
   return "Low";
-}
-
-function readinessTone(score: number | null | undefined): "success" | "warning" | "danger" | "neutral" {
-  if (score == null) return "neutral";
-  if (score >= 75) return "success";
-  if (score >= 60) return "warning";
-  return "danger";
 }
 
 function daysUntil(dateString?: string | null): number | null {
@@ -366,6 +361,14 @@ function TodayView({
         onFindCoach={() => onNavigate("coach")}
       />
 
+      <TodayMetrics
+        data={data}
+        onReadiness={() => (data.daily?.readinessScore == null ? router.push("/athlete/check-in" as never) : router.push("/athlete/trends" as never))}
+        onNutrition={() => onNavigate("nutrition")}
+        onWater={() => router.push("/athlete/water" as never)}
+        onProgress={() => onNavigate("progress")}
+      />
+
       {!workout && !athleteHasCoach(data) ? (
         <NextWorkoutCard data={data} workout={workout} onWorkoutPress={() => goToWorkout()} onReviewPress={handleWorkoutReview} onFindCoach={() => onNavigate("coach")} />
       ) : null}
@@ -383,10 +386,69 @@ function TodayView({
         <SessionCard session={todaySession} coachName={activeCoach} expanded={sessionExpanded} onExpandedChange={setSessionExpanded} />
       ) : null}
 
-      <SectionLabel title="At a glance" />
-      <DailyStatusCard data={data} onNavigate={onNavigate} />
-
       <CoachUpdateCard data={data} coachName={activeCoach} tomorrow={tomorrow} onReply={() => onNavigate("coach")} onTomorrowPress={handleTomorrowPress} />
+    </>
+  );
+}
+
+/** Today's three rings (readiness, calories, water) and the check-in streak, as in the Glow design. */
+function TodayMetrics({
+  data,
+  onReadiness,
+  onNutrition,
+  onWater,
+  onProgress,
+}: {
+  data: AthleteDashboardData;
+  onReadiness: () => void;
+  onNutrition: () => void;
+  onWater: () => void;
+  onProgress: () => void;
+}) {
+  const readiness = data.daily?.readinessScore ?? null;
+  const consumed = consumedCalories(data);
+  const targetCalories = data.target?.calories ?? null;
+  const waterTotal = data.water?.totalMl ?? 0;
+  const waterGoal = data.water?.goalMl ?? 0;
+  const streak = buildCheckInStreak(data.trends).current;
+  return (
+    <>
+      <MetricRow>
+        <MetricTileRing
+          metric="readiness"
+          label="Readiness"
+          value={readiness != null ? String(Math.round(readiness)) : "--"}
+          sub={readiness != null ? readinessLabel(readiness) : "Check in"}
+          progress={readiness != null ? readiness / 100 : null}
+          onPress={onReadiness}
+        />
+        <MetricTileRing
+          metric="nutrition"
+          label="Calories"
+          value={consumed > 0 ? consumed.toLocaleString() : "--"}
+          sub={targetCalories ? `of ${targetCalories.toLocaleString()}` : consumed > 0 ? "kcal" : "Log a meal"}
+          progress={targetCalories ? consumed / targetCalories : null}
+          onPress={onNutrition}
+        />
+        <MetricTileRing
+          metric="water"
+          label="Water"
+          value={`${formatLiters(waterTotal)} L`}
+          sub={waterGoal ? `of ${formatLiters(waterGoal)} L` : undefined}
+          progress={waterGoal ? waterTotal / waterGoal : null}
+          onPress={onWater}
+        />
+      </MetricRow>
+      <Pressable onPress={onProgress} accessibilityRole="button" style={({ pressed }) => [styles.streakRow, pressed ? { opacity: 0.8 } : null]}>
+        <View style={styles.streakCopy}>
+          <Text style={styles.streakTitle}>Check-in streak</Text>
+          <Text style={styles.streakSub}>{streak ? "Keep it going with today's check-in." : "Check in today to start a streak."}</Text>
+        </View>
+        <View style={styles.streakChip}>
+          <Ionicons name="flame" size={15} color={colors.energy} />
+          <Text style={styles.streakChipText}>{streak ? `${streak} day${streak === 1 ? "" : "s"}` : "Start"}</Text>
+        </View>
+      </Pressable>
     </>
   );
 }
@@ -659,92 +721,6 @@ function ScheduleRow({
   );
 }
 
-function DailyStatusCard({ data, onNavigate }: { data: AthleteDashboardData; onNavigate: (tab: AthleteTab) => void }) {
-  const router = useRouter();
-  const readiness = data.daily?.readinessScore ?? null;
-  const consumed = consumedCalories(data);
-  const workoutsToday = data.workouts.length;
-  const workoutsDone = data.workouts.filter((w) => w.status === "completed").length;
-  const waterTotal = formatLiters(data.water?.totalMl ?? 0);
-  const waterGoal = formatLiters(data.water?.goalMl ?? 0);
-
-  return (
-    <AppCard style={styles.dailyStatusCard}>
-      <View style={styles.todaySectionHeader}>
-        <Text style={styles.todaySectionTitle}>Daily Status</Text>
-        <Pressable onPress={() => onNavigate("progress")} hitSlop={8} style={styles.todaySectionAction}>
-          <Text style={styles.todaySectionActionText}>View Details</Text>
-          <Ionicons name="chevron-forward" size={17} color={colors.primary} />
-        </Pressable>
-      </View>
-      <View style={styles.statusGrid}>
-        <StatusMetric
-          icon="stats-chart"
-          label="Readiness"
-          value={readiness != null ? String(Math.round(readiness)) : "--"}
-          sub={readinessLabel(readiness)}
-          tone={readinessTone(readiness)}
-          onPress={() => router.push("/athlete/trends" as never)}
-        />
-        <StatusMetric
-          icon="nutrition-outline"
-          label="Nutrition"
-          value={consumed > 0 ? String(consumed) : "--"}
-          sub={consumed > 0 ? "kcal" : "Log a meal"}
-          tone="success"
-          onPress={() => onNavigate("nutrition")}
-        />
-        <StatusMetric
-          icon="water-outline"
-          label="Water"
-          value={waterTotal}
-          sub={`/ ${waterGoal} L`}
-          tone="primary"
-          onPress={() => router.push("/athlete/water" as never)}
-        />
-        <StatusMetric
-          icon="barbell-outline"
-          label="Training"
-          value={workoutsToday ? `${workoutsDone} / ${workoutsToday}` : "Rest"}
-          sub={workoutsToday ? "complete" : "Nothing planned"}
-          tone="purple"
-          onPress={() => onNavigate("workouts")}
-        />
-      </View>
-    </AppCard>
-  );
-}
-
-function StatusMetric({
-  icon,
-  label,
-  value,
-  sub,
-  tone,
-  onPress,
-}: {
-  icon: keyof typeof Ionicons.glyphMap;
-  label: string;
-  value: string;
-  sub: string;
-  tone: "success" | "warning" | "danger" | "neutral" | "primary" | "purple";
-  onPress?: () => void;
-}) {
-  const palette = metricPalette(tone);
-  return (
-    <Pressable onPress={onPress} disabled={!onPress} style={({ pressed }) => [styles.statusMetric, pressed ? { opacity: 0.72 } : null]}>
-      <View style={[styles.statusMetricIcon, { backgroundColor: palette.soft }]}>
-        <Ionicons name={icon} size={20} color={palette.strong} />
-      </View>
-      <View style={styles.statusMetricCopy}>
-        <Text style={styles.statusLabel} numberOfLines={1}>{label}</Text>
-        <Text style={[styles.statusValue, { color: palette.strong }]} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.78}>{value}</Text>
-        <Text style={styles.statusSub} numberOfLines={1}>{sub}</Text>
-      </View>
-    </Pressable>
-  );
-}
-
 type TomorrowPreview =
   | { kind: "workout"; title: string; meta: string; workout: WorkoutAssignmentSummary }
   | { kind: "session"; title: string; meta: string; session: CoachSession };
@@ -809,18 +785,6 @@ function CoachUpdateCard({
       ) : null}
     </AppCard>
   );
-}
-
-function readinessPalette(tone: "success" | "warning" | "danger" | "neutral" | "primary") {
-  if (tone === "success") return { strong: colors.ok, soft: colors.okSoft };
-  if (tone === "warning") return { strong: colors.warn, soft: colors.warnSoft };
-  if (tone === "danger") return { strong: colors.bad, soft: colors.badSoft };
-  return { strong: colors.primary, soft: colors.primarySoft };
-}
-
-function metricPalette(tone: "success" | "warning" | "danger" | "neutral" | "primary" | "purple") {
-  if (tone === "purple") return { strong: "#6d28d9", soft: "#f0e7ff" };
-  return readinessPalette(tone);
 }
 
 function workoutExerciseCount(workout: WorkoutAssignmentSummary | null, detail?: WorkoutAssignmentDetail | null): number {
@@ -4729,14 +4693,6 @@ const styles = StyleSheet.create({
   schedulePillText: { fontSize: 12, lineHeight: 16, fontWeight: "900" },
   scheduleValuePill: { minHeight: 22, borderRadius: 11, backgroundColor: colors.primarySoft, paddingHorizontal: 8, alignItems: "center", justifyContent: "center" },
   scheduleValueText: { color: colors.primary, fontSize: 12, lineHeight: 16, fontWeight: "900" },
-  dailyStatusCard: { paddingHorizontal: 12, paddingVertical: 8 },
-  statusGrid: { flexDirection: "row", flexWrap: "wrap", gap: 6 },
-  statusMetric: { width: "48%", minHeight: 56, borderRadius: 10, borderWidth: 1, borderColor: colors.line, backgroundColor: "#fcfefe", padding: 6, flexDirection: "row", alignItems: "center", gap: 7 },
-  statusMetricIcon: { width: 30, height: 30, borderRadius: 15, alignItems: "center", justifyContent: "center" },
-  statusMetricCopy: { flex: 1, minWidth: 0 },
-  statusLabel: { color: colors.inkMuted, fontSize: 12, lineHeight: 16, fontWeight: "800" },
-  statusValue: { fontSize: 17, lineHeight: 20, fontWeight: "900", marginTop: 0 },
-  statusSub: { color: colors.inkMuted, fontSize: 12, lineHeight: 16, fontWeight: "700", marginTop: 0 },
   coachUpdateCard: { paddingHorizontal: 13, paddingVertical: 9, gap: 8 },
   coachUpdateRow: { flexDirection: "row", alignItems: "flex-start", gap: 10 },
   coachUpdateAvatarWrap: { position: "relative" },
@@ -5016,6 +4972,21 @@ const styles = StyleSheet.create({
   nutritionPlanMealRow: { minHeight: 44, flexDirection: "row", alignItems: "center", gap: 9, paddingVertical: 6 },
   nutritionPlanMealIcon: { width: 30, height: 30, borderRadius: 15, alignItems: "center", justifyContent: "center" },
   macroCount: { alignSelf: "flex-end", fontSize: 12, fontWeight: "900" },
+  streakRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 12,
+    padding: 14,
+    borderRadius: 16,
+    borderWidth: 1,
+    borderColor: "#e1ece9",
+    backgroundColor: colors.surfaceRaised,
+  },
+  streakCopy: { flex: 1, minWidth: 0 },
+  streakTitle: { color: colors.ink, fontSize: 15, fontWeight: "800" },
+  streakSub: { color: colors.inkFaint, fontSize: 13, marginTop: 2 },
+  streakChip: { flexDirection: "row", alignItems: "center", gap: 5, paddingVertical: 6, paddingHorizontal: 11, borderRadius: 999, backgroundColor: colors.energySoft },
+  streakChipText: { color: colors.energyInk, fontSize: 13, fontWeight: "900" },
   sectionInline: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: 12 },
   rowIconTitle: { flexDirection: "row", alignItems: "center", gap: 10, flex: 1, minWidth: 0 },
   innerList: { marginTop: 9, borderWidth: 1, borderColor: colors.line, borderRadius: radius.md, overflow: "hidden", paddingHorizontal: 8 },
