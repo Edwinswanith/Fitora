@@ -12,6 +12,7 @@ import {
   AppCard,
   EmptyState,
   ErrorState,
+  HeroCard,
   LoadingState,
   PrimaryAppBar,
   RowLink,
@@ -136,6 +137,16 @@ export default function CoachProfile() {
   return (
     <ScreenContainer refreshing={state.refreshing} onRefresh={state.reload}>
       <PrimaryAppBar title="Profile" showNotifications={false} showAvatar={false} actionLabel="Edit" onAction={() => router.push("/account" as never)} />
+
+      <ProfileReadinessHero
+        hasBio={Boolean(profile?.bio?.trim() || profile?.philosophy?.trim())}
+        hasSpecializations={Boolean(profile?.specializations?.length)}
+        hasAvailability={data.availabilityRules.length > 0}
+        listed={Boolean(profile?.active)}
+        onEditProfile={() => router.push("/account" as never)}
+        onSetAvailability={() => setAvailabilityOpen(true)}
+        onGoLive={() => void toggleMarketplace(true)}
+      />
 
       <AppCard>
         <View style={styles.profileRow}>
@@ -362,6 +373,77 @@ export default function CoachProfile() {
         <Text style={styles.logoutText}>Log Out</Text>
       </Pressable>
     </ScreenContainer>
+  );
+}
+
+/**
+ * What still stops athletes from finding and booking this coach, in the order
+ * to fix it. One action at a time; calm once everything is in place.
+ */
+function ProfileReadinessHero({
+  hasBio,
+  hasSpecializations,
+  hasAvailability,
+  listed,
+  onEditProfile,
+  onSetAvailability,
+  onGoLive,
+}: {
+  hasBio: boolean;
+  hasSpecializations: boolean;
+  hasAvailability: boolean;
+  listed: boolean;
+  onEditProfile: () => void;
+  onSetAvailability: () => void;
+  onGoLive: () => void;
+}) {
+  const steps = [hasBio, hasSpecializations, hasAvailability, listed];
+  const done = steps.filter(Boolean).length;
+  const progressLine = `${done} of ${steps.length} done`;
+  if (!hasBio || !hasSpecializations) {
+    return (
+      <HeroCard
+        icon="person-circle-outline"
+        eyebrow={`Profile setup · ${progressLine}`}
+        title={!hasBio ? "Add a short bio" : "Add your specializations"}
+        body="Athletes choose a coach by reading this first. Two or three sentences about how you coach is enough."
+        actionLabel="Edit Profile"
+        onAction={onEditProfile}
+      />
+    );
+  }
+  if (!hasAvailability) {
+    return (
+      <HeroCard
+        icon="calendar-outline"
+        eyebrow={`Profile setup · ${progressLine}`}
+        title="Set your working hours"
+        body="Clients can only book video sessions inside the hours you set."
+        actionLabel="Set Availability"
+        onAction={onSetAvailability}
+      />
+    );
+  }
+  if (!listed) {
+    return (
+      <HeroCard
+        icon="storefront-outline"
+        eyebrow={`Profile setup · ${progressLine}`}
+        title="Ready to be found"
+        body="Your profile is complete. List it so athletes browsing coaches can see you."
+        actionLabel="List My Profile"
+        onAction={onGoLive}
+      />
+    );
+  }
+  return (
+    <HeroCard
+      calm
+      icon="checkmark-done-outline"
+      eyebrow="Profile complete"
+      title="Athletes can find and book you"
+      body="Keep your availability up to date so bookings land when you're free."
+    />
   );
 }
 
