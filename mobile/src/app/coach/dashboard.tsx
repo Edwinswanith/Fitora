@@ -230,8 +230,17 @@ function CoachHomeView({ data, onSessionUpdate }: { data: CoachHomeData; onSessi
         setSessionMessage((json.error && reasons[json.error]) || "Could not reschedule this session.");
         return;
       }
-      onSessionUpdate(nextSession.id, { status: "rescheduled", scheduledStart: nextStart.toISOString() });
+      // Use the server's copy: it keeps the session "confirmed" and also moves
+      // scheduledEnd, which a local guess got wrong.
+      const json = (await res.json().catch(() => ({}))) as { session?: Partial<CoachSession> };
+      onSessionUpdate(
+        nextSession.id,
+        json.session
+          ? { status: json.session.status, scheduledStart: json.session.scheduledStart, scheduledEnd: json.session.scheduledEnd }
+          : { scheduledStart: nextStart.toISOString() }
+      );
       setSessionMessage("Session rescheduled.");
+      celebrate({ title: "Session moved", body: `${nextSession.athleteName || "Your client"} has been notified.` });
     } catch {
       setSessionMessage("Network error while rescheduling session.");
     } finally {
