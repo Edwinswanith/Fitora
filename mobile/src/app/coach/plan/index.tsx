@@ -1,8 +1,8 @@
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState, type ReactNode } from "react";
 import { ActivityIndicator, Pressable, StyleSheet, View } from "react-native";
-import { useLocalSearchParams } from "expo-router";
+import { useFocusEffect, useLocalSearchParams, useRouter } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
-import { Text } from "../../components/AppText";
+import { Text } from "../../../components/AppText";
 import {
   ActionButton,
   AlertBanner,
@@ -15,11 +15,26 @@ import {
   ScreenContainer,
   SectionHeader,
   SegmentedControl,
-} from "../../components/fitora";
-import { apiFetch } from "../../lib/api";
-import { planVisual, workoutVisual, type FitoraIconName, type FitoraTone } from "../../lib/fitoraIcons";
-import { colors } from "../../lib/theme";
-import { addDays, loadCoachPlanData, titleCase, todayKey, useAsyncData, type CoachPlanData } from "../../lib/fitoraData";
+} from "../../../components/fitora";
+import { requestJson } from "../../../lib/planApi";
+import {
+  buildAssignOutcome,
+  consumePlanLibraryDirty,
+  describeServerError,
+  exerciseSummary,
+  isChecklistTemplate,
+  summarizeMealAttempts,
+  summarizeWorkoutBulk,
+  type AssignOutcome,
+  type AssignSection,
+  type BulkWorkoutResult,
+  type MealAssignAttempt,
+  type ServerMealPlan,
+  type ServerWorkoutTemplate,
+} from "../../../lib/planBuilder";
+import { planVisual, workoutVisual, type FitoraIconName, type FitoraTone } from "../../../lib/fitoraIcons";
+import { colors } from "../../../lib/theme";
+import { addDays, loadCoachPlanData, titleCase, todayKey, useAsyncData, type CoachPlanData } from "../../../lib/fitoraData";
 
 type Tab = "assignments" | "templates" | "routines";
 type PlanMode = "workout" | "tasks" | "meal" | "routine";
@@ -33,6 +48,15 @@ export default function CoachPlan() {
   const state = useAsyncData(loadCoachPlanData, [], "coach-plan");
   const [tab, setTab] = useState<Tab>("assignments");
   const [mode, setMode] = useState<PlanMode | null>(initialMode);
+  const nav = usePlanNavigation();
+  const { reload } = state;
+
+  // Editors live on this tab's stack; refetch when one saved/archived something.
+  useFocusEffect(
+    useCallback(() => {
+      if (consumePlanLibraryDirty()) reload();
+    }, [reload])
+  );
 
   if (state.loading && !state.data) {
     return (
@@ -65,10 +89,10 @@ export default function CoachPlan() {
         ]}
       />
       {mode ? (
-        <PlanComposer data={state.data} mode={mode} onModeChange={setMode} onDone={state.reload} initialAthleteId={initialAthleteId} />
+        <PlanComposer data={state.data} mode={mode} onModeChange={setMode} onDone={state.reload} initialAthleteId={initialAthleteId} nav={nav} />
       ) : null}
-      {tab === "assignments" ? <Assignments data={state.data} openMode={setMode} showTemplates={() => setTab("templates")} /> : null}
-      {tab === "templates" ? <Templates data={state.data} openMode={setMode} /> : null}
+      {tab === "assignments" ? <Assignments data={state.data} openMode={setMode} showTemplates={() => setTab("templates")} nav={nav} /> : null}
+      {tab === "templates" ? <Library data={state.data} nav={nav} onChanged={state.reload} /> : null}
       {tab === "routines" ? <Routines data={state.data} openMode={setMode} /> : null}
       {state.data.partialIssues.length ? (
         <AlertBanner
@@ -85,10 +109,12 @@ function Assignments({
   data,
   openMode,
   showTemplates,
+  nav,
 }: {
   data: CoachPlanData;
   openMode: (mode: PlanMode) => void;
   showTemplates: () => void;
+  nav: PlanNavigation;
 }) {
   const groups = useMemo(() => {
     const map = new Map<string, { label: string; clients: number; completed: number }>();
@@ -186,13 +212,17 @@ function Assignments({
                   tone={visual.tone}
                   title={template.name}
                   subtitle={`${Array.isArray(template.exercises) ? template.exercises.length : 0} exercises${template.estimatedDurationMin ? ` - ${template.estimatedDurationMin} min` : ""}`}
+                  onPress={() => nav.editTemplate(template.id)}
                 />
                 {index < Math.min(data.templates.length, 3) - 1 ? <Divider /> : null}
               </View>
             );
           })
         ) : (
-          <Text style={styles.muted}>No workout templates yet.</Text>
+          <View style={styles.stack}>
+            <Text style={styles.muted}>No workout templates yet. Build one to start assigning.</Text>
+            <ActionButton label="New workout template" icon="add-outline" onPress={() => nav.newTemplate("workout")} style={styles.fullButton} />
+          </View>
         )}
       </AppCard>
 
@@ -216,17 +246,118 @@ function Assignments({
   );
 }
 
-function Templates({ data, openMode }: { data: CoachPlanData; openMode: (mode: PlanMode) => void }) {
+type PlanNavigation = {
+  editTemplate: (id: string) => void;
+  newTemplate: (kind: "workout" | "tasks") => void;
+  editMealPlan: (id: string) => void;
+  newMealPlan: () => void;
+};
+
+function usePlanNavigation(): PlanNavigation {
+  const router = useRouter();
+  return useMemo(
+    () => ({
+      editTemplate: (id: string) => router.push({ pathname: "/coach/plan/workout-template", params: { templateId: id } } as never),
+      newTemplate: (kind: "workout" | "tasks") => router.push({ pathname: "/coach/plan/workout-template", params: { kind } } as never),
+      editMealPlan: (id: string) => router.push({ pathname: "/coach/plan/meal-plan", params: { mealPlanId: id } } as never),
+      newMealPlan: () => router.push("/coach/plan/meal-plan" as never),
+    }),
+    [router]
+  );
+}
+
+function templateSubtitle(template: Pick<ServerWorkoutTemplate, "exercises" | "version">): string {
+  const exercises = Array.isArray(template.exercises) ? template.exercises : [];
+  const kind = isChecklistTemplate(template) ? "Task list" : `${exercises.length} exercise${exercises.length === 1 ? "" : "s"}`;
+  const preview = exercises
+    .slice(0, 2)
+    .map((e) => (e.type === "checklist" ? e.title : `${e.title} ${exerciseSummary(e)}`))
+    .join(", ");
+  return [kind, preview].filter(Boolean).join(" - ");
+}
+
+function mealPlanSubtitle(plan: Pick<ServerMealPlan, "durationDays" | "days">): string {
+  const filled = Array.isArray(plan.days) ? plan.days.length : 0;
+  return `${plan.durationDays ?? 0}-day plan - ${filled} day${filled === 1 ? "" : "s"} filled`;
+}
+
+type ArchivedLibrary = { templates: ServerWorkoutTemplate[]; mealPlans: ServerMealPlan[] };
+
+function Library({ data, nav, onChanged }: { data: CoachPlanData; nav: PlanNavigation; onChanged: () => void }) {
+  const templates = data.templates as unknown as ServerWorkoutTemplate[];
+  const mealPlans = data.mealPlans as unknown as ServerMealPlan[];
+  const [showArchived, setShowArchived] = useState(false);
+  const [archived, setArchived] = useState<ArchivedLibrary | null>(null);
+  const [archivedError, setArchivedError] = useState<string | null>(null);
+  const [archivedVersion, setArchivedVersion] = useState(0);
+  const [busyId, setBusyId] = useState<string | null>(null);
+  const [actionError, setActionError] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!showArchived) return;
+    let active = true;
+    setArchivedError(null);
+    Promise.all([
+      requestJson<{ templates: ServerWorkoutTemplate[] }>("/api/workout-templates?includeArchived=1"),
+      requestJson<{ mealPlans: ServerMealPlan[] }>("/api/coach/meal-plans?includeArchived=1"),
+    ]).then(([t, m]) => {
+      if (!active) return;
+      if (!t.ok || !m.ok) {
+        setArchivedError(describeServerError((t.ok ? m : t).body?.error, (t.ok ? m : t).status));
+        return;
+      }
+      setArchived({
+        templates: (t.body?.templates ?? []).filter((x) => x.isArchived),
+        mealPlans: (m.body?.mealPlans ?? []).filter((x) => x.isArchived),
+      });
+    });
+    return () => {
+      active = false;
+    };
+  }, [showArchived, archivedVersion]);
+
+  async function setArchivedState(kind: "template" | "mealPlan", id: string, archive: boolean) {
+    setBusyId(id);
+    setActionError(null);
+    const base = kind === "template" ? `/api/workout-templates/${id}` : `/api/coach/meal-plans/${id}`;
+    const res = await requestJson(`${base}/${archive ? "archive" : "unarchive"}`, { method: "POST" });
+    setBusyId(null);
+    if (!res.ok) {
+      setActionError(describeServerError(res.body?.error, res.status));
+      return;
+    }
+    onChanged();
+    if (showArchived) setArchivedVersion((v) => v + 1);
+  }
+
+  function archiveAction(kind: "template" | "mealPlan", id: string, archive: boolean) {
+    const busy = busyId === id;
+    return (
+      <Pressable
+        onPress={() => setArchivedState(kind, id, archive)}
+        disabled={busyId !== null}
+        hitSlop={6}
+        accessibilityRole="button"
+        style={[styles.rowAction, busyId !== null && !busy ? styles.disabled : null]}
+      >
+        {busy ? <ActivityIndicator size="small" color={colors.primary} /> : <Text style={styles.rowActionText}>{archive ? "Archive" : "Restore"}</Text>}
+      </Pressable>
+    );
+  }
+
   return (
     <>
       <View style={styles.quickCreate}>
-        <ActionButton label="New Workout" icon="barbell-outline" onPress={() => openMode("workout")} />
-        <ActionButton label="New Meal Plan" icon="restaurant-outline" onPress={() => openMode("meal")} />
+        <ActionButton label="New Workout" icon="barbell-outline" onPress={() => nav.newTemplate("workout")} />
+        <ActionButton label="New Tasks" icon="checkbox-outline" onPress={() => nav.newTemplate("tasks")} />
       </View>
+      <ActionButton label="New Meal Plan" icon="restaurant-outline" onPress={nav.newMealPlan} style={styles.fullButton} />
+      {actionError ? <AlertBanner tone="danger" title="Could not update the library" body={actionError} /> : null}
+
       <SectionHeader title="Workout Templates" />
       <AppCard>
-        {data.templates.length ? (
-          data.templates.map((template, index) => {
+        {templates.length ? (
+          templates.map((template, index) => {
             const visual = workoutVisual(template.name);
             return (
               <View key={template.id}>
@@ -234,33 +365,80 @@ function Templates({ data, openMode }: { data: CoachPlanData; openMode: (mode: P
                   icon={visual.icon}
                   tone={visual.tone}
                   title={template.name}
-                  subtitle={`${Array.isArray(template.exercises) ? template.exercises.length : 0} exercises${template.estimatedDurationMin ? ` - ${template.estimatedDurationMin} min` : ""}`}
+                  subtitle={templateSubtitle(template)}
+                  onPress={() => nav.editTemplate(template.id)}
+                  right={archiveAction("template", template.id, true)}
                 />
-                {index < data.templates.length - 1 ? <Divider /> : null}
+                {index < templates.length - 1 ? <Divider /> : null}
               </View>
             );
           })
         ) : (
-          <EmptyState title="No templates" body="Create reusable workouts to speed up assignments." icon="document-text-outline" />
+          <EmptyState title="No templates" body="Create reusable workouts or task lists, then assign them to clients." icon="document-text-outline" />
         )}
       </AppCard>
 
       <SectionHeader title="Meal Plans" />
       <AppCard>
-        {data.mealPlans.length ? (
-          data.mealPlans.map((plan, index) => {
+        {mealPlans.length ? (
+          mealPlans.map((plan, index) => {
             const visual = planVisual(plan.name, "meal plan");
             return (
               <View key={plan.id}>
-                <PlanRow icon={visual.icon} tone={visual.tone} title={plan.name} subtitle={`${plan.durationDays ?? 0} day meal template`} />
-                {index < data.mealPlans.length - 1 ? <Divider /> : null}
+                <PlanRow
+                  icon={visual.icon}
+                  tone={visual.tone}
+                  title={plan.name}
+                  subtitle={mealPlanSubtitle(plan)}
+                  onPress={() => nav.editMealPlan(plan.id)}
+                  right={archiveAction("mealPlan", plan.id, true)}
+                />
+                {index < mealPlans.length - 1 ? <Divider /> : null}
               </View>
             );
           })
         ) : (
-          <Text style={styles.muted}>No meal plan templates yet.</Text>
+          <EmptyState title="No meal plans" body="Build a meal plan with days, meals and foods, then assign it to clients." icon="restaurant-outline" />
         )}
       </AppCard>
+
+      <SectionHeader title="Archived" action={showArchived ? "Hide" : "Show"} onAction={() => setShowArchived((v) => !v)} />
+      {showArchived ? (
+        <AppCard>
+          {archivedError ? (
+            <ErrorState message={archivedError} onRetry={() => setArchivedVersion((v) => v + 1)} />
+          ) : !archived ? (
+            <LoadingState label="Loading archived items..." />
+          ) : archived.templates.length + archived.mealPlans.length === 0 ? (
+            <Text style={styles.muted}>Nothing archived.</Text>
+          ) : (
+            <>
+              {archived.templates.map((template) => (
+                <PlanRow
+                  key={template.id}
+                  icon="archive-outline"
+                  tone="neutral"
+                  title={template.name}
+                  subtitle={`Workout - ${templateSubtitle(template)}`}
+                  onPress={() => nav.editTemplate(template.id)}
+                  right={archiveAction("template", template.id, false)}
+                />
+              ))}
+              {archived.mealPlans.map((plan) => (
+                <PlanRow
+                  key={plan.id}
+                  icon="archive-outline"
+                  tone="neutral"
+                  title={plan.name}
+                  subtitle={`Meal plan - ${mealPlanSubtitle(plan)}`}
+                  onPress={() => nav.editMealPlan(plan.id)}
+                  right={archiveAction("mealPlan", plan.id, false)}
+                />
+              ))}
+            </>
+          )}
+        </AppCard>
+      ) : null}
     </>
   );
 }
@@ -301,12 +479,14 @@ function PlanComposer({
   onModeChange,
   onDone,
   initialAthleteId,
+  nav,
 }: {
   data: CoachPlanData;
   mode: PlanMode;
   onModeChange: (mode: PlanMode | null) => void;
   onDone: () => void;
   initialAthleteId?: string;
+  nav: PlanNavigation;
 }) {
   const [selectedAthleteIds, setSelectedAthleteIds] = useState<string[]>(() => {
     const seedId = initialAthleteId && data.roster.some((athlete) => athlete.athleteId === initialAthleteId)
@@ -314,21 +494,30 @@ function PlanComposer({
       : data.roster[0]?.athleteId;
     return seedId ? [seedId] : [];
   });
-  const [selectedTemplateId, setSelectedTemplateId] = useState(data.templates[0]?.id ?? "");
-  const [selectedMealPlanId, setSelectedMealPlanId] = useState(data.mealPlans[0]?.id ?? "");
+  const [selectedTemplateId, setSelectedTemplateId] = useState("");
+  const [selectedMealPlanId, setSelectedMealPlanId] = useState("");
   const [scheduledDate, setScheduledDate] = useState(mode === "meal" ? todayKey() : addDays(todayKey(), 1));
   const [saving, setSaving] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
+  const [outcome, setOutcome] = useState<AssignOutcome | null>(null);
 
   useEffect(() => {
-    if (!selectedTemplateId && data.templates[0]?.id) setSelectedTemplateId(data.templates[0].id);
-    if (!selectedMealPlanId && data.mealPlans[0]?.id) setSelectedMealPlanId(data.mealPlans[0].id);
     if (!selectedAthleteIds.length && data.roster[0]?.athleteId) setSelectedAthleteIds([data.roster[0].athleteId]);
-  }, [data.mealPlans, data.roster, data.templates, selectedAthleteIds.length, selectedMealPlanId, selectedTemplateId]);
+  }, [data.roster, selectedAthleteIds.length]);
 
-  const title = mode === "tasks" ? "Assign Quick Tasks" : mode === "meal" ? "Assign Meal Plan" : mode === "routine" ? "Create Routine" : "Assign Workout";
+  // "Tasks" assigns checklist-only templates; the other workout modes can use any template.
+  const workoutTemplates = useMemo(
+    () => (mode === "tasks" ? data.templates.filter((t) => isChecklistTemplate(t)) : data.templates),
+    [data.templates, mode]
+  );
+  // Fall back to the first available item if the selection was archived or filtered out.
+  const templateId = workoutTemplates.some((t) => t.id === selectedTemplateId) ? selectedTemplateId : workoutTemplates[0]?.id ?? "";
+  const mealPlanId = data.mealPlans.some((p) => p.id === selectedMealPlanId) ? selectedMealPlanId : data.mealPlans[0]?.id ?? "";
+
+  const title = mode === "tasks" ? "Assign Task List" : mode === "meal" ? "Assign Meal Plan" : mode === "routine" ? "Assign Routine" : "Assign Workout";
   const needsWorkout = mode === "workout" || mode === "tasks" || mode === "routine";
   const needsMeal = mode === "meal" || mode === "routine";
+  const nameOf = (athleteId: string) => data.roster.find((a) => a.athleteId === athleteId)?.name ?? "Client";
 
   function toggleAthlete(id: string) {
     setSelectedAthleteIds((current) => {
@@ -337,110 +526,50 @@ function PlanComposer({
     });
   }
 
-  async function createDefaultWorkoutTemplate(kind: "workout" | "tasks") {
-    const name = kind === "tasks" ? `Quick Tasks - ${shortDateLabel(scheduledDate)}` : `Full Body Strength - ${shortDateLabel(scheduledDate)}`;
-    const exercises = kind === "tasks"
-      ? [
-          { title: "Complete readiness check-in", type: "checklist" },
-          { title: "Log meals and water", type: "checklist" },
-          { title: "Watch assigned coaching video", type: "checklist" },
-        ]
-      : [
-          { title: "Goblet Squat", type: "sets_reps", sets: 3, reps: "10" },
-          { title: "Push-ups", type: "sets_reps", sets: 3, reps: "12" },
-          { title: "Lat Pulldown", type: "sets_reps", sets: 3, reps: "10" },
-          { title: "Plank", type: "duration", durationSec: 45 },
-        ];
-    const res = await apiFetch("/api/workout-templates", {
-      method: "POST",
-      body: JSON.stringify({ name, description: kind === "tasks" ? "Coach-assigned quick task checklist." : "Default Fitora workout created from mobile.", exercises }),
-    });
-    const json = await res.json().catch(() => ({}));
-    if (!res.ok || !json.template?.id) throw new Error(json.error || "template_failed");
-    return String(json.template.id);
-  }
-
-  async function createDefaultMealPlan() {
-    const res = await apiFetch("/api/coach/meal-plans", {
-      method: "POST",
-      body: JSON.stringify({
-        name: `Balanced 7-Day Plan - ${shortDateLabel(scheduledDate)}`,
-        description: "Default Fitora meal plan created from mobile.",
-        durationDays: 7,
-        days: [
-          {
-            dayIndex: 0,
-            meals: [
-              {
-                mealType: "breakfast",
-                name: "Oats, eggs, and fruit",
-                foods: [{ name: "Oats + eggs", quantity: 1, unit: "meal", calories: 480, proteinG: 28, carbsG: 52, fatG: 16 }],
-              },
-              {
-                mealType: "lunch",
-                name: "Chicken rice bowl",
-                foods: [{ name: "Chicken rice bowl", quantity: 1, unit: "bowl", calories: 650, proteinG: 44, carbsG: 64, fatG: 18 }],
-              },
-              {
-                mealType: "dinner",
-                name: "Grilled protein and vegetables",
-                foods: [{ name: "Protein + vegetables", quantity: 1, unit: "plate", calories: 580, proteinG: 36, carbsG: 42, fatG: 20 }],
-              },
-            ],
-          },
-        ],
-      }),
-    });
-    const json = await res.json().catch(() => ({}));
-    if (!res.ok || !json.mealPlan?.id) throw new Error(json.error || "meal_plan_failed");
-    return String(json.mealPlan.id);
-  }
-
   async function submit() {
     setMessage(null);
+    setOutcome(null);
     if (!selectedAthleteIds.length) {
       setMessage("Select at least one client.");
       return;
     }
+    if (needsWorkout && !templateId) {
+      setMessage(mode === "tasks" ? "Create a task list first, then assign it." : "Create a workout template first, then assign it.");
+      return;
+    }
+    if (needsMeal && !mealPlanId) {
+      setMessage("Create a meal plan first, then assign it.");
+      return;
+    }
+    const athleteIds = selectedAthleteIds.slice();
     setSaving(true);
+    const sections: AssignSection[] = [];
     try {
-      let assignedWorkouts = 0;
-      let assignedMeals = 0;
       if (needsWorkout) {
-        const templateId = mode === "tasks"
-          ? await createDefaultWorkoutTemplate("tasks")
-          : selectedTemplateId || await createDefaultWorkoutTemplate("workout");
-        const res = await apiFetch("/api/coach/workout-assignments/bulk", {
+        const res = await requestJson<{ results?: BulkWorkoutResult[] }>("/api/coach/workout-assignments/bulk", {
           method: "POST",
-          body: JSON.stringify({ templateId, athleteIds: selectedAthleteIds, scheduledDate }),
+          body: JSON.stringify({ templateId, athleteIds, scheduledDate }),
         });
-        const json = await res.json().catch(() => ({}));
-        if (!res.ok && res.status !== 207) throw new Error(json.error || "workout_assign_failed");
-        assignedWorkouts = Array.isArray(json.results) ? json.results.filter((item: { ok?: boolean }) => item.ok).length : 0;
+        sections.push(summarizeWorkoutBulk(mode === "tasks" ? "Task list" : "Workout", athleteIds, res, nameOf));
       }
       if (needsMeal) {
-        const mealPlanId = selectedMealPlanId || await createDefaultMealPlan();
-        const results = await Promise.all(
-          selectedAthleteIds.map(async (athleteId) => {
-            const res = await apiFetch(`/api/coach/athletes/${athleteId}/meal-plan-assignments`, {
+        const attempts: MealAssignAttempt[] = await Promise.all(
+          athleteIds.map(async (athleteId) => {
+            const res = await requestJson<NonNullable<MealAssignAttempt["body"]>>(`/api/coach/athletes/${athleteId}/meal-plan-assignments`, {
               method: "POST",
               body: JSON.stringify({ mealPlanId, startDate: scheduledDate }),
             });
-            return res.ok;
+            return { athleteId, status: res.status, body: res.body };
           })
         );
-        assignedMeals = results.filter(Boolean).length;
+        sections.push(summarizeMealAttempts("Meal plan", attempts, nameOf));
       }
-      const parts = [];
-      if (needsWorkout) parts.push(`${assignedWorkouts} workout${assignedWorkouts === 1 ? "" : "s"}`);
-      if (needsMeal) parts.push(`${assignedMeals} meal plan${assignedMeals === 1 ? "" : "s"}`);
-      setMessage(`Assigned ${parts.join(" and ")}.`);
-      onDone();
-    } catch (err) {
-      setMessage(errorMessage(err));
     } finally {
       setSaving(false);
     }
+    const result = buildAssignOutcome(sections);
+    setOutcome(result);
+    if (sections.some((section) => section.succeeded > 0)) onDone();
   }
 
   return (
@@ -453,14 +582,22 @@ function PlanComposer({
       </View>
 
       <View style={styles.modeRow}>
-        {(["workout", "tasks", "meal", "routine"] as PlanMode[]).map((item) => (
-          <Pressable key={item} onPress={() => onModeChange(item)} style={[styles.choiceChip, mode === item ? styles.choiceChipActive : null]}>
+        {PLAN_MODES.map((item) => (
+          <Pressable
+            key={item}
+            onPress={() => {
+              setOutcome(null);
+              setMessage(null);
+              onModeChange(item);
+            }}
+            style={[styles.choiceChip, mode === item ? styles.choiceChipActive : null]}
+          >
             <Text style={[styles.choiceText, mode === item ? styles.choiceTextActive : null]}>{titleCase(item)}</Text>
           </Pressable>
         ))}
       </View>
 
-      <Text style={styles.label}>Date</Text>
+      <Text style={styles.label}>{needsMeal && !needsWorkout ? "Start date" : "Date"}</Text>
       <View style={styles.modeRow}>
         {[todayKey(), addDays(todayKey(), 1), addDays(todayKey(), 2)].map((date) => (
           <Pressable key={date} onPress={() => setScheduledDate(date)} style={[styles.choiceChip, scheduledDate === date ? styles.choiceChipActive : null]}>
@@ -469,23 +606,35 @@ function PlanComposer({
         ))}
       </View>
 
-      {needsWorkout && mode !== "tasks" ? (
+      {needsWorkout ? (
         <>
-          <Text style={styles.label}>Workout template</Text>
+          <Text style={styles.label}>{mode === "tasks" ? "Task list" : "Workout template"}</Text>
           <View style={styles.stack}>
-            {data.templates.length ? (
-              data.templates.map((template) => (
+            {workoutTemplates.length ? (
+              workoutTemplates.map((template) => (
                 <ChoiceRow
                   key={template.id}
-                  selected={selectedTemplateId === template.id}
+                  selected={templateId === template.id}
                   title={template.name}
-                  subtitle={`${Array.isArray(template.exercises) ? template.exercises.length : 0} exercises`}
+                  subtitle={templateSubtitle(template as unknown as ServerWorkoutTemplate)}
                   onPress={() => setSelectedTemplateId(template.id)}
                 />
               ))
             ) : (
-              <Text style={styles.muted}>No templates yet. Fitora will create a starter workout.</Text>
+              <Text style={styles.muted}>
+                {mode === "tasks"
+                  ? "No task lists yet. A task list is a template made only of checklist items."
+                  : "No workout templates yet. Build one to assign it."}
+              </Text>
             )}
+            <View style={styles.inlineActions}>
+              <ActionButton
+                label={mode === "tasks" ? "New task list" : "New template"}
+                icon="add-outline"
+                onPress={() => nav.newTemplate(mode === "tasks" ? "tasks" : "workout")}
+              />
+              {templateId ? <ActionButton label="Edit selected" icon="create-outline" onPress={() => nav.editTemplate(templateId)} /> : null}
+            </View>
           </View>
         </>
       ) : null}
@@ -498,36 +647,54 @@ function PlanComposer({
               data.mealPlans.map((plan) => (
                 <ChoiceRow
                   key={plan.id}
-                  selected={selectedMealPlanId === plan.id}
+                  selected={mealPlanId === plan.id}
                   title={plan.name}
-                  subtitle={`${plan.durationDays ?? 7} days`}
+                  subtitle={mealPlanSubtitle(plan as unknown as ServerMealPlan)}
                   onPress={() => setSelectedMealPlanId(plan.id)}
                 />
               ))
             ) : (
-              <Text style={styles.muted}>No meal templates yet. Fitora will create a balanced starter plan.</Text>
+              <Text style={styles.muted}>No meal plans yet. Build one to assign it.</Text>
             )}
+            <View style={styles.inlineActions}>
+              <ActionButton label="New meal plan" icon="add-outline" onPress={nav.newMealPlan} />
+              {mealPlanId ? <ActionButton label="Edit selected" icon="create-outline" onPress={() => nav.editMealPlan(mealPlanId)} /> : null}
+            </View>
           </View>
         </>
       ) : null}
 
       <Text style={styles.label}>Clients</Text>
       <View style={styles.stack}>
-        {data.roster.map((client) => (
-          <ChoiceRow
-            key={client.athleteId}
-            multi
-            selected={selectedAthleteIds.includes(client.athleteId)}
-            title={client.name}
-            subtitle={client.sport || "Client"}
-            onPress={() => toggleAthlete(client.athleteId)}
-          />
-        ))}
+        {data.roster.length ? (
+          data.roster.map((client) => (
+            <ChoiceRow
+              key={client.athleteId}
+              multi
+              selected={selectedAthleteIds.includes(client.athleteId)}
+              title={client.name}
+              subtitle={client.sport || "Client"}
+              onPress={() => toggleAthlete(client.athleteId)}
+            />
+          ))
+        ) : (
+          <Text style={styles.muted}>No clients yet. Add clients from the Clients tab to assign plans.</Text>
+        )}
       </View>
 
-      {message ? <Text style={message.startsWith("Assigned") ? styles.successText : styles.errorText}>{message}</Text> : null}
+      {message ? <Text style={styles.errorText}>{message}</Text> : null}
+      {outcome ? (
+        <AlertBanner
+          tone={outcome.tone === "success" ? "primary" : outcome.tone === "partial" ? "warning" : "danger"}
+          title={outcome.title}
+          body={outcome.lines.length ? outcome.lines.join("\n") : undefined}
+        />
+      ) : null}
+      {outcome?.warnings.length ? (
+        <AlertBanner tone="warning" title="Review before clients start" body={outcome.warnings.join("\n")} />
+      ) : null}
       <Pressable onPress={submit} disabled={saving || !data.roster.length} style={[styles.submitButton, saving || !data.roster.length ? styles.disabled : null]}>
-        {saving ? <ActivityIndicator color="#fff" /> : <Text style={styles.submitText}>Assign</Text>}
+        {saving ? <ActivityIndicator color="#fff" /> : <Text style={styles.submitText}>Assign to {selectedAthleteIds.length} client{selectedAthleteIds.length === 1 ? "" : "s"}</Text>}
       </Pressable>
     </AppCard>
   );
@@ -563,13 +730,6 @@ function shortDateLabel(key: string) {
   return `${day}/${month}`;
 }
 
-function errorMessage(err: unknown) {
-  const raw = err instanceof Error ? err.message : "action_failed";
-  if (raw === "slot_already_assigned") return "A workout already exists for one selected client/date.";
-  if (raw === "nutrition_not_included") return "One selected client does not include nutrition in their membership.";
-  return "Could not complete this action. Check the selected clients and try again.";
-}
-
 function PlanRow({
   icon,
   title,
@@ -577,6 +737,8 @@ function PlanRow({
   value,
   progress,
   tone = "primary",
+  onPress,
+  right,
 }: {
   icon: FitoraIconName;
   title: string;
@@ -584,6 +746,8 @@ function PlanRow({
   value?: string;
   progress?: number;
   tone?: FitoraTone;
+  onPress?: () => void;
+  right?: ReactNode;
 }) {
   return (
     <RowLink
@@ -593,6 +757,8 @@ function PlanRow({
       subtitle={subtitle}
       value={value}
       progress={progress}
+      onPress={onPress}
+      right={right}
     />
   );
 }
@@ -605,6 +771,10 @@ const styles = StyleSheet.create({
   quickCreate: { flexDirection: "row", gap: 12 },
   quickButton: { paddingHorizontal: 8 },
   quickButtonText: { fontSize: 13 },
+  fullButton: { flex: 0, minHeight: 40 },
+  inlineActions: { flexDirection: "row", gap: 8 },
+  rowAction: { minHeight: 30, minWidth: 64, paddingHorizontal: 8, borderRadius: 8, borderWidth: 1, borderColor: colors.lineStrong, alignItems: "center", justifyContent: "center" },
+  rowActionText: { color: colors.inkMuted, fontSize: 11, fontWeight: "900" },
   composer: { gap: 9, borderColor: colors.primary },
   composerHeader: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: 12 },
   composerTitle: { color: colors.ink, fontSize: 17, lineHeight: 22, fontWeight: "900" },
