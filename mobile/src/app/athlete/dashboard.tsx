@@ -823,13 +823,6 @@ function metricPalette(tone: "success" | "warning" | "danger" | "neutral" | "pri
   return readinessPalette(tone);
 }
 
-function readinessDetail(score: number | null | undefined): string {
-  if (score == null) return "Complete your check-in to unlock today's readiness.";
-  if (score >= 75) return "Good recovery today · You are cleared to push.";
-  if (score >= 60) return "Moderate recovery today · Keep effort controlled.";
-  return "Low recovery today · Take it slightly lighter.";
-}
-
 function workoutExerciseCount(workout: WorkoutAssignmentSummary | null, detail?: WorkoutAssignmentDetail | null): number {
   if (!workout) return 0;
   return detail?.id === workout.id && detail.exercises.length ? detail.exercises.length : workout.exerciseCount;
@@ -1208,7 +1201,13 @@ function WorkoutsView({ data }: { data: AthleteDashboardData }) {
           ) : (
             <TrainingNoWorkoutCard dateStr={selectedDate} todayKeyValue={data.date} hasCoach={athleteHasCoach(data)} />
           )}
-          {selectedDetail && selectedDetail.exercises.length ? <TrainingExercisePreview detail={selectedDetail} /> : null}
+          {selectedDetail && selectedDetail.exercises.length ? (
+            <>
+              <SectionLabel title="Exercises" />
+              <TrainingExercisePreview detail={selectedDetail} />
+            </>
+          ) : null}
+          <SectionLabel title="Coming up" />
           <TrainingUpNextCard workout={upNextWorkout} onViewCalendar={() => setSegment("upcoming")} />
         </>
       ) : null}
@@ -1520,7 +1519,22 @@ function TrainingUpNextCard({
 }
 
 function TrainingNoWorkoutCard({ dateStr, todayKeyValue, hasCoach }: { dateStr: string; todayKeyValue: string; hasCoach: boolean }) {
-  const title = dateStr === todayKeyValue ? "No training scheduled for today" : "No training scheduled";
+  if (dateStr === todayKeyValue) {
+    return (
+      <HeroCard
+        calm
+        icon="bed-outline"
+        eyebrow={hasCoach ? "Rest day" : "No plan yet"}
+        title={hasCoach ? "Recover today" : "Get a training plan"}
+        body={
+          hasCoach
+            ? "Nothing scheduled. Sleep, hydrate and log your check-in so your coach sees how you're recovering."
+            : "Workouts are planned by your coach. Connect with one from the Coach tab to get a schedule here."
+        }
+      />
+    );
+  }
+  const title = "No training scheduled";
   const body = !hasCoach
     ? "Workouts are planned by your coach. Connect with one from the Coach tab to get a schedule here."
     : dateStr < todayKeyValue
@@ -2371,23 +2385,18 @@ function NutritionSummaryCardV2({
 function NutritionSetupCardV2({ profile, onComplete }: { profile: AthleteDashboardData["profile"]; onComplete: () => void }) {
   const missing = missingNutritionInputsV2(profile);
   return (
-    <AppCard style={styles.nutritionSetupCard}>
-      <View style={styles.nutritionSetupTop}>
-        <IconTile icon="calculator-outline" size={30} tone="primary" />
-        <View style={styles.nutritionSetupCopy}>
-          <Text style={styles.nutritionCardTitle}>Set your nutrition target</Text>
-          <Text style={styles.nutritionMealMuted}>Complete your profile to calculate calories and macros.</Text>
-        </View>
-      </View>
-      <View style={styles.nutritionMissingGrid}>
-        {missing.slice(0, 4).map((item) => (
-          <View key={item} style={styles.nutritionMissingChip}>
-            <Text style={styles.nutritionMissingText}>{item}</Text>
-          </View>
-        ))}
-      </View>
-      <ActionButton label="Complete Profile" icon="person-outline" variant="filled" onPress={onComplete} />
-    </AppCard>
+    <HeroCard
+      icon="calculator-outline"
+      eyebrow="Set up nutrition"
+      title="Get your daily calorie target"
+      body={
+        missing.length
+          ? `Add your ${missing.slice(0, 4).map((item) => item.toLowerCase()).join(", ")} and we'll calculate calories and macros for you.`
+          : "Complete your profile and we'll calculate calories and macros for you."
+      }
+      actionLabel="Complete Profile"
+      onAction={onComplete}
+    />
   );
 }
 
@@ -2920,6 +2929,7 @@ function CoachView({
             />
           ) : null}
 
+          <SectionLabel title="Sessions" />
           <NextCoachSessionCard
             session={nextSession}
             sessionCount={data.sessions.length}
@@ -2933,6 +2943,7 @@ function CoachView({
 
           {panel === "sessions" ? <CoachSessionsPanel sessions={data.sessions} /> : null}
 
+          <SectionLabel title="Messages" />
           <LatestCoachMessageCard
             coachName={coachName}
             coachAvatar={data.coachProfile?.avatar}
@@ -2941,6 +2952,7 @@ function CoachView({
             onReply={openConversation}
           />
 
+          <SectionLabel title="Your program" />
           <AthleteProgramCard
             data={data}
             onTraining={() => onNavigate("workouts")}
@@ -2966,6 +2978,7 @@ function CoachView({
 
           {PAYMENTS_ENABLED && panel === "membership" ? <CoachMembershipDetails subscription={subscription} onFindCoach={() => router.push("/athlete/coach-discovery" as never)} /> : null}
 
+          <SectionLabel title="Coaching" />
           <CoachRelationshipCard leaving={leaving} onSwitch={PAYMENTS_ENABLED ? confirmSwitchCoach : undefined} onLeave={leaving ? undefined : confirmLeaveCoach} />
 
           {coachActionMessage ? <Text style={coachActionMessage.includes("sent") ? styles.successText : styles.errorText}>{coachActionMessage}</Text> : null}
@@ -3737,8 +3750,10 @@ function ProgressView({ data, onNavigate }: { data: AthleteDashboardData; onNavi
         onSelectCategory={setCategory}
       />
 
+      <SectionLabel title="This week" />
       <ProgressWeeklyCard weekly={weekly} />
 
+      <SectionLabel title="Details" />
       <ProgressCategoryTabs value={category} onChange={setCategory} />
 
       <ProgressDetailCard
@@ -3751,6 +3766,7 @@ function ProgressView({ data, onNavigate }: { data: AthleteDashboardData; onNavi
         recovery={recovery}
       />
 
+      <SectionLabel title="From your coach" />
       <ProgressFeedbackCard
         comments={data.coachComments}
         onOpen={data.coachComments.length ? () => onNavigate("coach") : undefined}
