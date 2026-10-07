@@ -1,4 +1,4 @@
-import { ReactNode, useEffect, useMemo, useState } from "react";
+import { ReactNode, useEffect, useId, useMemo, useState } from "react";
 import {
   AccessibilityInfo,
   ActivityIndicator,
@@ -17,12 +17,13 @@ import {
 import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context";
 import { useRouter } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
-import Svg, { Circle, Polyline } from "react-native-svg";
+import Svg, { Circle, Defs, LinearGradient as SvgGradient, Polyline, Stop } from "react-native-svg";
+import { LinearGradient } from "expo-linear-gradient";
 import { Text } from "./AppText";
 import { Avatar } from "./Avatar";
 import { apiJson } from "../lib/api";
 import { useAuth } from "../lib/auth";
-import { ROLE_THEMES, colors, radius } from "../lib/theme";
+import { ROLE_THEMES, colors, layout, metricColors, radius, type MetricKey } from "../lib/theme";
 
 export type IconName = keyof typeof Ionicons.glyphMap;
 export type Tone = "neutral" | "primary" | "success" | "warning" | "danger" | "energy";
@@ -478,8 +479,8 @@ export function HeroCard({
   /** A softer tinted hero for "all done" / informational states. */
   calm?: boolean;
 }) {
-  return (
-    <View style={[styles.hero, calm ? styles.heroCalm : null]} accessibilityRole="summary">
+  const content = (
+    <>
       <View style={styles.heroTop}>
         {icon ? (
           <View style={[styles.heroIcon, calm ? styles.heroIconCalm : null]}>
@@ -508,6 +509,130 @@ export function HeroCard({
             </Pressable>
           ) : null}
         </View>
+      ) : null}
+    </>
+  );
+  if (calm) {
+    return (
+      <View style={[styles.hero, styles.heroCalm]} accessibilityRole="summary">
+        {content}
+      </View>
+    );
+  }
+  return (
+    <LinearGradient colors={["#0f766e", "#0b4f4a", "#0a3a37"]} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={styles.hero} accessibilityRole="summary">
+      {/* Soft coral glow in the corner (Fitora "Glow" style). */}
+      <View pointerEvents="none" style={styles.heroGlowOuter} />
+      <View pointerEvents="none" style={styles.heroGlowInner} />
+      {content}
+    </LinearGradient>
+  );
+}
+
+/** Gradient progress ring in a metric's own color. `value` is 0..1. */
+export function MetricRing({ metric, value, size = 56, stroke = 7, children }: { metric: MetricKey; value: number | null; size?: number; stroke?: number; children?: ReactNode }) {
+  const id = useId().replace(/:/g, "");
+  const palette = metricColors[metric];
+  const r = (size - stroke) / 2;
+  const c = 2 * Math.PI * r;
+  const pct = Math.max(0, Math.min(1, value ?? 0));
+  return (
+    <View style={{ width: size, height: size, alignItems: "center", justifyContent: "center" }}>
+      <Svg width={size} height={size} style={{ position: "absolute", transform: [{ rotate: "-90deg" }] }}>
+        <Defs>
+          <SvgGradient id={`ring-${id}`} x1="0" y1="0" x2="1" y2="1">
+            <Stop offset="0" stopColor={palette.from} />
+            <Stop offset="1" stopColor={palette.to} />
+          </SvgGradient>
+        </Defs>
+        <Circle cx={size / 2} cy={size / 2} r={r} stroke={palette.track} strokeWidth={stroke} fill="none" />
+        {pct > 0 ? (
+          <Circle
+            cx={size / 2}
+            cy={size / 2}
+            r={r}
+            stroke={`url(#ring-${id})`}
+            strokeWidth={stroke}
+            fill="none"
+            strokeLinecap="round"
+            strokeDasharray={`${c * pct} ${c}`}
+          />
+        ) : null}
+      </Svg>
+      {children}
+    </View>
+  );
+}
+
+/** One metric tile: ring, label, value. Use three in a MetricRow. */
+export function MetricTileRing({
+  metric,
+  label,
+  value,
+  progress,
+  sub,
+  onPress,
+}: {
+  metric: MetricKey;
+  label: string;
+  value: string;
+  progress: number | null;
+  sub?: string;
+  onPress?: () => void;
+}) {
+  const palette = metricColors[metric];
+  return (
+    <Pressable
+      onPress={onPress}
+      disabled={!onPress}
+      accessibilityRole={onPress ? "button" : undefined}
+      accessibilityLabel={`${label}: ${value}${sub ? `, ${sub}` : ""}`}
+      style={({ pressed }) => [styles.metricRingTile, pressed ? styles.pressed : null]}
+    >
+      <MetricRing metric={metric} value={progress} />
+      <Text style={styles.metricRingLabel} numberOfLines={1}>{label}</Text>
+      <Text style={[styles.metricRingValue, { color: progress != null && progress > 0 ? palette.ink : colors.ink }]} numberOfLines={1}>{value}</Text>
+      {sub ? <Text style={styles.metricRingSub} numberOfLines={1}>{sub}</Text> : null}
+    </Pressable>
+  );
+}
+
+export function MetricRow({ children }: { children: ReactNode }) {
+  return <View style={styles.metricRow}>{children}</View>;
+}
+
+/**
+ * The single header for every inner (pushed) screen: round back button,
+ * large left-aligned title, optional subtitle and one right action.
+ */
+export function BackHeader({
+  title,
+  subtitle,
+  onBack,
+  actionLabel,
+  onAction,
+}: {
+  title: string;
+  subtitle?: string;
+  onBack?: () => void;
+  actionLabel?: string;
+  onAction?: () => void;
+}) {
+  const router = useRouter();
+  const back = onBack ?? (() => (router.canGoBack() ? router.back() : router.replace("/" as never)));
+  return (
+    <View style={styles.backHeader}>
+      <Pressable onPress={back} hitSlop={10} accessibilityRole="button" accessibilityLabel="Back" style={({ pressed }) => [styles.backButton, pressed ? styles.pressed : null]}>
+        <Ionicons name="chevron-back" size={22} color={colors.ink} />
+      </Pressable>
+      <View style={styles.backHeaderText}>
+        <Text style={styles.backHeaderTitle} numberOfLines={1} accessibilityRole="header">{title}</Text>
+        {subtitle ? <Text style={styles.backHeaderSubtitle} numberOfLines={2}>{subtitle}</Text> : null}
+      </View>
+      {actionLabel && onAction ? (
+        <Pressable onPress={onAction} hitSlop={10} accessibilityRole="button">
+          <Text style={styles.backHeaderAction}>{actionLabel}</Text>
+        </Pressable>
       ) : null}
     </View>
   );
@@ -804,18 +929,19 @@ const styles = StyleSheet.create({
   // so its top edge sits at 140dp) — without this, a screen with no bottom
   // nav bar can scroll its last control permanently behind the FAB with no
   // way to reveal it.
-  content: { paddingHorizontal: 15, paddingTop: 1, paddingBottom: 150, gap: 7 },
+  content: { paddingHorizontal: layout.gutter, paddingTop: 4, paddingBottom: 150, gap: layout.sectionGap },
   contentWithNav: { paddingBottom: 98 },
   card: {
-    backgroundColor: "#fdfffe",
+    backgroundColor: colors.surfaceRaised,
     borderWidth: 1,
-    borderColor: sectionBorder,
-    borderRadius: sectionRadius,
-    padding: 8,
-    shadowColor: "#10201e",
-    shadowOpacity: 0.014,
-    shadowRadius: 4,
-    shadowOffset: { width: 0, height: 1 },
+    borderColor: "#e1ece9",
+    borderRadius: layout.cardRadius,
+    padding: layout.cardPadding,
+    gap: 10,
+    shadowColor: "#0b3f3b",
+    shadowOpacity: 0.05,
+    shadowRadius: 12,
+    shadowOffset: { width: 0, height: 3 },
     elevation: 1,
   },
   appBar: { minHeight: 48, flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: 8 },
@@ -861,7 +987,7 @@ const styles = StyleSheet.create({
   bottomIndicator: { height: 4, width: 34, borderRadius: 2, backgroundColor: "transparent", marginBottom: 1 },
   bottomIndicatorActive: { backgroundColor: colors.primary },
   sectionHeader: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: 12, marginTop: 2 },
-  sectionTitle: { color: colors.ink, fontSize: 15, fontWeight: "900", lineHeight: 20 },
+  sectionTitle: { color: colors.ink, fontSize: 16, fontWeight: "800", lineHeight: 22 },
   sectionAction: { color: colors.primary, fontSize: 12, fontWeight: "800" },
   chip: {
     minHeight: 21,
@@ -901,8 +1027,9 @@ const styles = StyleSheet.create({
   loadingText: { color: colors.inkMuted, fontSize: 14, fontWeight: "700" },
   hero: {
     borderRadius: 20,
-    padding: 16,
+    padding: 18,
     gap: 14,
+    overflow: "hidden",
     backgroundColor: colors.primaryStrong,
     shadowColor: colors.primaryStrong,
     shadowOpacity: 0.22,
@@ -910,6 +1037,35 @@ const styles = StyleSheet.create({
     shadowOffset: { width: 0, height: 8 },
     elevation: 4,
   },
+  heroGlowOuter: { position: "absolute", width: 220, height: 220, borderRadius: 110, right: -90, top: -110, backgroundColor: colors.energy, opacity: 0.16 },
+  heroGlowInner: { position: "absolute", width: 120, height: 120, borderRadius: 60, right: -40, top: -60, backgroundColor: colors.energy, opacity: 0.18 },
+  metricRow: { flexDirection: "row", gap: 10 },
+  metricRingTile: {
+    flex: 1,
+    minWidth: 0,
+    alignItems: "center",
+    gap: 4,
+    paddingVertical: 12,
+    paddingHorizontal: 6,
+    borderRadius: layout.cardRadius,
+    borderWidth: 1,
+    borderColor: "#e1ece9",
+    backgroundColor: colors.surfaceRaised,
+    shadowColor: "#0b3f3b",
+    shadowOpacity: 0.05,
+    shadowRadius: 12,
+    shadowOffset: { width: 0, height: 3 },
+    elevation: 1,
+  },
+  metricRingLabel: { color: colors.inkFaint, fontSize: 12, fontWeight: "700", marginTop: 4 },
+  metricRingValue: { fontSize: 16, fontWeight: "900" },
+  metricRingSub: { color: colors.inkFaint, fontSize: 12, fontWeight: "600" },
+  backHeader: { flexDirection: "row", alignItems: "center", gap: 12, minHeight: 56, paddingTop: 4 },
+  backButton: { width: 40, height: 40, borderRadius: 20, alignItems: "center", justifyContent: "center", backgroundColor: colors.surfaceRaised, borderWidth: 1, borderColor: "#e1ece9" },
+  backHeaderText: { flex: 1, minWidth: 0 },
+  backHeaderTitle: { color: colors.ink, fontSize: 22, lineHeight: 28, fontWeight: "900" },
+  backHeaderSubtitle: { color: colors.inkMuted, fontSize: 13, lineHeight: 18, marginTop: 1 },
+  backHeaderAction: { color: colors.primary, fontSize: 15, fontWeight: "800" },
   heroCalm: { backgroundColor: colors.primarySoft, shadowOpacity: 0, elevation: 0, borderWidth: 1, borderColor: "#c4e8e1" },
   heroTop: { flexDirection: "row", alignItems: "flex-start", gap: 12 },
   heroIcon: { width: 46, height: 46, borderRadius: 14, alignItems: "center", justifyContent: "center", backgroundColor: "rgba(255,255,255,0.14)" },
