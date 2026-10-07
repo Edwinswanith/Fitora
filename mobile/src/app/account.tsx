@@ -4,6 +4,8 @@ import { useRouter } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
 import { Text } from "../components/AppText";
 import { Avatar, AvatarEditorPanel } from "../components/Avatar";
+import { DateField } from "../components/DateTimeField";
+import { todayLocalDate, yearsAgoLocalDate } from "../lib/dateTimeValues";
 import {
   ActionButton,
   AppCard,
@@ -38,6 +40,7 @@ const FITNESS_GOALS = ["lose_weight", "maintain_weight", "gain_weight"] as const
 const GOAL_INTENSITIES = ["mild", "moderate", "aggressive"] as const;
 const ACTIVITY_LEVELS = ["sedentary", "light", "moderate", "active", "very_active"] as const;
 const BIOLOGICAL_SEXES = ["male", "female"] as const;
+const DOB_MIN_DATE = "1920-01-01";
 
 const NOTIFICATION_ROWS: { key: keyof NotificationCategories; label: string; icon: keyof typeof Ionicons.glyphMap }[] = [
   { key: "alerts", label: "Risk Alerts", icon: "notifications-outline" },
@@ -323,7 +326,11 @@ function AthleteEditForm({
   const [weightKg, setWeightKg] = useState(profile?.weightKg != null ? String(profile.weightKg) : "");
   const [targetWeightKg, setTargetWeightKg] = useState(profile?.targetWeightKg != null ? String(profile.targetWeightKg) : "");
   const [heightCm, setHeightCm] = useState(profile?.heightCm != null ? String(profile.heightCm) : "");
+  // The server stores dob as a calendar date (UTC midnight) and returns it as
+  // "YYYY-MM-DD", so the first 10 chars are the date itself, no tz shift.
   const [dob, setDob] = useState(profile?.dob ? profile.dob.slice(0, 10) : "");
+  // Picker bounds: today (no future birthdays) and, when empty, open around 25 years ago.
+  const [dobBounds] = useState(() => ({ today: todayLocalDate(), defaultDate: yearsAgoLocalDate(25) }));
   const [biologicalSex, setBiologicalSex] = useState(profile?.biologicalSex ?? "");
   const [activityLevel, setActivityLevel] = useState(profile?.activityLevel ?? "");
   const [fitnessGoal, setFitnessGoal] = useState(profile?.fitnessGoal ?? "");
@@ -355,8 +362,8 @@ function AthleteEditForm({
       setError("Height must be a number.");
       return;
     }
-    if (dob.trim() && !/^\d{4}-\d{2}-\d{2}$/.test(dob.trim())) {
-      setError("Date of birth must be in YYYY-MM-DD format.");
+    if (dob && dob > todayLocalDate()) {
+      setError("Date of birth can't be in the future.");
       return;
     }
     setSaving(true);
@@ -423,7 +430,17 @@ function AthleteEditForm({
       <TextInput value={heightCm} onChangeText={setHeightCm} keyboardType="numeric" style={styles.input} placeholder="e.g. 178" placeholderTextColor={colors.inkFaint} />
 
       <Text style={styles.formLabel}>Date of Birth</Text>
-      <TextInput value={dob} onChangeText={setDob} style={styles.input} placeholder="YYYY-MM-DD" placeholderTextColor={colors.inkFaint} />
+      <DateField
+        value={dob}
+        onChange={setDob}
+        accessibilityLabel="Date of birth"
+        placeholder="Select your date of birth"
+        minimumDate={DOB_MIN_DATE}
+        maximumDate={dobBounds.today}
+        initialPickerDate={dobBounds.defaultDate}
+        fieldStyle={styles.dateInput}
+        textStyle={styles.dateInputText}
+      />
 
       <Text style={styles.formLabel}>Biological Sex</Text>
       <ChipPicker options={BIOLOGICAL_SEXES} value={biologicalSex} onChange={setBiologicalSex} />
@@ -744,6 +761,9 @@ const styles = StyleSheet.create({
   switchLabel: { flex: 1, color: colors.ink, fontSize: 15, fontWeight: "800" },
   securityHeader: { minHeight: 56, flexDirection: "row", alignItems: "center", gap: 12 },
   passwordForm: { gap: 10, marginTop: 12 },
+  // DateField box/text matched to `input` below.
+  dateInput: { minHeight: 50, borderRadius: radius.md, paddingHorizontal: 14 },
+  dateInputText: { fontSize: 15, fontWeight: "400" },
   input: {
     minHeight: 50,
     borderRadius: radius.md,
