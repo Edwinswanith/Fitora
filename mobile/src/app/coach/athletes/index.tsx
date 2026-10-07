@@ -8,6 +8,7 @@ import {
   AppCard,
   EmptyState,
   ErrorState,
+  HeroCard,
   IconTile,
   LoadingState,
   ScreenContainer,
@@ -108,6 +109,37 @@ function ClientsView({ data }: { data: CoachHomeData }) {
       <View style={styles.header}>
         <Text style={styles.pageTitle}>Clients</Text>
       </View>
+
+      {data.roster.length === 0 ? (
+        <HeroCard
+          icon="person-add-outline"
+          eyebrow="Get started"
+          title="Add your first client"
+          body="Create their account, or link an athlete who already signed up, using their email."
+          actionLabel="Add Client"
+          onAction={() => router.push("/coach/athletes/new" as never)}
+        />
+      ) : attentionCount > 0 ? (
+        <HeroCard
+          icon="alert-circle-outline"
+          eyebrow="Needs attention"
+          title={attentionCount === 1 ? "1 client needs a look" : `${attentionCount} clients need a look`}
+          body={(() => {
+            const top = [...data.cards].sort((a, b) => attentionRank(a) - attentionRank(b))[0];
+            return top ? `${top.name || "A client"}: ${attentionReason(top)}` : undefined;
+          })()}
+          actionLabel={filter === "attention" ? "Show All Clients" : "Show Them"}
+          onAction={() => setFilter(filter === "attention" ? "all" : "attention")}
+        />
+      ) : (
+        <HeroCard
+          calm
+          icon="checkmark-done-outline"
+          eyebrow="All good"
+          title={`All ${data.roster.length} client${data.roster.length === 1 ? "" : "s"} on track`}
+          body="No low readiness, missed check-ins or injuries flagged today."
+        />
+      )}
 
       <View style={styles.searchWrap}>
         <Ionicons name="search-outline" size={23} color={colors.inkFaint} />

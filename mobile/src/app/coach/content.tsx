@@ -10,6 +10,7 @@ import {
   AppCard,
   EmptyState,
   ErrorState,
+  HeroCard,
   IconTile,
   LoadingState,
   PrimaryAppBar,
@@ -250,6 +251,27 @@ export default function CoachContent() {
 
       {tab === "library" ? (
         <>
+          {activeVideos.length === 0 ? (
+            <HeroCard
+              icon="videocam-outline"
+              eyebrow="Content library"
+              title="Upload your first video"
+              body="Record a form tip or a full workout once, then share it with every client who needs it."
+              actionLabel="Upload Video"
+              onAction={pickVideo}
+            />
+          ) : (
+            <HeroCard
+              calm
+              icon="play-circle-outline"
+              eyebrow="Content library"
+              title={`${activeVideos.length} video${activeVideos.length === 1 ? "" : "s"} ready to share`}
+              body={recent ? `Latest: ${recent.title}` : undefined}
+              actionLabel="Upload Video"
+              onAction={pickVideo}
+            />
+          )}
+
           <View style={styles.filterRow}>
             {CATEGORY_FILTERS.map((item) => (
               <Pressable
@@ -262,7 +284,7 @@ export default function CoachContent() {
             ))}
           </View>
 
-          <SectionHeader title="Recently Added" />
+          {recent ? <SectionHeader title="Recently Added" /> : null}
           {recent ? (
             <FeaturedVideo
               video={recent}
@@ -274,7 +296,7 @@ export default function CoachContent() {
               onDelete={() => deleteVideo(recent)}
               onPlay={() => setPlayingVideo(recent)}
             />
-          ) : <EmptyState title="No videos yet" body="Upload your first coaching video to build a reusable library." icon="videocam-outline" />}
+          ) : null}
 
           <SectionHeader title="Video Library" action={category !== "all" ? "Clear filter" : undefined} onAction={() => setCategory("all")} />
           <AppCard>

@@ -9,11 +9,13 @@ import {
   AppCard,
   EmptyState,
   ErrorState,
+  HeroCard,
   LoadingState,
   PrimaryAppBar,
   RowLink,
   ScreenContainer,
   SectionHeader,
+  SectionLabel,
   SegmentedControl,
 } from "../../../components/fitora";
 import { requestJson } from "../../../lib/planApi";
@@ -135,12 +137,44 @@ function Assignments({
 
   return (
     <>
+      {data.roster.length === 0 ? (
+        <HeroCard
+          calm
+          icon="barbell-outline"
+          eyebrow="Get ready"
+          title="Build your first workout template"
+          body="Templates are reusable plans. Once you add clients, you assign them in two taps."
+          actionLabel="New Template"
+          onAction={() => nav.newTemplate("workout")}
+        />
+      ) : planningGaps.length ? (
+        <HeroCard
+          icon="clipboard-outline"
+          eyebrow="Planning gaps"
+          title={planningGaps.length === 1 ? "1 client has no workout today" : `${planningGaps.length} clients have no workout today`}
+          body={planningGaps.map((status) => status.athleteName).slice(0, 4).join(", ") + (planningGaps.length > 4 ? ` and ${planningGaps.length - 4} more` : "")}
+          actionLabel="Assign Workout"
+          onAction={() => openMode("workout")}
+        />
+      ) : (
+        <HeroCard
+          calm
+          icon="checkmark-done-outline"
+          eyebrow="All planned"
+          title="Every client has a workout today"
+          body="Get ahead by planning tomorrow's training and meals."
+          actionLabel="Plan Ahead"
+          onAction={() => openMode("routine")}
+        />
+      )}
+
+      <SectionLabel title="Create" />
       <View style={styles.quickCreate}>
         <ActionButton label="Workout" icon="barbell-outline" onPress={() => openMode("workout")} style={styles.quickButton} textStyle={styles.quickButtonText} />
         <ActionButton label="Tasks" icon="checkbox-outline" onPress={() => openMode("tasks")} style={styles.quickButton} textStyle={styles.quickButtonText} />
         <ActionButton label="Meal Plan" icon="restaurant-outline" onPress={() => openMode("meal")} style={styles.quickButton} textStyle={styles.quickButtonText} />
       </View>
-      <ActionButton label="New Plan" icon="add-outline" variant="filled" onPress={() => openMode("routine")} />
+      <ActionButton label="New Plan" icon="add-outline" onPress={() => openMode("routine")} />
 
       <SectionHeader title="Today" />
       <AppCard>
@@ -189,17 +223,6 @@ function Assignments({
           <EmptyState title="No assignments tomorrow" body="Assign routines to keep client plans complete." icon="calendar-outline" />
         )}
       </AppCard>
-
-      {planningGaps.length ? (
-        <AlertBanner
-          title="Planning gaps"
-          body={`${planningGaps.length} client${planningGaps.length === 1 ? "" : "s"} - ${planningGaps.map((status) => status.athleteName).join(", ")} - ${planningGaps.length === 1 ? "has" : "have"} no workout assigned today.`}
-          action="Review"
-          onPress={() => openMode("routine")}
-        />
-      ) : data.roster.length ? (
-        <AlertBanner tone="primary" title="No planning gaps" body="Every client has a workout assigned today." />
-      ) : null}
 
       <SectionHeader title="Templates" action={data.templates.length ? "View Templates" : undefined} onAction={showTemplates} />
       <AppCard>
