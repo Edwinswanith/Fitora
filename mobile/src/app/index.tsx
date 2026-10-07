@@ -7,7 +7,7 @@ import { Ionicons } from "@expo/vector-icons";
 import { colors, metricColors } from "../lib/theme";
 import type { Role } from "../lib/roles";
 
-const BRAND_MARK = require("../../assets/fitora/landing-logo-reference.png");
+const BRAND_MARK = require("../../assets/fitora/brand-mark.png");
 const DOT_WAVE = require("../../assets/fitora/landing-dot-wave-reference.png");
 
 type RoleOption = {

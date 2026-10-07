@@ -1,16 +1,12 @@
 import { activityVisual, exerciseVisual, mealVisual, planVisual, workoutVisual } from "../fitoraIcons";
 
 describe("fitora icon mapping", () => {
-  it("uses named artwork for supported exercise previews", () => {
-    expect(exerciseVisual("Bench Press").asset).toBe("bench");
-    expect(exerciseVisual("Lat Pulldown").asset).toBe("pulldown");
-    expect(exerciseVisual("Shoulder Press").asset).toBe("shoulder");
-    expect(exerciseVisual("Lateral Raise").asset).toBe("shoulder");
-    expect(exerciseVisual("Push-ups").asset).toBeUndefined();
+  it("maps exercise names to icons", () => {
+    expect(exerciseVisual("Bench Press").icon).toBe("barbell-outline");
+    expect(exerciseVisual("Lat Pulldown").icon).toBe("body-outline");
   });
 
   it("maps workout names to their content family", () => {
-    expect(workoutVisual("Upper Body Strength").asset).toBe("torso");
     expect(workoutVisual("Recovery Mobility").icon).toBe("accessibility-outline");
     expect(workoutVisual("Cardio Intervals").icon).toBe("pulse-outline");
     expect(workoutVisual("Lower Body").icon).toBe("walk-outline");

@@ -192,6 +192,12 @@ export function PrimaryAppBar({
   );
 }
 
+/** Selected tab shows the solid glyph (iOS/Android convention), matching the coach tab bar. */
+function filledIcon(name: IconName): IconName {
+  const solid = name.replace(/-outline$/, "");
+  return solid in Ionicons.glyphMap ? (solid as IconName) : name;
+}
+
 export function BottomNavigation({
   items,
   active,
@@ -214,7 +220,7 @@ export function BottomNavigation({
             accessibilityRole="tab"
             accessibilityState={{ selected }}
           >
-            <Ionicons name={item.icon} size={26} color={selected ? colors.primary : colors.inkFaint} />
+            <Ionicons name={selected ? filledIcon(item.icon) : item.icon} size={26} color={selected ? colors.primary : colors.inkFaint} />
             <Text style={[styles.bottomLabel, selected ? styles.bottomLabelActive : null]} numberOfLines={1}>
               {item.label}
             </Text>

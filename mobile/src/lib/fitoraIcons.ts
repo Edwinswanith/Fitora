@@ -3,13 +3,11 @@ import { colors } from "./theme";
 
 export type FitoraIconName = keyof typeof Ionicons.glyphMap;
 export type FitoraTone = "neutral" | "primary" | "success" | "warning" | "danger";
-export type FitoraIconAsset = "torso" | "bench" | "pulldown" | "shoulder";
 
 export type FitoraVisual = {
   icon: FitoraIconName;
   tone: FitoraTone;
   color: string;
-  asset?: FitoraIconAsset;
 };
 
 function normalize(...parts: (string | null | undefined)[]) {
@@ -20,24 +18,24 @@ function hasAny(text: string, keywords: string[]) {
   return keywords.some((keyword) => text.includes(keyword));
 }
 
-function visual(icon: FitoraIconName, tone: FitoraTone = "primary", color: string = colors.primary, asset?: FitoraIconAsset): FitoraVisual {
-  return { icon, tone, color, asset };
+function visual(icon: FitoraIconName, tone: FitoraTone = "primary", color: string = colors.primary): FitoraVisual {
+  return { icon, tone, color };
 }
 
 export function exerciseVisual(title?: string | null, type?: string | null): FitoraVisual {
   const text = normalize(title, type);
 
   if (hasAny(text, ["bench", "chest press"])) {
-    return visual("barbell-outline", "primary", colors.primary, "bench");
+    return visual("barbell-outline", "primary", colors.primary);
   }
   if (hasAny(text, ["shoulder", "overhead", "military press", "lateral raise"])) {
-    return visual("barbell-outline", "primary", colors.primary, "shoulder");
+    return visual("barbell-outline", "primary", colors.primary);
   }
   if (hasAny(text, ["push-up", "pushup", "push ups"])) {
     return visual("body-outline", "primary", colors.primary);
   }
   if (hasAny(text, ["lat ", " lat", "pulldown", "pull down", "pull-up", "pullup", "chin-up", "chinup", "row"])) {
-    return visual("body-outline", "primary", colors.primary, "pulldown");
+    return visual("body-outline", "primary", colors.primary);
   }
   if (hasAny(text, ["mobility", "stretch", "recovery", "yoga", "warmup", "warm-up", "cooldown", "cool-down"])) {
     return visual("accessibility-outline", "success", colors.ok);
@@ -80,7 +78,7 @@ export function workoutVisual(name?: string | null, type?: string | null): Fitor
     return visual("pulse-outline", "warning", colors.warn);
   }
   if (hasAny(text, ["upper", "body", "strength", "push", "pull", "bench", "press", "workout", "training", "exercise"])) {
-    return visual("barbell-outline", "primary", colors.primary, "torso");
+    return visual("barbell-outline", "primary", colors.primary);
   }
 
   return visual("barbell-outline");

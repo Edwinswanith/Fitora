@@ -1,6 +1,5 @@
 import { Fragment, useCallback, useEffect, useId, useMemo, useRef, useState } from "react";
-import { Alert, Image, Pressable, StyleSheet, TextInput, View } from "react-native";
-import type { ImageSourcePropType } from "react-native";
+import { Alert, Pressable, StyleSheet, TextInput, View } from "react-native";
 import { useFocusEffect, useLocalSearchParams, useRouter } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
 import Svg, { Circle, Defs, Line, LinearGradient as SvgLinearGradient, Path, Stop, Text as SvgText } from "react-native-svg";
@@ -35,7 +34,7 @@ import { PAYMENTS_ENABLED } from "../../lib/features";
 import { celebrate, showError } from "../../lib/feedback";
 import { joinSessionCall } from "../../lib/videoCall";
 import { eligibleDays, judgeRate, localDayOf, windowStart } from "../../lib/progressWindow";
-import { exerciseVisual, mealVisual, workoutVisual, type FitoraIconAsset, type FitoraVisual } from "../../lib/fitoraIcons";
+import { exerciseVisual, mealVisual, workoutVisual, type FitoraVisual } from "../../lib/fitoraIcons";
 import { colors, metricColors, radius, type MetricKey } from "../../lib/theme";
 import {
   addDays,
@@ -77,17 +76,6 @@ const NAV_ITEMS = [
   { key: "coach", label: "Coach", icon: "people-outline" as const },
   { key: "progress", label: "Progress", icon: "bar-chart-outline" as const },
 ];
-
-const WORKOUT_IMAGE_ASSETS: Record<FitoraIconAsset, ImageSourcePropType> = {
-  torso: require("../../../assets/fitora/workout-torso.png"),
-  bench: require("../../../assets/fitora/workout-icon-bench.png"),
-  pulldown: require("../../../assets/fitora/workout-icon-pulldown.png"),
-  shoulder: require("../../../assets/fitora/workout-icon-shoulder.png"),
-};
-
-function workoutImageSource(asset?: FitoraIconAsset) {
-  return asset ? WORKOUT_IMAGE_ASSETS[asset] : undefined;
-}
 
 function normalizeTab(value?: string | string[]): AthleteTab {
   const raw = Array.isArray(value) ? value[0] : value;
@@ -554,8 +542,6 @@ function NextWorkoutCard({
   const skipped = workout?.status === "skipped";
   const inProgress = Boolean(workout && (workout.status === "in_progress" || (workout.completedCount > 0 && workout.completedCount < exerciseCount)));
   const rpeLogged = workout?.slot ? data.daily?.rpeEntries?.[workout.slot] : data.daily?.rpe;
-  const visual = workout ? workoutVisual(workout.name) : null;
-  const imageSource = workoutImageSource(visual?.asset);
   const ctaLabel = completed
     ? rpeLogged ? "Completed" : "Log RPE"
     : skipped ? "Skipped"
@@ -610,11 +596,7 @@ function NextWorkoutCard({
           </View>
         </View>
         <View style={styles.nextWorkoutArt}>
-          {imageSource ? (
-            <Image source={imageSource} style={styles.nextWorkoutImage} resizeMode="contain" />
-          ) : (
-            <Ionicons name="barbell-outline" size={44} color={colors.primary} />
-          )}
+          <Ionicons name="barbell-outline" size={44} color={metricColors.training.to} />
         </View>
       </View>
       <ActionButton
@@ -1283,7 +1265,6 @@ function TrainingWorkoutHero({
   const isToday = dateStr === todayKeyValue;
   const source = detail?.assignedByRole ?? workout.assignedByRole;
   const visual = workoutVisual(workout.name);
-  const heroImage = workoutImageSource(visual.asset);
   const note = workoutCoachNote(detail);
   const hasProgress = progressPercent > 0 || workout.status === "in_progress";
   const buttonLabel =
@@ -1316,7 +1297,7 @@ function TrainingWorkoutHero({
           </View>
         </View>
         <View style={styles.trainingHeroVisual}>
-          {heroImage ? <Image source={heroImage} style={styles.trainingHeroImage} resizeMode="contain" /> : <Ionicons name={visual.icon} size={56} color={visual.color} />}
+          <Ionicons name={visual.icon} size={56} color={metricColors.training.to} />
         </View>
       </View>
       {note ? (
@@ -1401,7 +1382,6 @@ function TrainingExercisePreviewRow({
   showVideo?: boolean;
   onPress?: () => void;
 }) {
-  const imageSource = workoutImageSource(visual.asset);
   const completed = status === "completed";
   const inProgress = status === "in_progress";
   const skipped = status === "skipped";
@@ -1412,8 +1392,8 @@ function TrainingExercisePreviewRow({
       disabled={!onPress}
       style={({ pressed }) => [styles.trainingExerciseRow, pressed ? { opacity: 0.76 } : null]}
     >
-      <View style={[styles.trainingExerciseIcon, imageSource ? styles.trainingExerciseImageShell : null]}>
-        {imageSource ? <Image source={imageSource} style={styles.trainingExerciseImage} resizeMode="contain" /> : <Ionicons name={visual.icon} size={25} color={visual.color} />}
+      <View style={styles.trainingExerciseIcon}>
+        <Ionicons name={visual.icon} size={25} color={visual.color} />
       </View>
       <View style={styles.trainingExerciseCopy}>
         <Text style={styles.trainingExerciseTitle} numberOfLines={2}>{title}</Text>
@@ -1548,7 +1528,6 @@ function WorkoutHero({
   const completedCount = detail ? detail.progress.filter((item) => item.status === "completed").length : workout.completedCount ?? 0;
   const progressPercent = exerciseCount > 0 ? Math.round((completedCount / exerciseCount) * 100) : 0;
   const visual = workoutVisual(workout.name);
-  const heroImage = workoutImageSource(visual.asset);
   const isToday = dateStr === todayKeyValue;
   const state = workoutState(workout, todayKeyValue);
   const source = detail?.assignedByRole ?? workout.assignedByRole;
@@ -1572,11 +1551,7 @@ function WorkoutHero({
           <Text style={styles.workoutHeroCoach}>Coach {firstName(coachName, "Alex")}</Text>
         </View>
         <View style={styles.workoutBodyIcon}>
-          {heroImage ? (
-            <Image source={heroImage} style={styles.workoutTorsoImage} resizeMode="contain" />
-          ) : (
-            <Ionicons name={visual.icon} size={62} color={visual.color} />
-          )}
+          <Ionicons name={visual.icon} size={62} color={metricColors.training.to} />
         </View>
       </View>
       <View style={styles.progressLineRow}>
@@ -1657,19 +1632,14 @@ function WorkoutExerciseRow({
 }) {
   const completed = status === "completed";
   const notStarted = status === "not_started";
-  const imageSource = workoutImageSource(visual.asset);
   return (
     <Pressable
       onPress={onPress}
       disabled={!onPress}
       style={({ pressed }) => [styles.workoutExerciseRow, pressed ? { opacity: 0.78 } : null]}
     >
-      <View style={[styles.workoutExerciseIcon, imageSource ? styles.workoutExerciseImageShell : null]}>
-        {imageSource ? (
-          <Image source={imageSource} style={styles.workoutExerciseIconImage} resizeMode="contain" />
-        ) : (
-          <Ionicons name={visual.icon} size={26} color={visual.color} />
-        )}
+      <View style={styles.workoutExerciseIcon}>
+        <Ionicons name={visual.icon} size={26} color={visual.color} />
       </View>
       <View style={styles.workoutExerciseCopy}>
         <Text style={styles.workoutExerciseTitle} numberOfLines={1}>{title}</Text>
@@ -4610,7 +4580,6 @@ const styles = StyleSheet.create({
   cardTitle: { color: colors.ink, fontSize: 14, lineHeight: 18, fontWeight: "900" },
   muted: { color: colors.inkMuted, fontSize: 12, lineHeight: 16 },
   rowTitle: { color: colors.ink, fontSize: 12, lineHeight: 16, fontWeight: "900" },
-  rowValue: { color: colors.ink, fontSize: 12, fontWeight: "800" },
   linkText: { color: colors.primary, fontSize: 12, lineHeight: 16, fontWeight: "900" },
   disabledLinkText: { color: colors.inkFaint },
   successText: { color: colors.ok, fontSize: 12, lineHeight: 16, fontWeight: "800", textAlign: "center" },
@@ -4654,12 +4623,6 @@ const styles = StyleSheet.create({
     shadowOffset: { width: 0, height: 3 },
     elevation: 1,
   },
-  readinessIcon: { width: 40, height: 40, borderRadius: 20, alignItems: "center", justifyContent: "center" },
-  readinessCopy: { flex: 1, minWidth: 0, gap: 3 },
-  readinessTitleLine: { flexDirection: "row", alignItems: "baseline", gap: 7, flexWrap: "wrap" },
-  readinessTitle: { color: colors.ink, fontSize: 15, lineHeight: 19, fontWeight: "900" },
-  readinessValue: { fontSize: 15, lineHeight: 19, fontWeight: "900" },
-  readinessBody: { color: colors.inkMuted, fontSize: 12, lineHeight: 16, fontWeight: "600" },
   nextWorkoutCard: { paddingHorizontal: 12, paddingVertical: 10, gap: 8, overflow: "hidden" },
   nextWorkoutTop: { minHeight: 74, flexDirection: "row", alignItems: "flex-start", gap: 10 },
   nextWorkoutIcon: { width: 46, height: 46, borderRadius: 14, backgroundColor: colors.primarySoft, alignItems: "center", justifyContent: "center" },
@@ -4670,7 +4633,6 @@ const styles = StyleSheet.create({
   nextWorkoutNoteRow: { flexDirection: "row", alignItems: "center", gap: 6, marginTop: 5, paddingRight: 4 },
   nextWorkoutNote: { flex: 1, minWidth: 0, color: colors.inkMuted, fontSize: 12, lineHeight: 16, fontWeight: "600" },
   nextWorkoutArt: { width: 62, height: 50, alignItems: "center", justifyContent: "center", marginRight: -6, marginTop: 3, opacity: 0.72 },
-  nextWorkoutImage: { width: 58, height: 50 },
   nextWorkoutButton: { flex: 0, minHeight: 38, borderRadius: 10 },
   nextWorkoutButtonDisabled: { backgroundColor: colors.surfaceInset, borderColor: colors.lineStrong },
   nextWorkoutButtonText: { fontSize: 14, lineHeight: 18 },
@@ -4711,9 +4673,6 @@ const styles = StyleSheet.create({
   tomorrowIcon: { width: 34, height: 34, borderRadius: 10, backgroundColor: colors.surfaceInset, alignItems: "center", justifyContent: "center" },
   tomorrowText: { flex: 1, color: colors.inkMuted, fontSize: 13, lineHeight: 17, fontWeight: "700" },
   tomorrowStrong: { color: colors.ink, fontWeight: "900" },
-  messageRow: { flexDirection: "row", alignItems: "center", gap: 9, marginTop: 6 },
-  messageTitle: { color: colors.ink, fontSize: 13, fontWeight: "900" },
-  messageBody: { color: colors.ink, fontSize: 12, lineHeight: 16, marginTop: 1 },
   sessionRow: { flexDirection: "row", alignItems: "center", gap: 10, marginTop: 6 },
   sessionActions: { width: 112 },
   sessionDetail: { marginTop: 10, paddingTop: 10, borderTopWidth: 1, borderTopColor: colors.line, gap: 8 },
@@ -4763,7 +4722,6 @@ const styles = StyleSheet.create({
   trainingCoachIcon: { width: 32, height: 32, borderRadius: 16, backgroundColor: colors.primarySoft, alignItems: "center", justifyContent: "center" },
   trainingAssignedText: { flex: 1, minWidth: 0, color: colors.inkMuted, fontSize: 13, lineHeight: 17, fontWeight: "700" },
   trainingHeroVisual: { width: 92, height: 86, alignItems: "center", justifyContent: "center", marginTop: 6, opacity: 0.78 },
-  trainingHeroImage: { width: 84, height: 78 },
   trainingCoachNote: { minHeight: 46, borderRadius: 10, backgroundColor: "#f2fbfa", paddingHorizontal: 10, paddingVertical: 8, flexDirection: "row", alignItems: "center", gap: 9, marginTop: 8, zIndex: 1 },
   trainingCoachNoteText: { flex: 1, minWidth: 0, color: colors.inkMuted, fontSize: 12.5, lineHeight: 17, fontWeight: "600" },
   trainingProgressRow: { flexDirection: "row", alignItems: "center", gap: 10, marginTop: 8, zIndex: 1 },
@@ -4778,8 +4736,6 @@ const styles = StyleSheet.create({
   trainingSectionActionText: { color: colors.primary, fontSize: 14, lineHeight: 18, fontWeight: "900" },
   trainingExerciseRow: { minHeight: 58, flexDirection: "row", alignItems: "center", gap: 11, paddingVertical: 5 },
   trainingExerciseIcon: { width: 42, height: 42, borderRadius: 14, backgroundColor: colors.primarySoft, alignItems: "center", justifyContent: "center" },
-  trainingExerciseImageShell: { backgroundColor: colors.primarySoft },
-  trainingExerciseImage: { width: 39, height: 39 },
   trainingExerciseCopy: { flex: 1, minWidth: 0 },
   trainingExerciseTitle: { color: colors.ink, fontSize: 15, lineHeight: 19, fontWeight: "900" },
   trainingExerciseSubtitle: { color: colors.inkMuted, fontSize: 13, lineHeight: 17, fontWeight: "600", marginTop: 3 },
@@ -4847,7 +4803,6 @@ const styles = StyleSheet.create({
   workoutHeroMeta: { color: colors.inkMuted, fontSize: 12, lineHeight: 16, fontWeight: "700" },
   workoutHeroCoach: { color: colors.ink, fontSize: 12, lineHeight: 16, fontWeight: "700", marginTop: 3 },
   workoutBodyIcon: { width: 58, height: 48, alignItems: "center", justifyContent: "center", marginRight: 8, marginTop: 0 },
-  workoutTorsoImage: { width: 44, height: 48 },
   progressLineRow: { flexDirection: "row", alignItems: "center", gap: 14, marginTop: 10 },
   progressLineBar: { flex: 1 },
   progressPercent: { width: 42, color: colors.primary, fontSize: 14, fontWeight: "900", textAlign: "right" },
@@ -4860,8 +4815,6 @@ const styles = StyleSheet.create({
   workoutCardTitle: { color: colors.ink, fontSize: 13, lineHeight: 16, fontWeight: "900" },
   workoutExerciseRow: { minHeight: 43, flexDirection: "row", alignItems: "center", gap: 8, paddingVertical: 2 },
   workoutExerciseIcon: { width: 35, height: 35, borderRadius: 18, backgroundColor: colors.primarySoft, alignItems: "center", justifyContent: "center" },
-  workoutExerciseImageShell: { backgroundColor: "transparent" },
-  workoutExerciseIconImage: { width: 35, height: 35 },
   workoutExerciseCopy: { flex: 1, minWidth: 0 },
   workoutExerciseTitle: { color: colors.ink, fontSize: 12, lineHeight: 16, fontWeight: "900" },
   workoutExerciseSubtitle: { color: colors.ink, fontSize: 12, lineHeight: 16, fontWeight: "500", marginTop: 1 },
@@ -4884,7 +4837,6 @@ const styles = StyleSheet.create({
   workoutStatusPillText: { color: colors.inkMuted, fontSize: 12, lineHeight: 16, fontWeight: "800" },
   workoutStatusPillTextSuccess: { color: colors.ok },
   workoutStatusPillTextPrimary: { color: colors.primary },
-  targetRow: { flexDirection: "row", alignItems: "center", gap: 14, marginTop: 9 },
   nutritionCardTitle: { color: colors.ink, fontSize: 15, lineHeight: 19, fontWeight: "900" },
   nutritionTargetCard: { paddingVertical: 7, paddingHorizontal: 12 },
   nutritionTargetRow: { minHeight: 74, flexDirection: "row", alignItems: "center", gap: 18 },
@@ -4922,9 +4874,6 @@ const styles = StyleSheet.create({
   nutritionStatusPill: { alignSelf: "flex-start", marginTop: 6, minHeight: 28, borderRadius: 15, paddingHorizontal: 11, flexDirection: "row", alignItems: "center", gap: 8 },
   nutritionStatusDot: { width: 8, height: 8, borderRadius: 4 },
   nutritionStatusText: { fontSize: 13, lineHeight: 17, fontWeight: "900" },
-  nutritionProgressRowV2: { flexDirection: "row", alignItems: "center", gap: 12 },
-  nutritionProgressTrackV2: { flex: 1 },
-  nutritionProgressPercent: { width: 38, color: colors.inkMuted, fontSize: 12.5, lineHeight: 16, fontWeight: "800", textAlign: "right" },
   nutritionRemainingText: { color: colors.inkMuted, fontSize: 13, lineHeight: 17, fontWeight: "700" },
   nutritionMacroGrid: { flexDirection: "row", alignItems: "stretch", gap: 8 },
   nutritionMacroTile: { flex: 1, minWidth: 0, gap: 5 },
@@ -4932,12 +4881,6 @@ const styles = StyleSheet.create({
   nutritionMacroProgressRow: { flexDirection: "row", alignItems: "center", gap: 6 },
   nutritionMacroBar: { flex: 1, minWidth: 0 },
   nutritionMacroPercent: { width: 28, color: colors.inkMuted, fontSize: 12, lineHeight: 16, fontWeight: "800", textAlign: "right" },
-  nutritionSetupCard: { paddingHorizontal: 14, paddingVertical: 14, gap: 12 },
-  nutritionSetupTop: { flexDirection: "row", alignItems: "center", gap: 12 },
-  nutritionSetupCopy: { flex: 1, minWidth: 0 },
-  nutritionMissingGrid: { flexDirection: "row", flexWrap: "wrap", gap: 7 },
-  nutritionMissingChip: { minHeight: 26, borderRadius: 13, backgroundColor: colors.surfaceInset, paddingHorizontal: 10, alignItems: "center", justifyContent: "center" },
-  nutritionMissingText: { color: colors.inkMuted, fontSize: 12, lineHeight: 16, fontWeight: "800" },
   nutritionMealsCard: { paddingHorizontal: 13, paddingVertical: 13 },
   nutritionSectionHeader: { minHeight: 26, flexDirection: "row", alignItems: "center", justifyContent: "space-between", marginBottom: 8 },
   nutritionSectionTitle: { color: colors.ink, fontSize: 19, lineHeight: 24, fontWeight: "900" },
@@ -4956,7 +4899,6 @@ const styles = StyleSheet.create({
   nutritionSmallButtonText: { color: colors.primary, fontSize: 13, lineHeight: 17, fontWeight: "900" },
   nutritionHydrationCard: { paddingHorizontal: 13, paddingVertical: 13, gap: 13 },
   nutritionHydrationTop: { flexDirection: "row", alignItems: "center", gap: 12 },
-  nutritionHydrationIcon: { width: 48, height: 48, borderRadius: 24, backgroundColor: colors.primarySoft, alignItems: "center", justifyContent: "center" },
   nutritionHydrationCopy: { flex: 1, minWidth: 0, gap: 6 },
   nutritionHydrationValueRow: { flexDirection: "row", alignItems: "baseline", justifyContent: "space-between", gap: 12 },
   nutritionHydrationValue: { color: colors.ink, fontSize: 18, lineHeight: 23, fontWeight: "900" },
@@ -4976,7 +4918,6 @@ const styles = StyleSheet.create({
   nutritionPlanTextActionLabel: { color: colors.primary, fontSize: 12.5, lineHeight: 16, fontWeight: "900" },
   nutritionPlanMealRow: { minHeight: 44, flexDirection: "row", alignItems: "center", gap: 9, paddingVertical: 6 },
   nutritionPlanMealIcon: { width: 30, height: 30, borderRadius: 15, alignItems: "center", justifyContent: "center" },
-  macroCount: { alignSelf: "flex-end", fontSize: 12, fontWeight: "900" },
   streakRow: {
     flexDirection: "row",
     alignItems: "center",
@@ -4994,7 +4935,6 @@ const styles = StyleSheet.create({
   streakChipText: { color: colors.energyInk, fontSize: 13, fontWeight: "900" },
   sectionInline: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: 12 },
   rowIconTitle: { flexDirection: "row", alignItems: "center", gap: 10, flex: 1, minWidth: 0 },
-  innerList: { marginTop: 9, borderWidth: 1, borderColor: colors.line, borderRadius: radius.md, overflow: "hidden", paddingHorizontal: 8 },
   coachMealCard: { padding: 8, backgroundColor: "#fafdfd" },
   mealPlanInnerList: { marginTop: 6, borderWidth: 1, borderColor: colors.line, borderRadius: 9, overflow: "hidden", backgroundColor: "#ffffff", paddingHorizontal: 7 },
   mealPlanActions: { minHeight: 32, flexDirection: "row", alignItems: "center", borderTopWidth: 1, borderTopColor: colors.line },
@@ -5017,13 +4957,6 @@ const styles = StyleSheet.create({
   waterCopy: { flex: 1, minWidth: 0, gap: 1 },
   waterProgress: { marginTop: 1, maxWidth: 150 },
   waterButton: { flex: 0, width: 76, minHeight: 27, borderRadius: 7 },
-  twoLinks: { flexDirection: "row", justifyContent: "space-around", borderTopWidth: 1, borderTopColor: colors.line, marginTop: 8, paddingTop: 8 },
-  coachHeader: { flexDirection: "row", alignItems: "center", gap: 14 },
-  inlineTitleRow: { flexDirection: "row", alignItems: "center", gap: 6 },
-  ratingText: { color: colors.ink, fontSize: 12, lineHeight: 16, fontWeight: "700", marginTop: 4 },
-  chipWrap: { flexDirection: "row", flexWrap: "wrap", gap: 6, marginTop: 8 },
-  bulletRow: { flexDirection: "row", flexWrap: "wrap", gap: 8, marginTop: 8, marginBottom: 8 },
-  bulletText: { color: colors.inkMuted, fontSize: 12, fontWeight: "700" },
   coachHeroCard: { minHeight: 174, paddingHorizontal: 13, paddingVertical: 11, overflow: "hidden", position: "relative", gap: 8 },
   coachHeroWash: { position: "absolute", right: -28, top: -8, bottom: -6, width: 160, borderTopLeftRadius: 116, borderBottomLeftRadius: 70, backgroundColor: "#f2fbfa" },
   coachHeroMark: { position: "absolute", right: 34, top: 34, opacity: 0.9 },
