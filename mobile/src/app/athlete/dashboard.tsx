@@ -8,6 +8,8 @@ import { Text } from "../../components/AppText";
 import {
   ActionButton,
   AlertBanner,
+  HeroCard,
+  SectionLabel,
   StaleDataNotice,
   AppCard,
   BottomNavigation,
@@ -35,6 +37,7 @@ import { colors, radius } from "../../lib/theme";
 import {
   addDays,
   dateKey,
+  deriveNextAction,
   firstName,
   headerDate,
   timeOfDayGreeting,
@@ -313,11 +316,6 @@ function TodayView({
     if (target) router.push({ pathname: "/athlete/active-workout", params: { assignmentId: target.id } } as never);
   }
 
-  function handleReadinessPress() {
-    if (data.daily?.readinessScore == null) router.push("/athlete/check-in" as never);
-    else router.push("/athlete/trends" as never);
-  }
-
   function handleWorkoutReview() {
     if (!workout) return;
     router.push({ pathname: "/athlete/rpe", params: workout.slot ? { sessionType: workout.slot } : {} } as never);
@@ -355,10 +353,24 @@ function TodayView({
 
       {alert}
 
-      <ReadinessStrip score={data.daily?.readinessScore ?? null} onPress={handleReadinessPress} />
+      <TodayHero
+        data={data}
+        hasCoach={athleteHasCoach(data)}
+        onCheckIn={() => router.push("/athlete/check-in" as never)}
+        onWorkout={() => goToWorkout()}
+        onReview={handleWorkoutReview}
+        onSession={() => setSessionExpanded(true)}
+        onMeals={() => onNavigate("nutrition")}
+        onWater={() => router.push("/athlete/water" as never)}
+        onProgress={() => onNavigate("progress")}
+        onFindCoach={() => onNavigate("coach")}
+      />
 
-      <NextWorkoutCard data={data} workout={workout} onWorkoutPress={() => goToWorkout()} onReviewPress={handleWorkoutReview} onFindCoach={() => onNavigate("coach")} />
+      {!workout && !athleteHasCoach(data) ? (
+        <NextWorkoutCard data={data} workout={workout} onWorkoutPress={() => goToWorkout()} onReviewPress={handleWorkoutReview} onFindCoach={() => onNavigate("coach")} />
+      ) : null}
 
+      <SectionLabel title="Today" />
       <TodayScheduleCard
         data={data}
         workout={workout}
@@ -371,10 +383,83 @@ function TodayView({
         <SessionCard session={todaySession} coachName={activeCoach} expanded={sessionExpanded} onExpandedChange={setSessionExpanded} />
       ) : null}
 
+      <SectionLabel title="At a glance" />
       <DailyStatusCard data={data} onNavigate={onNavigate} />
 
       <CoachUpdateCard data={data} coachName={activeCoach} tomorrow={tomorrow} onReply={() => onNavigate("coach")} onTomorrowPress={handleTomorrowPress} />
     </>
+  );
+}
+
+const NEXT_ACTION_ICONS: Record<string, keyof typeof Ionicons.glyphMap> = {
+  checkin: "clipboard-outline",
+  workout_active: "barbell-outline",
+  workout_upcoming: "barbell-outline",
+  rpe: "speedometer-outline",
+  session: "videocam-outline",
+  meal: "restaurant-outline",
+  hydration: "water-outline",
+  complete: "checkmark-done-outline",
+};
+
+/** Today's one "do this now" card, driven by deriveNextAction (lib/fitoraData.ts). */
+function TodayHero({
+  data,
+  hasCoach,
+  onCheckIn,
+  onWorkout,
+  onReview,
+  onSession,
+  onMeals,
+  onWater,
+  onProgress,
+  onFindCoach,
+}: {
+  data: AthleteDashboardData;
+  hasCoach: boolean;
+  onCheckIn: () => void;
+  onWorkout: () => void;
+  onReview: () => void;
+  onSession: () => void;
+  onMeals: () => void;
+  onWater: () => void;
+  onProgress: () => void;
+  onFindCoach: () => void;
+}) {
+  const next = deriveNextAction(data);
+  // Payment prompts only exist while in-app payments are on.
+  const action = next.kind === "payment" && !PAYMENTS_ENABLED ? { ...next, kind: "complete" as const } : next;
+  const handlers: Record<string, (() => void) | undefined> = {
+    checkin: onCheckIn,
+    workout_active: onWorkout,
+    workout_upcoming: onWorkout,
+    rpe: onReview,
+    session: onSession,
+    meal: onMeals,
+    hydration: onWater,
+  };
+  if (action.kind === "complete") {
+    return (
+      <HeroCard
+        calm
+        icon="checkmark-done-outline"
+        eyebrow="All set"
+        title="You're caught up for today"
+        body={hasCoach ? "Nice work. Check your progress or rest up for tomorrow." : "Nice work. Want a plan? A coach can set your workouts and meals."}
+        actionLabel={hasCoach ? "See Progress" : "Find a Coach"}
+        onAction={hasCoach ? onProgress : onFindCoach}
+      />
+    );
+  }
+  return (
+    <HeroCard
+      icon={NEXT_ACTION_ICONS[action.kind] ?? "arrow-forward-outline"}
+      eyebrow={action.eyebrow}
+      title={action.title}
+      body={action.body}
+      actionLabel={action.ctaLabel}
+      onAction={handlers[action.kind]}
+    />
   );
 }
 
@@ -385,29 +470,6 @@ function TodayHeader({ name, date }: { name: string; date: string }) {
       greeting={`${timeOfDayGreeting()}, ${firstName(name, "there")}`}
       title={headerDate(date)}
     />
-  );
-}
-
-function ReadinessStrip({ score, onPress }: { score: number | null; onPress: () => void }) {
-  const tone = readinessTone(score);
-  const palette = readinessPalette(tone);
-  const label = readinessLabel(score);
-  const value = score == null ? "Check-in needed" : `${Math.round(score)} · ${label}`;
-
-  return (
-    <Pressable onPress={onPress} style={({ pressed }) => [styles.readinessStrip, pressed ? { opacity: 0.75 } : null]}>
-      <View style={[styles.readinessIcon, { backgroundColor: palette.soft }]}>
-        <Ionicons name="stats-chart" size={23} color={palette.strong} />
-      </View>
-      <View style={styles.readinessCopy}>
-        <View style={styles.readinessTitleLine}>
-          <Text style={styles.readinessTitle}>Readiness</Text>
-          <Text style={[styles.readinessValue, { color: palette.strong }]} numberOfLines={1}>{value}</Text>
-        </View>
-        <Text style={styles.readinessBody} numberOfLines={2}>{readinessDetail(score)}</Text>
-      </View>
-      <Ionicons name="chevron-forward" size={22} color={colors.inkFaint} />
-    </Pressable>
   );
 }
 
