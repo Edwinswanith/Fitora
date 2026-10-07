@@ -27,6 +27,7 @@ import type { MessageView } from "../../components/MessageCenter";
 import { apiFetch, apiJson } from "../../lib/api";
 import { useAuth } from "../../lib/auth";
 import { PAYMENTS_ENABLED } from "../../lib/features";
+import { celebrate, showError } from "../../lib/feedback";
 import { joinSessionCall } from "../../lib/videoCall";
 import { exerciseVisual, mealVisual, workoutVisual, type FitoraIconAsset, type FitoraVisual } from "../../lib/fitoraIcons";
 import { colors, radius } from "../../lib/theme";
@@ -227,13 +228,23 @@ export default function AthleteDashboard() {
         method: "POST",
         body: JSON.stringify({ amountMl, date: todayKey() }),
       });
-      if (res.ok) {
-        // The response is the athlete's whole updated water day — apply it
-        // directly instead of re-running the full ~15-request dashboard
-        // loader just to reflect one water log.
-        const water = await res.json().catch(() => null);
-        if (water) state.setData((prev) => (prev ? { ...prev, water } : prev));
+      if (!res.ok) throw new Error();
+      // The response is the athlete's whole updated water day — apply it
+      // directly instead of re-running the full ~15-request dashboard
+      // loader just to reflect one water log.
+      const water = (await res.json().catch(() => null)) as AthleteDashboardData["water"];
+      if (water) {
+        const before = data?.water?.totalMl ?? 0;
+        state.setData((prev) => (prev ? { ...prev, water } : prev));
+        const liters = (ml: number) => (ml / 1000).toFixed(1);
+        if (before < water.goalMl && water.totalMl >= water.goalMl) {
+          celebrate({ title: "Water goal reached!", body: `${liters(water.totalMl)} L today. Nice work.`, big: true });
+        } else {
+          celebrate({ title: `+${amountMl} ml logged`, body: `${liters(water.totalMl)} of ${liters(water.goalMl)} L today` });
+        }
       }
+    } catch {
+      showError("Couldn't log water", "Check your connection and try again.");
     } finally {
       setLoggingWater(false);
     }
@@ -1793,10 +1804,12 @@ function NutritionView({
       });
       const body = (await res.json().catch(() => ({}))) as { error?: string; meal?: Meal };
       if (!res.ok) {
-        setNutritionMessage(body.error ?? "Could not log this planned meal.");
+        showError("Couldn't log this meal", "Check your connection and try again.");
+        setNutritionMessage("Could not log this planned meal.");
         return;
       }
       setNutritionMessage(`${titleCase(meal.mealType)} logged.`);
+      celebrate({ title: `${titleCase(meal.mealType)} logged`, body: "From your coach's plan." });
       // Append the newly-created Meal and roll its macros into the running
       // totals locally — avoids re-running the whole dashboard loader (which
       // includes a 7-day sequential nutrition-history fetch) just to reflect
@@ -2133,10 +2146,12 @@ function NutritionViewV2({
       });
       const body = (await res.json().catch(() => ({}))) as { error?: string; meal?: Meal };
       if (!res.ok) {
-        setNutritionMessage(body.error ?? "Could not log this planned meal.");
+        showError("Couldn't log this meal", "Check your connection and try again.");
+        setNutritionMessage("Could not log this planned meal.");
         return;
       }
       setNutritionMessage(`${titleCase(meal.mealType)} logged.`);
+      celebrate({ title: `${titleCase(meal.mealType)} logged`, body: "From your coach's plan." });
       const createdMeal = body.meal;
       if (createdMeal) {
         const addedCalories = mealCalories(createdMeal);

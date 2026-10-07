@@ -22,6 +22,7 @@ import { Avatar } from "../../components/Avatar";
 import { apiFetch } from "../../lib/api";
 import { PAYMENTS_ENABLED } from "../../lib/features";
 import { joinSessionCall } from "../../lib/videoCall";
+import { celebrate, errorFeedback } from "../../lib/feedback";
 import { useAuth } from "../../lib/auth";
 import { colors } from "../../lib/theme";
 import {
@@ -462,6 +463,7 @@ function SessionRequestsCard({
       });
       const json = (await res.json().catch(() => ({}))) as { error?: string };
       if (!res.ok) {
+        errorFeedback();
         setMessage({
           kind: "error",
           text:
@@ -475,6 +477,7 @@ function SessionRequestsCard({
       }
       onSessionUpdate(session.id, { status: action === "confirm" ? "confirmed" : "cancelled" });
       setMessage({ kind: "ok", text: action === "confirm" ? `Confirmed ${session.athleteName || "the session"}.` : "Request declined." });
+      if (action === "confirm") celebrate({ title: "Session confirmed", body: `${session.athleteName || "Your client"} has been notified.` });
     } catch {
       setMessage({ kind: "error", text: "Network error. Please try again." });
     } finally {

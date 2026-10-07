@@ -5,6 +5,7 @@ import { Ionicons } from "@expo/vector-icons";
 import { Text } from "../../components/AppText";
 import { ActionButton, AppCard, ScreenContainer } from "../../components/fitora";
 import { apiFetch, apiJson } from "../../lib/api";
+import { celebrate, errorFeedback, selectionFeedback } from "../../lib/feedback";
 import { colors, radius } from "../../lib/theme";
 import { todayKey, type DailyCard } from "../../lib/fitoraData";
 
@@ -113,8 +114,10 @@ export default function Rpe() {
       });
       if (!res.ok) throw new Error();
       setMsg({ kind: "ok", text: "Logged — your coach can see how today's session felt." });
+      celebrate({ title: "Session logged", body: "Your coach can see how it felt." });
       return true;
     } catch {
+      errorFeedback();
       setMsg({ kind: "error", text: "Couldn't save. Check your connection and try again." });
       return false;
     } finally {
@@ -154,7 +157,7 @@ export default function Rpe() {
               {Array.from({ length: 10 }, (_, i) => i + 1).map((n) => {
                 const on = rpe === n;
                 return (
-                  <Pressable key={n} onPress={() => setRpe(n)} style={[styles.rpeDot, on ? styles.rpeDotActive : null]}>
+                  <Pressable key={n} onPress={() => { selectionFeedback(); setRpe(n); }} style={[styles.rpeDot, on ? styles.rpeDotActive : null]}>
                     <Text style={[styles.rpeDotText, on ? styles.rpeDotTextActive : null]}>{n}</Text>
                   </Pressable>
                 );
@@ -168,7 +171,7 @@ export default function Rpe() {
               {(["better", "same", "worse"] as const).map((option) => {
                 const on = feeling === option;
                 return (
-                  <Pressable key={option} onPress={() => setFeeling(option)} style={[styles.feelingBtn, on ? styles.feelingBtnActive : null]}>
+                  <Pressable key={option} onPress={() => { selectionFeedback(); setFeeling(option); }} style={[styles.feelingBtn, on ? styles.feelingBtnActive : null]}>
                     <Text style={[styles.feelingText, on ? styles.feelingTextActive : null]}>{titleCase(option)}</Text>
                   </Pressable>
                 );

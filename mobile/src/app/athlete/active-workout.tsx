@@ -17,6 +17,7 @@ import {
 } from "../../components/fitora";
 import { VideoPlayerModal } from "../../components/VideoPlayerModal";
 import { apiFetch } from "../../lib/api";
+import { celebrate, showError, successFeedback } from "../../lib/feedback";
 import { colors } from "../../lib/theme";
 import {
   loadAthleteDashboardData,
@@ -192,6 +193,7 @@ function WorkoutTask({
     const isLastExercise = activeIndex >= assignment.exercises.length - 1;
     if (finishedExercise && isLastExercise) {
       setDone(true);
+      celebrate({ title: "Workout complete!", body: `${assignment.name} is done. Great job.`, big: true });
       return;
     }
     if (restSec) setRestRemaining(restSec);
@@ -222,9 +224,13 @@ function WorkoutTask({
     }).catch(() => null);
     setSaving(false);
     if (res?.ok) {
+      // A tick per set (no toast: that would be noise mid-workout).
+      successFeedback();
       onProgressSaved(activeIndex, status, setsCompleted);
       void refreshAthleteDashboardCache();
       advance(status === "completed", exercise.restSec);
+    } else {
+      showError("Set not saved", "Check your connection and tap again.");
     }
   }
 
@@ -243,6 +249,8 @@ function WorkoutTask({
       void refreshAthleteDashboardCache();
       setShowSkipReasons(false);
       advance(true, null);
+    } else {
+      showError("Couldn't skip this exercise", "Check your connection and try again.");
     }
   }
 
@@ -263,6 +271,9 @@ function WorkoutTask({
       );
       void refreshAthleteDashboardCache();
       setNoteOpen(false);
+      celebrate({ title: "Note saved" });
+    } else {
+      showError("Note not saved", "Check your connection and try again.");
     }
   }
 

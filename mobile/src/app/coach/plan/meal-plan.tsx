@@ -16,6 +16,7 @@ import {
   editorStyles,
 } from "../../../components/planEditor";
 import { requestJson } from "../../../lib/planApi";
+import { celebrate, errorFeedback } from "../../../lib/feedback";
 import {
   MEAL_LIMITS,
   MEAL_PLAN_DURATIONS,
@@ -188,10 +189,12 @@ export default function MealPlanEditor() {
     );
     setSaving(false);
     if (!res.ok || !res.body?.mealPlan) {
+      errorFeedback();
       setErrors([describeServerError(res.body?.error, res.status)]);
       return;
     }
     markPlanLibraryDirty();
+    celebrate({ title: isEdit ? "Meal plan updated" : "Meal plan created" });
     goBack();
   }
 
@@ -204,6 +207,7 @@ export default function MealPlanEditor() {
     );
     setArchiving(false);
     if (!res.ok || !res.body?.mealPlan) {
+      errorFeedback();
       setErrors([describeServerError(res.body?.error, res.status)]);
       return;
     }

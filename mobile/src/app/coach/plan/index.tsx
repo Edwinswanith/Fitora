@@ -17,6 +17,7 @@ import {
   SegmentedControl,
 } from "../../../components/fitora";
 import { requestJson } from "../../../lib/planApi";
+import { celebrate, errorFeedback } from "../../../lib/feedback";
 import {
   buildAssignOutcome,
   consumePlanLibraryDirty,
@@ -569,6 +570,8 @@ function PlanComposer({
     }
     const result = buildAssignOutcome(sections);
     setOutcome(result);
+    if (result.tone === "success") celebrate({ title: result.title.replace(/\.$/, "") });
+    else errorFeedback();
     if (sections.some((section) => section.succeeded > 0)) onDone();
   }
 

@@ -94,8 +94,8 @@ export function FeedbackHost() {
     <View pointerEvents="box-none" style={[styles.toastWrap, { top: insets.top + 8 }]}>
       <Pressable onPress={dismiss} accessibilityRole="alert">
         <Animated.View style={[styles.toast, { opacity: progress, transform: [{ translateY }] }]}>
-          <Animated.View style={[styles.toastIcon, { transform: [{ scale: iconScale }] }]}>
-            <Ionicons name="checkmark" size={18} color="#fff" />
+          <Animated.View style={[styles.toastIcon, current.tone === "error" ? styles.toastIconError : null, { transform: [{ scale: iconScale }] }]}>
+            <Ionicons name={current.tone === "error" ? "alert" : "checkmark"} size={18} color="#fff" />
           </Animated.View>
           <View style={styles.toastCopy}>
             <Text style={styles.toastTitle} numberOfLines={1}>{current.title}</Text>
@@ -126,6 +126,7 @@ const styles = StyleSheet.create({
     elevation: 8,
   },
   toastIcon: { width: 28, height: 28, borderRadius: 14, alignItems: "center", justifyContent: "center", backgroundColor: colors.ok },
+  toastIconError: { backgroundColor: colors.bad },
   toastCopy: { flexShrink: 1 },
   toastTitle: { color: "#fff", fontSize: 15, fontWeight: "800" },
   toastBody: { color: "#cbd5e1", fontSize: 13, lineHeight: 18, marginTop: 1 },

@@ -30,6 +30,8 @@ export type CelebrationOptions = {
   body?: string;
   /** A daily goal or a whole workout finished: bigger, centered celebration. */
   big?: boolean;
+  /** Set by showError(); renders the toast in the error style. */
+  tone?: "success" | "error";
 };
 
 type Listener = (options: CelebrationOptions) => void;
@@ -46,5 +48,11 @@ export function setCelebrationListener(next: Listener | null): void {
  */
 export function celebrate(options: CelebrationOptions): void {
   successFeedback();
-  listener?.(options);
+  listener?.({ ...options, tone: "success" });
+}
+
+/** Error haptic + toast, for quick actions that have no inline error area (e.g. a +250 ml tap). */
+export function showError(title: string, body?: string): void {
+  errorFeedback();
+  listener?.({ title, body, tone: "error" });
 }

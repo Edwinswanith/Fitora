@@ -16,6 +16,7 @@ import {
   editorStyles,
 } from "../../../components/planEditor";
 import { requestJson } from "../../../lib/planApi";
+import { celebrate, errorFeedback } from "../../../lib/feedback";
 import {
   EXERCISE_TYPES,
   EXERCISE_TYPE_LABELS,
@@ -180,10 +181,12 @@ export default function WorkoutTemplateEditor() {
     );
     setSaving(false);
     if (!res.ok || !res.body?.template) {
+      errorFeedback();
       setErrors([describeServerError(res.body?.error, res.status)]);
       return;
     }
     markPlanLibraryDirty();
+    celebrate({ title: isEdit ? "Template updated" : "Template created" });
     goBack();
   }
 
@@ -196,6 +199,7 @@ export default function WorkoutTemplateEditor() {
     );
     setArchiving(false);
     if (!res.ok || !res.body?.template) {
+      errorFeedback();
       setErrors([describeServerError(res.body?.error, res.status)]);
       return;
     }

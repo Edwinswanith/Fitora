@@ -5,6 +5,7 @@ import { Ionicons } from "@expo/vector-icons";
 import { Text } from "../../components/AppText";
 import { ActionButton, AppCard, EmptyState, ScreenContainer } from "../../components/fitora";
 import { apiFetch, apiJson } from "../../lib/api";
+import { celebrate, errorFeedback } from "../../lib/feedback";
 import { addDays, todayKey, titleCase, updateCachedData, mealCalories, type AthleteDashboardData, type Meal } from "../../lib/fitoraData";
 import { colors, radius } from "../../lib/theme";
 
@@ -147,8 +148,10 @@ export default function LogMealScreen() {
           };
         });
       }
+      celebrate({ title: "Meal logged", body: createdMeal ? `${Math.round(createdMeal.foods.reduce((sum, f) => sum + (Number(f.calories) || 0), 0))} kcal added to today.` : undefined });
       router.back();
     } catch {
+      errorFeedback();
       setError("Network failed while saving this meal.");
     } finally {
       setSaving(false);

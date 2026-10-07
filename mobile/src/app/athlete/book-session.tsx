@@ -5,6 +5,7 @@ import { Ionicons } from "@expo/vector-icons";
 import { Text } from "../../components/AppText";
 import { ActionButton, AlertBanner, AppCard, EmptyState, ScreenContainer, SectionHeader } from "../../components/fitora";
 import { apiFetch, apiJson } from "../../lib/api";
+import { celebrate, errorFeedback, selectionFeedback } from "../../lib/feedback";
 import { colors, radius } from "../../lib/theme";
 import { addDays, dateKey, updateCachedData, type AthleteDashboardData, type CoachSession } from "../../lib/fitoraData";
 
@@ -100,6 +101,7 @@ export default function BookSessionScreen() {
       });
       const body = (await res.json().catch(() => ({}))) as { error?: string; session?: CoachSession };
       if (!res.ok || !body.session) {
+        errorFeedback();
         setBookError(BOOKING_ERRORS[body.error ?? ""] ?? "Could not book this session. Please try again.");
         if (body.error === "slot_conflict" || body.error === "outside_availability") setReloadKey((k) => k + 1);
         return;
@@ -107,7 +109,9 @@ export default function BookSessionScreen() {
       const session = { ...body.session, coachName: body.session.coachName ?? coachName };
       updateCachedData<AthleteDashboardData>("athlete-dashboard", (prev) => (prev ? { ...prev, sessions: [...prev.sessions, session] } : prev));
       setBooked(session);
+      celebrate({ title: "Session requested", body: `${coachName} will confirm it soon.` });
     } catch {
+      errorFeedback();
       setBookError("Network error while booking. Please try again.");
     } finally {
       setBooking(false);
@@ -207,7 +211,10 @@ export default function BookSessionScreen() {
               return (
                 <Pressable
                   key={slot.start}
-                  onPress={() => setSelected(slot)}
+                  onPress={() => {
+                    selectionFeedback();
+                    setSelected(slot);
+                  }}
                   style={({ pressed }) => [styles.slot, active ? styles.slotActive : null, pressed ? styles.pressed : null]}
                 >
                   <Text style={[styles.slotText, active ? styles.slotTextActive : null]}>{timeLabel(slot.start)}</Text>

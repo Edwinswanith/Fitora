@@ -7,6 +7,8 @@ import Svg, { Circle, Defs, Line, LinearGradient, Path, Stop } from "react-nativ
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import * as Notifications from "expo-notifications";
 import { apiFetch, apiJson } from "../../lib/api";
+import { celebrate, errorFeedback } from "../../lib/feedback";
+import { todayKey, updateCachedData, type AthleteDashboardData } from "../../lib/fitoraData";
 import { colors, radius } from "../../lib/theme";
 import { AppCard, ScreenContainer } from "../../components/fitora";
 
@@ -15,7 +17,9 @@ import { AppCard, ScreenContainer } from "../../components/fitora";
 const WATER = "#2f7df6";
 const OK = colors.ok;
 
-const today = () => new Date().toISOString().slice(0, 10);
+// Local calendar day, same as the rest of the app (toISOString() is UTC, which
+// filed early-morning logs under yesterday for users east of UTC, e.g. India).
+const today = () => todayKey();
 const QUICK = [250, 500, 750];
 const GOAL_PRESETS = [2000, 2500, 3000, 3500];
 const REMINDER_KEY = "scp.hydration.reminders";
@@ -177,22 +181,45 @@ export default function Water() {
     })();
   }, []);
 
-  async function mutate(run: () => Promise<Response>) {
-    if (busy) return;
+  /** Runs a water change; returns the server's updated day, or null (with the error shown) if it failed. */
+  async function mutate(run: () => Promise<Response>, failure: string): Promise<WaterDay | null> {
+    if (busy) return null;
     setBusy(true);
+    setAmountError(null);
     try {
       const res = await run();
-      if (res.ok) {
-        setDay(await res.json());
-        await loadHistory();
-      }
+      if (!res.ok) throw new Error();
+      const next = (await res.json()) as WaterDay;
+      setDay(next);
+      // Keep the dashboard's water card in step without a full reload.
+      updateCachedData<AthleteDashboardData>("athlete-dashboard", (prev) =>
+        prev && prev.date === next.date ? { ...prev, water: next } : prev
+      );
+      void loadHistory();
+      return next;
+    } catch {
+      errorFeedback();
+      setAmountError(failure);
+      return null;
     } finally {
       setBusy(false);
     }
   }
 
-  const add = (amountMl: number) =>
-    mutate(() => apiFetch("/api/athlete/water", { method: "POST", body: JSON.stringify({ amountMl, date: today() }) }));
+  async function add(amountMl: number): Promise<boolean> {
+    const before = day?.totalMl ?? 0;
+    const next = await mutate(
+      () => apiFetch("/api/athlete/water", { method: "POST", body: JSON.stringify({ amountMl, date: today() }) }),
+      "Couldn't log that water. Check your connection and try again."
+    );
+    if (!next) return false;
+    if (before < next.goalMl && next.totalMl >= next.goalMl) {
+      celebrate({ title: "Water goal reached!", body: `${litres(next.totalMl)} L today. Nice work.`, big: true });
+    } else {
+      celebrate({ title: `+${amountMl} ml logged`, body: `${litres(next.totalMl)} of ${litres(next.goalMl)} L today` });
+    }
+    return true;
+  }
 
   async function addCustom() {
     const amountMl = Number(amountDraft);
@@ -201,11 +228,12 @@ export default function Water() {
       return;
     }
     setAmountError(null);
-    await add(Math.round(amountMl));
-    setAmountDraft("");
+    // Keep what they typed if the save fails, so they can retry.
+    if (await add(Math.round(amountMl))) setAmountDraft("");
   }
 
-  const remove = (id: string) => mutate(() => apiFetch(`/api/athlete/water/${id}`, { method: "DELETE" }));
+  const remove = (id: string) =>
+    mutate(() => apiFetch(`/api/athlete/water/${id}`, { method: "DELETE" }), "Couldn't remove that entry. Try again.");
 
   async function saveGoal(next?: number) {
     const goalMl = next ?? Number(goalDraft);
@@ -228,6 +256,7 @@ export default function Water() {
       // re-fetching both from the network right after.
       setDay((d) => (d ? { ...d, goalMl: rounded } : d));
       setHistory((h) => (h ? { ...h, goalMl: rounded } : h));
+      celebrate({ title: "Water goal updated", body: `${litres(rounded)} L a day` });
     } finally {
       setBusy(false);
     }

@@ -5,6 +5,7 @@ import { Ionicons } from "@expo/vector-icons";
 import { Text } from "../../components/AppText";
 import { ActionButton, AppCard, ScreenContainer, SectionHeader } from "../../components/fitora";
 import { apiFetch } from "../../lib/api";
+import { celebrate, errorFeedback, selectionFeedback } from "../../lib/feedback";
 import { loadAthleteDashboardData, todayKey, updateCachedData, type AthleteDashboardData } from "../../lib/fitoraData";
 import { colors, radius } from "../../lib/theme";
 
@@ -47,8 +48,10 @@ export default function CheckIn() {
       });
       if (!res.ok) throw new Error();
       setHrMsg({ kind: "ok", text: "Resting heart rate saved." });
+      celebrate({ title: "Heart rate saved" });
       return true;
     } catch {
+      errorFeedback();
       setHrMsg({ kind: "error", text: "Couldn't save heart rate. Try again." });
       return false;
     } finally {
@@ -77,11 +80,15 @@ export default function CheckIn() {
         }),
       });
       if (!res.ok) throw new Error();
-      const dashboard = await loadAthleteDashboardData().catch(() => null);
-      if (dashboard) updateCachedData<AthleteDashboardData>("athlete-dashboard", () => dashboard);
       setMsg({ kind: "ok", text: "Check-in saved. Your readiness is updated." });
+      celebrate({ title: "Check-in saved", body: "Your readiness is updated." });
+      // Refresh the dashboard in the background; the save is already confirmed.
+      void loadAthleteDashboardData()
+        .then((dashboard) => updateCachedData<AthleteDashboardData>("athlete-dashboard", () => dashboard))
+        .catch(() => undefined);
       return true;
     } catch {
+      errorFeedback();
       setMsg({ kind: "error", text: "Couldn't save. Check your connection and try again." });
       return false;
     } finally {
@@ -190,7 +197,13 @@ function RatingScale({
         {[1, 2, 3, 4, 5].map((n) => {
           const on = value === n;
           return (
-            <Pressable key={n} onPress={() => onChange(n)} style={[styles.scalePill, on ? styles.scalePillActive : null]}>
+            <Pressable
+              key={n}
+              onPress={() => {
+                selectionFeedback();
+                onChange(n);
+              }}
+              style={[styles.scalePill, on ? styles.scalePillActive : null]}>
               <Text style={[styles.scalePillText, on ? styles.scalePillTextActive : null]}>{n}</Text>
             </Pressable>
           );

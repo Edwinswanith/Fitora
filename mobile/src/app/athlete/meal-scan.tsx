@@ -16,6 +16,7 @@ import {
   StatusChip,
 } from "../../components/fitora";
 import { apiFetch } from "../../lib/api";
+import { celebrate, errorFeedback } from "../../lib/feedback";
 import { colors, radius } from "../../lib/theme";
 import { todayKey, titleCase, updateCachedData, type AthleteDashboardData, type Meal } from "../../lib/fitoraData";
 
@@ -213,8 +214,10 @@ export default function MealScanScreen() {
           };
         });
       }
+      celebrate({ title: "Meal logged", body: createdMeal ? `${Math.round(createdMeal.foods.reduce((sum, f) => sum + (Number(f.calories) || 0), 0))} kcal added to today.` : undefined });
       router.back();
     } catch {
+      errorFeedback();
       setError("Network failed while saving this meal.");
     } finally {
       setBusy(null);
