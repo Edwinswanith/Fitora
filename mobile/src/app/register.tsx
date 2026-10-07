@@ -82,7 +82,7 @@ export default function Register() {
             <Field label="Sport" value={sport} onChange={setSport} placeholder="Football" />
             <Field label="Position (optional)" value={position} onChange={setPosition} placeholder="Striker" />
             {error ? <Banner kind="error">{error}</Banner> : null}
-            <PrimaryButton label="Create account" onPress={submit} loading={saving} accent={theme.accent} accentInk={theme.accentInk} />
+            <PrimaryButton label="Create Account" onPress={submit} loading={saving} accent={theme.accent} accentInk={theme.accentInk} />
           </Card>
         </ScrollView>
       </KeyboardAvoidingView>

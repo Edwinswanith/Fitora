@@ -172,14 +172,14 @@ export default function NewAthlete() {
               <Field label="Sport" value={sport} onChange={setSport} placeholder="Football" />
               <Field label="Position (optional)" value={position} onChange={setPosition} placeholder="Striker" />
               {error ? <Banner kind="error">{error}</Banner> : null}
-              <PrimaryButton label="Create athlete" onPress={submit} loading={saving} accent={theme.accent} accentInk={theme.accentInk} />
+              <PrimaryButton label="Create Client" onPress={submit} loading={saving} accent={theme.accent} accentInk={theme.accentInk} />
             </Card>
           ) : (
             <Card style={{ gap: 14 }}>
               <Muted>Links a self-registered athlete to your roster by email. No new account or password is created.</Muted>
               <Field label="Athlete email" value={linkEmail} onChange={setLinkEmail} placeholder="jane@academy.com" email />
               {error ? <Banner kind="error">{error}</Banner> : null}
-              <PrimaryButton label="Link athlete" onPress={submitLink} loading={saving} accent={theme.accent} accentInk={theme.accentInk} />
+              <PrimaryButton label="Link Client" onPress={submitLink} loading={saving} accent={theme.accent} accentInk={theme.accentInk} />
             </Card>
           )}
         </ScrollView>

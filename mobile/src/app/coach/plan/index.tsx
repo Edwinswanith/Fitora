@@ -81,7 +81,8 @@ export default function CoachPlan() {
 
   return (
     <ScreenContainer refreshing={state.refreshing} onRefresh={state.reload}>
-      <PrimaryAppBar title="Plan" showNotifications={false} actionLabel="+ New" onAction={() => setMode("routine")} />
+      {/* No header "+ New": each tab has its own create buttons. */}
+      <PrimaryAppBar title="Plan" showNotifications={false} />
       <SegmentedControl
         value={tab}
         onChange={setTab}
@@ -246,7 +247,7 @@ function Assignments({
           })
         ) : (
           <View style={styles.stack}>
-            <ActionButton label="New workout template" icon="add-outline" onPress={() => nav.newTemplate("workout")} style={styles.fullButton} />
+            <ActionButton label="New Workout Template" icon="add-outline" onPress={() => nav.newTemplate("workout")} style={styles.fullButton} />
           </View>
         )}
       </AppCard>
@@ -660,7 +661,7 @@ function PlanComposer({
                 icon="add-outline"
                 onPress={() => nav.newTemplate(mode === "tasks" ? "tasks" : "workout")}
               />
-              {templateId ? <ActionButton label="Edit selected" icon="create-outline" onPress={() => nav.editTemplate(templateId)} /> : null}
+              {templateId ? <ActionButton label="Edit Selected" icon="create-outline" onPress={() => nav.editTemplate(templateId)} /> : null}
             </View>
           </View>
         </>
@@ -684,8 +685,8 @@ function PlanComposer({
               <Text style={styles.muted}>No meal plans yet. Build one to assign it.</Text>
             )}
             <View style={styles.inlineActions}>
-              <ActionButton label="New meal plan" icon="add-outline" onPress={nav.newMealPlan} />
-              {mealPlanId ? <ActionButton label="Edit selected" icon="create-outline" onPress={() => nav.editMealPlan(mealPlanId)} /> : null}
+              <ActionButton label="New Meal Plan" icon="add-outline" onPress={nav.newMealPlan} />
+              {mealPlanId ? <ActionButton label="Edit Selected" icon="create-outline" onPress={() => nav.editMealPlan(mealPlanId)} /> : null}
             </View>
           </View>
         </>

@@ -430,7 +430,7 @@ function JoinRequestPanel({ coachId, coachName, currentCoachName }: { coachId: s
         <Text style={styles.mutedBody}>
           {isThisCoach ? `${coachName} will see it on their Home screen.` : `Withdraw that request to ask ${coachName} instead.`}
         </Text>
-        <ActionButton label={busy ? "Withdrawing..." : "Withdraw request"} onPress={() => void withdraw(pending.id)} disabled={busy} />
+        <ActionButton label={busy ? "Withdrawing..." : "Withdraw Request"} onPress={() => void withdraw(pending.id)} disabled={busy} />
         {error ? <Text style={styles.joinError}>{error}</Text> : null}
       </AppCard>
     );
@@ -451,7 +451,7 @@ function JoinRequestPanel({ coachId, coachName, currentCoachName }: { coachId: s
         style={styles.joinInput}
         accessibilityLabel="Message to the coach"
       />
-      <ActionButton label={busy ? "Sending..." : "Request to join"} icon="person-add-outline" variant="filled" onPress={() => void send()} disabled={busy} />
+      <ActionButton label={busy ? "Sending..." : "Request to Join"} icon="person-add-outline" variant="filled" onPress={() => void send()} disabled={busy} />
       {error ? <Text style={styles.joinError}>{error}</Text> : null}
     </AppCard>
   );

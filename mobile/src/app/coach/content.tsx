@@ -203,7 +203,8 @@ export default function CoachContent() {
 
   return (
     <ScreenContainer refreshing={state.refreshing} onRefresh={state.reload}>
-      <PrimaryAppBar title="Content" showNotifications={false} actionLabel="+ Upload" onAction={pickVideo} />
+      {/* The Library tab's top card already has Upload Video; the header covers the other tabs. */}
+      <PrimaryAppBar title="Content" showNotifications={false} actionLabel={tab === "library" ? undefined : "+ Upload"} onAction={tab === "library" ? undefined : pickVideo} />
 
       <SegmentedControl
         value={tab}
@@ -334,7 +335,7 @@ export default function CoachContent() {
           {/* Upload lives in the hero and header; these two act on existing videos. */}
           <View style={styles.actionRow}>
             <ActionButton label="Assign" icon="people-outline" onPress={() => setAction("assign")} />
-            <ActionButton label="Add to workout" icon="barbell-outline" onPress={() => setAction("workout")} />
+            <ActionButton label="Add to Workout" icon="barbell-outline" onPress={() => setAction("workout")} />
           </View>
           </>
           ) : null}

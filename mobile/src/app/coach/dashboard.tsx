@@ -377,12 +377,12 @@ function CoachHomeView({
                   style={styles.inputHalf}
                 />
               </View>
-              <TextInput value={rescheduleNote} onChangeText={setRescheduleNote} style={styles.input} placeholder="Note to athlete (optional)" placeholderTextColor={colors.inkFaint} />
+              <TextInput value={rescheduleNote} onChangeText={setRescheduleNote} style={styles.input} placeholder="Note to client (optional)" placeholderTextColor={colors.inkFaint} />
               <ActionButton label={sessionBusy === "reschedule" ? "Moving..." : "Reschedule"} onPress={rescheduleSession} />
 
               <View style={styles.sessionDivider} />
               <Text style={styles.formLabel}>Mark Complete</Text>
-              <TextInput value={completeSummary} onChangeText={setCompleteSummary} style={styles.input} placeholder="Summary (visible to athlete)" placeholderTextColor={colors.inkFaint} />
+              <TextInput value={completeSummary} onChangeText={setCompleteSummary} style={styles.input} placeholder="Summary (visible to client)" placeholderTextColor={colors.inkFaint} />
               <TextInput value={completeNotes} onChangeText={setCompleteNotes} style={styles.input} placeholder="Private coach notes" placeholderTextColor={colors.inkFaint} />
               <ActionButton label={sessionBusy === "complete" ? "Saving..." : "Complete"} variant="filled" onPress={completeSession} />
             </View>
@@ -708,7 +708,7 @@ function SessionRequestsCard({
           kind: "error",
           text:
             json.error === "relationship_ended"
-              ? "This athlete is no longer your client."
+              ? "This person is no longer your client."
               : json.error === "invalid_transition"
                 ? "This request was already handled. Pull to refresh."
                 : `Could not ${action === "confirm" ? "confirm" : "decline"} this request.`,

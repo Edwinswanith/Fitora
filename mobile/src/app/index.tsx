@@ -15,7 +15,6 @@ type RoleOption = {
   label: string;
   sub: string;
   icon: keyof typeof Ionicons.glyphMap;
-  popular?: boolean;
 };
 
 type Feature = {
@@ -28,10 +27,9 @@ type Feature = {
 const ROLE_OPTIONS: RoleOption[] = [
   {
     role: "athlete",
-    label: "User",
-    sub: "Fitness, nutrition\nand coaching",
+    label: "Athlete",
+    sub: "Train, eat well\nand get coached",
     icon: "person-outline",
-    popular: true,
   },
   {
     role: "coach",
@@ -114,11 +112,6 @@ export default function Landing() {
                   pressed ? styles.pressed : null,
                 ]}
               >
-                {option.popular ? (
-                  <View style={styles.popularPill}>
-                    <Text style={styles.popularText}>MOST POPULAR</Text>
-                  </View>
-                ) : null}
                 <View style={styles.roleIconTile}>
                   <Ionicons name={option.icon} size={31} color={colors.primary} />
                 </View>
@@ -247,23 +240,6 @@ const styles = StyleSheet.create({
     borderColor: colors.primary,
     borderWidth: 1.5,
     backgroundColor: "#fcfefe",
-  },
-  popularPill: {
-    position: "absolute",
-    top: 7,
-    minHeight: 17,
-    borderRadius: 5,
-    backgroundColor: colors.primary,
-    paddingHorizontal: 8,
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  popularText: {
-    color: "#ffffff",
-    fontSize: 12,
-    lineHeight: 16,
-    fontWeight: "800",
-    letterSpacing: 0.8,
   },
   roleIconTile: {
     width: 59,

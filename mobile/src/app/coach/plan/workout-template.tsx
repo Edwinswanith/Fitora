@@ -120,7 +120,7 @@ export default function WorkoutTemplateEditor() {
 
   const isEdit = Boolean(templateId && original);
   const isArchived = Boolean(original?.isArchived);
-  const title = isEdit ? "Edit workout template" : kind === "tasks" ? "New task list" : "New workout template";
+  const title = isEdit ? "Edit workout template" : kind === "tasks" ? "New task list" : "New Workout Template";
 
   function setType(ex: ExerciseDraft, type: ExerciseType) {
     const defaults = emptyExercise(type);
@@ -276,7 +276,7 @@ export default function WorkoutTemplateEditor() {
       />
 
       <ErrorList title="Fix these before saving" errors={errors} />
-      <PrimaryButton label={isEdit ? "Save changes" : "Create template"} onPress={save} busy={saving} disabled={archiving} />
+      <PrimaryButton label={isEdit ? "Save Changes" : "Create Template"} onPress={save} busy={saving} disabled={archiving} />
       {isEdit ? (
         <PrimaryButton
           label={archiving ? "Working..." : isArchived ? "Restore template" : "Archive template"}
