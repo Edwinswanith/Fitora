@@ -8,7 +8,8 @@ export type JudgedTone = "success" | "warning" | "danger" | "neutral";
 /** Minimum days (or items) before a low rate is shown as a warning/problem. */
 export const MIN_SAMPLE_FOR_JUDGEMENT = 3;
 
-function shiftDay(key: string, days: number): string {
+/** Calendar-day arithmetic on "YYYY-MM-DD" keys (local, DST-safe). */
+export function shiftDay(key: string, days: number): string {
   const [y, m, d] = key.split("-").map(Number);
   const date = new Date(y, (m || 1) - 1, d || 1);
   date.setDate(date.getDate() + days);
@@ -51,13 +52,15 @@ export function eligibleDays(today: string, joinedDay: string | null, windowDays
 }
 
 /**
- * Tone for a completion rate. With a small sample, never red/amber: a new
- * user who hasn't done much yet is starting, not failing.
+ * Tone for a completion rate: 80%+ is good, 60-80% is ordinary (no colour),
+ * under 60% is a warning and under 30% a problem. With a small sample, never
+ * red/amber: a new user who hasn't done much yet is starting, not failing.
  */
 export function judgeRate(rate: number | null, sampleSize: number): JudgedTone {
   if (rate == null) return "neutral";
   if (rate >= 0.8) return "success";
   if (sampleSize < MIN_SAMPLE_FOR_JUDGEMENT) return rate > 0 ? "success" : "neutral";
-  if (rate >= 0.5) return "warning";
+  if (rate >= 0.6) return "neutral";
+  if (rate >= 0.3) return "warning";
   return "danger";
 }

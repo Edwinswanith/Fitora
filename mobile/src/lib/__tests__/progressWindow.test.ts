@@ -32,8 +32,11 @@ describe("judgeRate", () => {
 
   it("judges normally once there is enough history", () => {
     expect(judgeRate(0, 7)).toBe("danger");
-    expect(judgeRate(0.6, 7)).toBe("warning");
-    expect(judgeRate(0.9, 7)).toBe("success");
+    expect(judgeRate(0.29, 7)).toBe("danger");
+    expect(judgeRate(0.5, 7)).toBe("warning");
+    expect(judgeRate(0.6, 7)).toBe("neutral");
+    expect(judgeRate(0.79, 7)).toBe("neutral");
+    expect(judgeRate(0.8, 7)).toBe("success");
   });
 
   it("is neutral with no data", () => {
