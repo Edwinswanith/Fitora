@@ -2243,6 +2243,8 @@ function NutritionSummaryCardV2({
   const caloriePercent = Math.round(calorieProgress * 100);
   const remaining = target.calories - consumed;
   const remainingLabel = remaining >= 0 ? `${remaining.toLocaleString()} kcal left` : `${Math.abs(remaining).toLocaleString()} kcal over`;
+  const router = useRouter();
+  const [explainOpen, setExplainOpen] = useState(false);
 
   return (
     <AppCard style={styles.nutritionSummaryCard}>
@@ -2270,7 +2272,81 @@ function NutritionSummaryCardV2({
         <MacroTileV2 icon="leaf-outline" label="Carbs" value={data.mealTotals?.carbsG ?? 0} target={target.carbsG} color="#f6b63b" />
         <MacroTileV2 icon="water-outline" label="Fat" value={data.mealTotals?.fatG ?? 0} target={target.fatG} color="#25b56b" />
       </View>
+
+      <Pressable
+        onPress={() => setExplainOpen((open) => !open)}
+        hitSlop={8}
+        accessibilityRole="button"
+        accessibilityState={{ expanded: explainOpen }}
+        style={styles.targetExplainToggle}
+      >
+        <Ionicons name="information-circle-outline" size={17} color={colors.primary} />
+        <Text style={styles.targetExplainToggleText}>How is my target calculated?</Text>
+        <Ionicons name={explainOpen ? "chevron-up" : "chevron-down"} size={16} color={colors.primary} />
+      </Pressable>
+      {explainOpen ? <TargetBreakdown target={target} onEditProfile={() => router.push("/account" as never)} /> : null}
     </AppCard>
+  );
+}
+
+const ACTIVITY_LABELS: Record<string, string> = {
+  sedentary: "Sedentary",
+  light: "Lightly active",
+  moderate: "Moderately active",
+  active: "Active",
+  very_active: "Very active",
+};
+const GOAL_LABELS: Record<string, string> = { lose_weight: "Lose weight", maintain_weight: "Maintain weight", gain_weight: "Gain weight" };
+
+/** The athlete's own numbers behind the calorie target, step by step. */
+function TargetBreakdown({ target, onEditProfile }: { target: NonNullable<AthleteDashboardData["target"]>; onEditProfile: () => void }) {
+  const b = target.breakdown;
+  const kcal = (n: number) => `${Math.round(n).toLocaleString()} kcal`;
+  return (
+    <View style={styles.targetExplain}>
+      {b ? (
+        <>
+          <BreakdownRow
+            label="Resting burn"
+            detail={`${b.inputs.weightKg} kg · ${b.inputs.heightCm} cm · ${b.inputs.age} yrs · ${titleCase(b.inputs.biologicalSex)}`}
+            value={kcal(b.bmr)}
+          />
+          <BreakdownRow label="Activity" detail={`${ACTIVITY_LABELS[b.inputs.activityLevel] ?? titleCase(b.inputs.activityLevel)} (×${b.activityFactor})`} value={kcal(b.tdee)} />
+          <BreakdownRow
+            label="Goal"
+            detail={b.goalDelta === 0 ? GOAL_LABELS[b.inputs.goal] ?? titleCase(b.inputs.goal) : `${GOAL_LABELS[b.inputs.goal] ?? titleCase(b.inputs.goal)}, ${b.inputs.goalIntensity}`}
+            value={b.goalDelta === 0 ? "±0" : `${b.goalDelta > 0 ? "+" : "−"}${Math.abs(b.goalDelta)}`}
+          />
+          {b.floorApplied ? (
+            <Text style={styles.targetExplainNote}>
+              {b.floorApplied === "minimum" ? "Raised to 1,200 kcal, the safe minimum." : "Raised to your resting burn, so it's never unsafely low."}
+            </Text>
+          ) : null}
+          <View style={styles.targetExplainTotal}>
+            <Text style={styles.targetExplainTotalLabel}>Daily target</Text>
+            <Text style={styles.targetExplainTotalValue}>{kcal(target.calories)}</Text>
+          </View>
+        </>
+      ) : (
+        <Text style={styles.targetExplainNote}>Based on your weight, height, age, activity level and goal.</Text>
+      )}
+      <Text style={styles.targetExplainNote}>Updates automatically when your weight, activity or goal changes.</Text>
+      <Pressable onPress={onEditProfile} hitSlop={8} accessibilityRole="link">
+        <Text style={styles.targetExplainLink}>Update my details</Text>
+      </Pressable>
+    </View>
+  );
+}
+
+function BreakdownRow({ label, detail, value }: { label: string; detail: string; value: string }) {
+  return (
+    <View style={styles.targetExplainRow}>
+      <View style={{ flex: 1, minWidth: 0 }}>
+        <Text style={styles.targetExplainLabel}>{label}</Text>
+        <Text style={styles.targetExplainDetail} numberOfLines={1}>{detail}</Text>
+      </View>
+      <Text style={styles.targetExplainValue}>{value}</Text>
+    </View>
   );
 }
 
@@ -4550,6 +4626,18 @@ function Divider({ vertical }: { vertical?: boolean }) {
 }
 
 const styles = StyleSheet.create({
+  targetExplainToggle: { flexDirection: "row", alignItems: "center", gap: 6, alignSelf: "flex-start", paddingVertical: 4 },
+  targetExplainToggleText: { color: colors.primary, fontSize: 13, lineHeight: 18, fontWeight: "800" },
+  targetExplain: { gap: 10, borderRadius: 12, backgroundColor: colors.surfaceInset, padding: 12 },
+  targetExplainRow: { flexDirection: "row", alignItems: "center", gap: 10 },
+  targetExplainLabel: { color: colors.ink, fontSize: 14, lineHeight: 18, fontWeight: "800" },
+  targetExplainDetail: { color: colors.inkMuted, fontSize: 12, lineHeight: 16 },
+  targetExplainValue: { color: colors.ink, fontSize: 14, lineHeight: 18, fontWeight: "800" },
+  targetExplainTotal: { flexDirection: "row", justifyContent: "space-between", alignItems: "center", borderTopWidth: 1, borderTopColor: colors.line, paddingTop: 10 },
+  targetExplainTotalLabel: { color: colors.ink, fontSize: 15, fontWeight: "900" },
+  targetExplainTotalValue: { color: metricColors.nutrition.ink, fontSize: 16, fontWeight: "900" },
+  targetExplainNote: { color: colors.inkMuted, fontSize: 12, lineHeight: 17 },
+  targetExplainLink: { color: colors.primary, fontSize: 13, fontWeight: "800" },
   partialNote: { color: colors.inkFaint, fontSize: 12, lineHeight: 17, textAlign: "center", marginTop: -4 },
   cardTitle: { color: colors.ink, fontSize: 14, lineHeight: 18, fontWeight: "900" },
   muted: { color: colors.inkMuted, fontSize: 12, lineHeight: 16 },

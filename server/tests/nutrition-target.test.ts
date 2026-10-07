@@ -154,6 +154,49 @@ describe("Versioning — changing the goal must not rewrite history", () => {
   });
 });
 
+describe("Stays in step with the profile (no manual recalculate)", () => {
+  test("a weight change is picked up on the next read: new target, old one closed, breakdown explains it", async () => {
+    const { user, profile } = await makeAthlete("auto-refresh");
+    const app = buildApp();
+    const token = `Bearer ${tokenFor(user._id)}`;
+    await request(app).patch("/api/athlete/me").set("Authorization", token).send({
+      heightCm: 178, weightKg: 75, dob: "1995-06-15",
+      biologicalSex: "male", activityLevel: "moderate", fitnessGoal: "lose_weight", goalIntensity: "moderate",
+    });
+
+    // No explicit recalculate: the first read creates the target from the profile.
+    const first = await request(app).get("/api/athlete/nutrition/target").set("Authorization", token);
+    expect(first.body.target.calories).toBeGreaterThan(0);
+    expect(first.body.target.breakdown).toMatchObject({ activityFactor: 1.55, goalDelta: -500, inputs: { weightKg: 75 } });
+    expect(first.body.target.breakdown.calories).toBe(first.body.target.calories);
+
+    await request(app).patch("/api/athlete/me").set("Authorization", token).send({ weightKg: 70 });
+    const second = await request(app).get(`/api/athlete/nutrition/target?date=${new Date().toISOString().slice(0, 10)}`).set("Authorization", token);
+    expect(second.body.target.calories).toBeLessThan(first.body.target.calories);
+    expect(second.body.target.breakdown.inputs.weightKg).toBe(70);
+    expect(await NutritionTarget.countDocuments({ athleteId: profile._id })).toBe(2);
+    expect(await NutritionTarget.countDocuments({ athleteId: profile._id, effectiveTo: null })).toBe(1);
+
+    // Reading again with nothing changed does not create another version.
+    await request(app).get("/api/athlete/nutrition/target").set("Authorization", token);
+    expect(await NutritionTarget.countDocuments({ athleteId: profile._id })).toBe(2);
+  });
+
+  test("clearing a required field keeps the last target instead of removing it", async () => {
+    const { user } = await makeAthlete("incomplete-later");
+    const app = buildApp();
+    const token = `Bearer ${tokenFor(user._id)}`;
+    await request(app).patch("/api/athlete/me").set("Authorization", token).send({
+      heightCm: 165, weightKg: 60, dob: "1997-02-01",
+      biologicalSex: "female", activityLevel: "light", fitnessGoal: "maintain_weight", goalIntensity: "mild",
+    });
+    const before = await request(app).get("/api/athlete/nutrition/target").set("Authorization", token);
+    await request(app).patch("/api/athlete/me").set("Authorization", token).send({ weightKg: null });
+    const after = await request(app).get("/api/athlete/nutrition/target").set("Authorization", token);
+    expect(after.body.target.id).toBe(before.body.target.id);
+  });
+});
+
 describe("Scope", () => {
   test("an athlete cannot see another athlete's nutrition target", async () => {
     const { user: userA } = await makeAthlete("scope-a");

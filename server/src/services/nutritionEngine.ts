@@ -109,6 +109,32 @@ export function calculateNutritionTarget(input: NutritionEngineInput): Nutrition
   };
 }
 
+export type NutritionTargetBreakdown = {
+  bmr: number;
+  activityFactor: number;
+  tdee: number;
+  goalDelta: number;
+  /** Which safety floor raised the target, if any. */
+  floorApplied: "minimum" | "resting_burn" | null;
+  calories: number;
+};
+
+/**
+ * The same steps as calculateNutritionTarget, kept as numbers the app can
+ * show ("How is this calculated?"). Never a second formula: it reuses the
+ * functions and constants above.
+ */
+export function explainNutritionTarget(input: NutritionEngineInput): NutritionTargetBreakdown {
+  const bmr = computeBMR(input);
+  const activityFactor = ACTIVITY_FACTORS[input.activityLevel];
+  const tdee = bmr * activityFactor;
+  const goalDelta = GOAL_CALORIE_DELTA[input.goal][input.goalIntensity];
+  const raw = tdee + goalDelta;
+  const calories = Math.round(Math.max(ABSOLUTE_CALORIE_FLOOR, raw, bmr * MIN_CALORIES_AS_BMR_MULTIPLE));
+  const floorApplied = raw >= Math.max(ABSOLUTE_CALORIE_FLOOR, bmr * MIN_CALORIES_AS_BMR_MULTIPLE) ? null : bmr * MIN_CALORIES_AS_BMR_MULTIPLE > ABSOLUTE_CALORIE_FLOOR ? "resting_burn" : "minimum";
+  return { bmr: Math.round(bmr), activityFactor, tdee: Math.round(tdee), goalDelta, floorApplied, calories };
+}
+
 /** Verifies protein*4 + carbs*4 + fat*9 reconciles to calories within tolerance. */
 export function macrosReconcileToCalories(
   calories: number,
