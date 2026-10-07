@@ -14,7 +14,7 @@ export type TrendPoint = {
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 
-export function clampDays(input: unknown, fallback = 7, max = 30): number {
+export function clampDays(input: unknown, fallback = 7, max = 90): number {
   const n = Number(input);
   if (!Number.isFinite(n)) return fallback;
   return Math.min(Math.max(Math.trunc(n), 1), max);

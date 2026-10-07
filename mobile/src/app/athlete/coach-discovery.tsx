@@ -1,61 +1,84 @@
 import { useMemo, useState } from "react";
-import { Pressable, StyleSheet, TextInput, View } from "react-native";
+import { Pressable, ScrollView, StyleSheet, TextInput, View } from "react-native";
 import { useRouter } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
 import { Text } from "../../components/AppText";
 import { Avatar } from "../../components/Avatar";
 import {
-  ActionButton,
+  AlertBanner,
   AppCard,
   EmptyState,
   ErrorState,
-  IconTile,
   LoadingState,
   ScreenContainer,
   SectionHeader,
   StatusChip,
 } from "../../components/fitora";
-import { apiFetch, apiJson } from "../../lib/api";
+import { apiJson } from "../../lib/api";
 import { colors, radius } from "../../lib/theme";
-import { formatCurrency, titleCase, useAsyncData, type MarketplaceCoach, type PublicCoachProfile } from "../../lib/fitoraData";
+import { formatCurrency, loadMarketplaceCoaches, useAsyncData, type MarketplaceCoach, type MarketplaceFilters } from "../../lib/fitoraData";
 
-async function loadCoaches() {
-  const [coaches, assigned] = await Promise.all([
-    apiJson<{ coaches: MarketplaceCoach[] }>("/api/marketplace/coaches?limit=50"),
-    // Reflects the real CoachAthleteAssignment (active relationship), not just a paid
-    // subscription — an athlete can have an active coach with no linked subscription
-    // (e.g. added directly by the coach), and that still must route through the
-    // coach-switch endpoint rather than a plain subscribe (which 409s otherwise).
+type QuickFilter = "all" | "nutrition" | "experienced" | "topRated";
+
+const QUICK_FILTER_PARAMS: Record<QuickFilter, MarketplaceFilters> = {
+  all: {},
+  nutrition: { nutritionSupport: true },
+  experienced: { minExperience: 5 },
+  topRated: { minRating: 4 },
+};
+
+async function loadDiscovery(quickFilter: QuickFilter, specialization: string | null) {
+  const [result, currentCoach] = await Promise.all([
+    loadMarketplaceCoaches({ ...QUICK_FILTER_PARAMS[quickFilter], specialization: specialization ?? undefined }),
     apiJson<{ coaches: { coachId: string; name: string }[] }>("/api/athlete/coaches").catch(() => ({ coaches: [] })),
   ]);
-  const currentCoachId = assigned.coaches[0]?.coachId ?? null;
-  return { coaches: coaches.coaches, currentCoachId };
+  return { ...result, currentCoachName: currentCoach.coaches[0]?.name ?? null };
 }
 
 export default function CoachDiscovery() {
   const router = useRouter();
-  const state = useAsyncData(loadCoaches, [], "athlete-coach-discovery");
   const [query, setQuery] = useState("");
-  const [filter, setFilter] = useState<"all" | "nutrition" | "strength" | "experienced">("all");
+  const [quickFilter, setQuickFilter] = useState<QuickFilter>("all");
+  const [specialization, setSpecialization] = useState<string | null>(null);
+  const [availableOnly, setAvailableOnly] = useState(false);
+  const state = useAsyncData(
+    () => loadDiscovery(quickFilter, specialization),
+    [quickFilter, specialization],
+    `athlete-coach-discovery:${quickFilter}:${specialization ?? "all"}`
+  );
+
+  // Specialization options are derived from whatever the current
+  // (quick-filter-scoped) batch actually contains — never a fabricated fixed
+  // list, since coach specializations are free text with no enumeration
+  // endpoint. This naturally narrows/widens as the quick filter changes.
+  const specializationOptions = useMemo(() => {
+    const counts = new Map<string, number>();
+    for (const coach of state.data?.coaches ?? []) {
+      for (const tag of coach.specializations ?? []) counts.set(tag, (counts.get(tag) ?? 0) + 1);
+    }
+    return Array.from(counts.entries()).sort((a, b) => b[1] - a[1]).slice(0, 8).map(([tag]) => tag);
+  }, [state.data?.coaches]);
 
   const coaches = useMemo(() => {
     const q = query.trim().toLowerCase();
     return (state.data?.coaches ?? []).filter((coach) => {
-      const text = [
-        coach.name,
-        ...(coach.specializations ?? []),
-        ...(coach.coachingTypes ?? []),
-        ...(coach.languages ?? []),
-      ].join(" ").toLowerCase();
-      const matchesQuery = !q || text.includes(q);
-      const matchesFilter =
-        filter === "all" ||
-        (filter === "nutrition" && coach.nutritionSupport) ||
-        (filter === "strength" && text.includes("strength")) ||
-        (filter === "experienced" && (coach.yearsExperience ?? 0) >= 5);
-      return matchesQuery && matchesFilter;
+      if (availableOnly && !coach.hasAvailability) return false;
+      if (!q) return true;
+      const text = [coach.name, ...(coach.specializations ?? []), ...(coach.coachingTypes ?? []), ...(coach.languages ?? [])]
+        .join(" ")
+        .toLowerCase();
+      return text.includes(q);
     });
-  }, [filter, query, state.data?.coaches]);
+  }, [availableOnly, query, state.data?.coaches]);
+
+  const hasAnyFilterApplied = quickFilter !== "all" || Boolean(specialization) || availableOnly || Boolean(query.trim());
+
+  function clearFilters() {
+    setQuery("");
+    setQuickFilter("all");
+    setSpecialization(null);
+    setAvailableOnly(false);
+  }
 
   if (state.loading && !state.data) {
     return (
@@ -79,232 +102,201 @@ export default function CoachDiscovery() {
         <Pressable onPress={() => router.back()} style={styles.backButton} hitSlop={10}>
           <Ionicons name="arrow-back" size={24} color={colors.ink} />
         </Pressable>
-        <Text style={styles.title}>Find Coach</Text>
+        <Text style={styles.title}>Find a Coach</Text>
         <View style={styles.backButton} />
       </View>
+      <Text style={styles.tagline}>{"Match your goal to a coach's plan, price, and availability."}</Text>
+
+      {state.data?.currentCoachName ? (
+        <AlertBanner
+          tone="primary"
+          title={`Currently coached by ${state.data.currentCoachName}`}
+          body="Choosing a plan below starts a coach switch — your current coach stays active until the new one is confirmed."
+        />
+      ) : null}
 
       <View style={styles.searchBox}>
-        <Ionicons name="search-outline" size={24} color={colors.inkFaint} />
+        <Ionicons name="search-outline" size={22} color={colors.inkFaint} />
         <TextInput
           value={query}
           onChangeText={setQuery}
-          placeholder="Search coaches..."
+          placeholder="Search coaches, specialties, languages..."
           placeholderTextColor={colors.inkFaint}
           style={styles.searchInput}
+          autoCapitalize="none"
+          autoCorrect={false}
         />
       </View>
 
-      <View style={styles.filterRow}>
-        {[
+      <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.filterRow}>
+        {([
           { value: "all", label: "All" },
           { value: "nutrition", label: "Nutrition" },
-          { value: "strength", label: "Strength" },
           { value: "experienced", label: "5+ Years" },
-        ].map((item) => (
+          { value: "topRated", label: "Top Rated" },
+        ] as { value: QuickFilter; label: string }[]).map((item) => (
           <Pressable
             key={item.value}
-            onPress={() => setFilter(item.value as typeof filter)}
-            style={[styles.filterChip, filter === item.value ? styles.filterChipActive : null]}
+            onPress={() => setQuickFilter(item.value)}
+            style={[styles.filterChip, quickFilter === item.value ? styles.filterChipActive : null]}
           >
-            <Text style={[styles.filterText, filter === item.value ? styles.filterTextActive : null]}>{item.label}</Text>
+            <Text style={[styles.filterText, quickFilter === item.value ? styles.filterTextActive : null]}>{item.label}</Text>
           </Pressable>
         ))}
-      </View>
+        <Pressable
+          onPress={() => setAvailableOnly((value) => !value)}
+          style={[styles.filterChip, availableOnly ? styles.filterChipActive : null]}
+        >
+          <Text style={[styles.filterText, availableOnly ? styles.filterTextActive : null]}>Available</Text>
+        </Pressable>
+      </ScrollView>
 
-      <SectionHeader title={`${coaches.length} Coaches`} />
+      {specializationOptions.length ? (
+        <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.filterRow}>
+          {specializationOptions.map((tag) => {
+            const active = specialization === tag;
+            return (
+              <Pressable
+                key={tag}
+                onPress={() => setSpecialization(active ? null : tag)}
+                style={[styles.specChip, active ? styles.specChipActive : null]}
+              >
+                <Text style={[styles.specText, active ? styles.specTextActive : null]}>{tag}</Text>
+              </Pressable>
+            );
+          })}
+        </ScrollView>
+      ) : null}
+
+      <SectionHeader
+        title={`${coaches.length} Coach${coaches.length === 1 ? "" : "es"}`}
+        action={hasAnyFilterApplied ? "Clear filters" : undefined}
+        onAction={clearFilters}
+      />
       {coaches.length ? (
         coaches.map((coach) => (
-      <CoachCard
-        key={coach.coachId}
-        coach={coach}
-        currentCoachId={state.data?.currentCoachId ?? null}
-        onActivated={(coachId) => state.setData((prev) => (prev ? { ...prev, currentCoachId: coachId } : prev))}
-      />
-    ))
+          <CoachCard key={coach.coachId} coach={coach} onPress={() => router.push(`/athlete/coach-profile/${coach.coachId}` as never)} />
+        ))
+      ) : hasAnyFilterApplied ? (
+        <EmptyState title="No coaches match" body="Try clearing a filter or searching a different specialty." icon="search-outline" />
       ) : (
-        <EmptyState title="No coaches found" body="Try a different specialization, language, or rating filter." icon="search-outline" />
+        <EmptyState title="No coaches available" body="No coaches are currently listed in the marketplace. Check back soon." icon="people-outline" />
       )}
     </ScreenContainer>
   );
 }
 
-function CoachCard({
-  coach,
-  currentCoachId,
-  onActivated,
-}: {
-  coach: MarketplaceCoach;
-  currentCoachId: string | null;
-  onActivated: (coachId: string) => void;
-}) {
-  const [expanded, setExpanded] = useState(false);
-  const [profile, setProfile] = useState<PublicCoachProfile | null>(null);
-  const [loadingProfile, setLoadingProfile] = useState(false);
-  const [message, setMessage] = useState<string | null>(null);
-  const price = coach.startingPrice ? `${formatCurrency(coach.startingPrice.amount, coach.startingPrice.currency)}/month` : "Pricing unavailable";
-
-  async function toggleDetails() {
-    setExpanded((value) => !value);
-    if (profile || loadingProfile) return;
-    setLoadingProfile(true);
-    setMessage(null);
-    try {
-      const result = await apiJson<{ profile: PublicCoachProfile }>(`/api/marketplace/coaches/${coach.coachId}`);
-      setProfile(result.profile);
-    } catch {
-      setMessage("Could not load coach details.");
-    } finally {
-      setLoadingProfile(false);
-    }
-  }
-
-  async function startSubscription(planId: string) {
-    setMessage(null);
-    const isSwitch = Boolean(currentCoachId) && currentCoachId !== coach.coachId;
-    try {
-      const res = await apiFetch(
-        isSwitch ? "/api/athlete/coach-switch" : "/api/athlete/coach-subscriptions",
-        {
-          method: "POST",
-          body: JSON.stringify(
-            isSwitch
-              ? { newCoachId: coach.coachId, newPricingPlanId: planId }
-              : { coachId: coach.coachId, pricingPlanId: planId }
-          ),
-        }
-      );
-      const body = (await res.json().catch(() => ({}))) as { error?: string; checkoutRef?: string; kind?: string };
-      if (!res.ok) {
-        setMessage(body.error === "already_your_coach" ? "This coach is already your current coach." : body.error ?? "Could not start this membership.");
-        return;
-      }
-      setMessage(body.checkoutRef ? (isSwitch ? "Coach switch checkout started." : "Membership checkout started.") : "Membership request created.");
-      // A checkout ref means the relationship only activates later, once
-      // Razorpay's webhook confirms payment — nothing to reflect here yet.
-      // Only a response with no checkoutRef (a free/legacy plan) activates
-      // immediately, so only then does the marketplace's "current coach"
-      // actually change — patch that one field locally instead of
-      // re-fetching the entire coach list to reflect it.
-      if (!body.checkoutRef) onActivated(coach.coachId);
-    } catch {
-      setMessage("Network failed while starting membership.");
-    }
-  }
-
+function CoachCard({ coach, onPress }: { coach: MarketplaceCoach; onPress: () => void }) {
+  const price = coach.startingPrice ? `${formatCurrency(coach.startingPrice.amount, coach.startingPrice.currency)}/mo` : "Pricing unavailable";
   return (
-    <AppCard>
-      <View style={styles.coachTop}>
-        <Avatar
-          avatar={coach.avatar}
-          name={coach.name}
-          size={76}
-          accentSoft={colors.primarySoft}
-          accentStrong={colors.primary}
-          photoPath={`/api/marketplace/coaches/${coach.coachId}/avatar/file`}
-        />
-        <View style={{ flex: 1, minWidth: 0 }}>
-          <View style={styles.nameRow}>
-            <Text style={styles.coachName} numberOfLines={1}>{coach.name}</Text>
-            {coach.verifiedStatus === "verified" ? <Ionicons name="checkmark-circle" size={20} color={colors.primary} /> : null}
-          </View>
-          <Text style={styles.muted} numberOfLines={1}>{(coach.specializations ?? [])[0] || "Fitness Coach"}</Text>
-          <View style={styles.ratingRow}>
-            <Ionicons name="star" size={16} color={colors.warn} />
-            <Text style={styles.rating}>
-              {coach.avgRating ? coach.avgRating.toFixed(1) : "New"} {coach.reviewCount ? `- ${coach.reviewCount} reviews` : ""}
-            </Text>
-          </View>
-          <Text style={styles.muted}>{coach.yearsExperience ? `${coach.yearsExperience} years experience` : "Experience not listed"}</Text>
-        </View>
-      </View>
-      <View style={styles.tagWrap}>
-        {(coach.specializations ?? []).slice(0, 3).map((tag) => <StatusChip key={tag} label={tag} tone="primary" />)}
-        {coach.nutritionSupport ? <StatusChip label="Nutrition" tone="success" /> : null}
-      </View>
-      <View style={styles.priceRow}>
-        <IconTile icon="ribbon-outline" size={44} />
-        <View style={{ flex: 1 }}>
-          <Text style={styles.price}>{price}</Text>
-          <Text style={styles.muted}>Starting plan</Text>
-        </View>
-        <ActionButton label={expanded ? "Hide" : loadingProfile ? "Loading..." : "View"} onPress={toggleDetails} />
-      </View>
-      {expanded ? (
-        <View style={styles.detailPanel}>
-          {profile ? (
-            <>
-              <Text style={styles.detailBody}>{profile.bio || profile.philosophy || "This coach has not added a full bio yet."}</Text>
-              <View style={styles.tagWrap}>
-                {(profile.coachingTypes ?? []).slice(0, 4).map((tag) => <StatusChip key={tag} label={titleCase(tag)} tone="primary" />)}
-                {(profile.languages ?? []).slice(0, 4).map((tag) => <StatusChip key={tag} label={titleCase(tag)} tone="neutral" />)}
-              </View>
-              {(profile.pricingPlans ?? []).slice(0, 3).map((plan) => (
-                <View key={plan.id} style={styles.planRow}>
-                  <View style={{ flex: 1, minWidth: 0 }}>
-                    <Text style={styles.planTitle}>{plan.name}</Text>
-                    <Text style={styles.muted}>{formatCurrency(plan.monthlyPrice, plan.currency)} / month</Text>
-                  </View>
-                  <ActionButton
-                    label={currentCoachId && currentCoachId !== coach.coachId ? "Switch to This Plan" : "Choose"}
-                    variant="filled"
-                    onPress={() => startSubscription(plan.id)}
-                  />
+    <Pressable onPress={onPress} style={({ pressed }) => [pressed ? styles.pressed : null]}>
+      <AppCard>
+        <View style={styles.coachTop}>
+          <Avatar
+            avatar={coach.avatar}
+            name={coach.name}
+            size={64}
+            accentSoft={colors.primarySoft}
+            accentStrong={colors.primary}
+            photoPath={`/api/marketplace/coaches/${coach.coachId}/avatar/file`}
+          />
+          <View style={{ flex: 1, minWidth: 0 }}>
+            <View style={styles.nameRow}>
+              <Text style={styles.coachName} numberOfLines={1}>{coach.name}</Text>
+              {coach.verifiedStatus === "verified" ? <Ionicons name="checkmark-circle" size={17} color={colors.primary} /> : null}
+            </View>
+            <Text style={styles.muted} numberOfLines={1}>{(coach.specializations ?? [])[0] || "Fitness Coach"}</Text>
+            <View style={styles.ratingRow}>
+              <Ionicons name="star" size={14} color={colors.warn} />
+              <Text style={styles.rating}>
+                {coach.avgRating ? coach.avgRating.toFixed(1) : "New"}{coach.reviewCount ? ` - ${coach.reviewCount} reviews` : ""}
+              </Text>
+              {coach.hasAvailability ? (
+                <View style={styles.availableDot}>
+                  <View style={styles.dot} />
+                  <Text style={styles.availableText}>Available</Text>
                 </View>
-              ))}
-            </>
-          ) : (
-            <Text style={styles.detailBody}>{loadingProfile ? "Loading coach details..." : "Coach details unavailable."}</Text>
-          )}
-          {message ? <Text style={message.includes("started") || message.includes("created") ? styles.successText : styles.errorText}>{message}</Text> : null}
+              ) : null}
+            </View>
+          </View>
         </View>
-      ) : null}
-    </AppCard>
+        <View style={styles.tagWrap}>
+          {(coach.specializations ?? []).slice(1, 3).map((tag) => <StatusChip key={tag} label={tag} tone="primary" />)}
+          {coach.nutritionSupport ? <StatusChip label="Nutrition" tone="success" /> : null}
+        </View>
+        <View style={styles.bottomRow}>
+          <View>
+            <Text style={styles.price}>{price}</Text>
+            <Text style={styles.mutedSmall}>Starting plan</Text>
+          </View>
+          <View style={styles.cta}>
+            <Text style={styles.ctaText}>View Coach</Text>
+            <Ionicons name="chevron-forward" size={16} color="#fff" />
+          </View>
+        </View>
+      </AppCard>
+    </Pressable>
   );
 }
 
 const styles = StyleSheet.create({
   headerRow: { minHeight: 58, flexDirection: "row", alignItems: "center", justifyContent: "space-between" },
   backButton: { height: 42, width: 42, borderRadius: 21, alignItems: "center", justifyContent: "center" },
-  title: { color: colors.ink, fontSize: 30, lineHeight: 38, fontWeight: "900" },
+  title: { color: colors.ink, fontSize: 26, lineHeight: 32, fontWeight: "900" },
+  tagline: { color: colors.inkMuted, fontSize: 14, lineHeight: 19, marginTop: -6 },
   searchBox: {
-    minHeight: 58,
+    minHeight: 52,
     borderRadius: radius.lg,
     borderWidth: 1,
     borderColor: colors.lineStrong,
     backgroundColor: colors.surfaceRaised,
-    paddingHorizontal: 16,
+    paddingHorizontal: 14,
     flexDirection: "row",
     alignItems: "center",
-    gap: 10,
+    gap: 9,
   },
-  searchInput: { flex: 1, minWidth: 0, color: colors.ink, fontSize: 18 },
-  filterRow: { flexDirection: "row", flexWrap: "wrap", gap: 10 },
+  searchInput: { flex: 1, minWidth: 0, color: colors.ink, fontSize: 15 },
+  filterRow: { flexDirection: "row", gap: 8, paddingRight: 4 },
   filterChip: {
-    minHeight: 44,
+    minHeight: 38,
     borderRadius: radius.md,
     borderWidth: 1,
     borderColor: colors.lineStrong,
-    paddingHorizontal: 16,
+    paddingHorizontal: 14,
     alignItems: "center",
     justifyContent: "center",
     backgroundColor: colors.surfaceRaised,
   },
   filterChipActive: { backgroundColor: colors.primary, borderColor: colors.primary },
-  filterText: { color: colors.ink, fontSize: 15, fontWeight: "800" },
+  filterText: { color: colors.ink, fontSize: 13, fontWeight: "800" },
   filterTextActive: { color: "#fff" },
-  coachTop: { flexDirection: "row", alignItems: "center", gap: 14 },
+  specChip: {
+    minHeight: 32,
+    borderRadius: radius.pill,
+    borderWidth: 1,
+    borderColor: colors.line,
+    paddingHorizontal: 12,
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: colors.surface,
+  },
+  specChipActive: { backgroundColor: colors.primarySoft, borderColor: colors.primary },
+  specText: { color: colors.inkMuted, fontSize: 12, fontWeight: "700" },
+  specTextActive: { color: colors.primary },
+  pressed: { opacity: 0.85 },
+  coachTop: { flexDirection: "row", alignItems: "center", gap: 12 },
   nameRow: { flexDirection: "row", alignItems: "center", gap: 6 },
-  coachName: { flex: 1, color: colors.ink, fontSize: 22, lineHeight: 28, fontWeight: "900" },
-  muted: { color: colors.inkMuted, fontSize: 14, lineHeight: 20 },
-  ratingRow: { flexDirection: "row", alignItems: "center", gap: 6, marginTop: 5 },
-  rating: { color: colors.ink, fontSize: 14, fontWeight: "800" },
-  tagWrap: { flexDirection: "row", flexWrap: "wrap", gap: 8, marginTop: 14 },
-  priceRow: { flexDirection: "row", alignItems: "center", gap: 12, marginTop: 16 },
-  price: { color: colors.ink, fontSize: 18, lineHeight: 23, fontWeight: "900" },
-  detailPanel: { marginTop: 14, paddingTop: 14, borderTopWidth: 1, borderTopColor: colors.line, gap: 10 },
-  detailBody: { color: colors.inkMuted, fontSize: 14, lineHeight: 20 },
-  planRow: { flexDirection: "row", alignItems: "center", gap: 10, borderTopWidth: 1, borderTopColor: colors.line, paddingTop: 10 },
-  planTitle: { color: colors.ink, fontSize: 15, lineHeight: 19, fontWeight: "900" },
-  successText: { color: colors.ok, fontSize: 13, lineHeight: 18, fontWeight: "800" },
-  errorText: { color: colors.bad, fontSize: 13, lineHeight: 18, fontWeight: "800" },
+  coachName: { flex: 1, color: colors.ink, fontSize: 18, lineHeight: 23, fontWeight: "900" },
+  muted: { color: colors.inkMuted, fontSize: 13, lineHeight: 18 },
+  mutedSmall: { color: colors.inkMuted, fontSize: 11, lineHeight: 15 },
+  ratingRow: { flexDirection: "row", alignItems: "center", gap: 6, marginTop: 4, flexWrap: "wrap" },
+  rating: { color: colors.ink, fontSize: 13, fontWeight: "800" },
+  availableDot: { flexDirection: "row", alignItems: "center", gap: 4, marginLeft: 4 },
+  dot: { width: 6, height: 6, borderRadius: 3, backgroundColor: colors.ok },
+  availableText: { color: colors.ok, fontSize: 11, fontWeight: "800" },
+  tagWrap: { flexDirection: "row", flexWrap: "wrap", gap: 7, marginTop: 11 },
+  bottomRow: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", marginTop: 13 },
+  price: { color: colors.ink, fontSize: 16, lineHeight: 20, fontWeight: "900" },
+  cta: { flexDirection: "row", alignItems: "center", gap: 4, minHeight: 38, borderRadius: radius.md, backgroundColor: colors.primary, paddingHorizontal: 14 },
+  ctaText: { color: "#fff", fontSize: 13, fontWeight: "900" },
 });

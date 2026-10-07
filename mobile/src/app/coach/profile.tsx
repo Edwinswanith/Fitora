@@ -28,6 +28,7 @@ import {
   type CoachAvailabilityException,
   type CoachAvailabilityRule,
   type CoachOwnProfile,
+  type CoachReview,
   type PricingPlan,
   type PublicCoachProfile,
 } from "../../lib/fitoraData";
@@ -47,6 +48,25 @@ export default function CoachProfile() {
   const [exceptionsOpen, setExceptionsOpen] = useState(false);
   const [actionMessage, setActionMessage] = useState<string | null>(null);
   const [reviewsOpen, setReviewsOpen] = useState(false);
+  const [reviewsPage, setReviewsPage] = useState(1);
+  const [loadingMoreReviews, setLoadingMoreReviews] = useState(false);
+
+  async function loadMoreReviews() {
+    const coachId = state.data?.profile?.coachId ?? state.data?.profile?.id;
+    if (!coachId || loadingMoreReviews) return;
+    setLoadingMoreReviews(true);
+    try {
+      const nextPage = reviewsPage + 1;
+      const res = await apiFetch(`/api/marketplace/coaches/${coachId}/reviews?limit=5&page=${nextPage}`);
+      const json = (await res.json().catch(() => ({}))) as { reviews?: CoachReview[] };
+      if (res.ok && json.reviews?.length) {
+        state.setData((prev) => (prev ? { ...prev, reviews: [...prev.reviews, ...json.reviews!] } : prev));
+        setReviewsPage(nextPage);
+      }
+    } finally {
+      setLoadingMoreReviews(false);
+    }
+  }
 
   async function toggleMarketplace(active: boolean) {
     setSavingVisibility(true);
@@ -249,7 +269,11 @@ export default function CoachProfile() {
           ) : null}
         </AppCard>
         <AppCard style={styles.splitCard}>
-          <SectionHeader title="Reviews" action={data.reviews.length ? (reviewsOpen ? "Hide" : "View") : undefined} onAction={() => setReviewsOpen((value) => !value)} />
+          <SectionHeader
+            title="Reviews"
+            action={data.reviews.length ? (reviewsOpen ? "Hide" : `View ${Math.min(data.reviews.length, profile?.reviewCount ?? data.reviews.length)} of ${profile?.reviewCount ?? data.reviews.length}`) : undefined}
+            onAction={() => setReviewsOpen((value) => !value)}
+          />
           <Text style={styles.reviewScore}>{profile?.avgRating ? profile.avgRating.toFixed(1) : "-"}</Text>
           <Text style={styles.muted}>{profile?.reviewCount ?? 0} reviews</Text>
           {data.reviews.length ? (
@@ -263,6 +287,11 @@ export default function CoachProfile() {
           ) : (
             <Text style={styles.muted}>Reviews will appear after athletes leave feedback.</Text>
           )}
+          {reviewsOpen && data.reviews.length < (profile?.reviewCount ?? 0) ? (
+            <Pressable onPress={loadMoreReviews} disabled={loadingMoreReviews} style={styles.exceptionsToggle}>
+              {loadingMoreReviews ? <ActivityIndicator color={colors.primary} /> : <Text style={styles.linkText}>Load more reviews</Text>}
+            </Pressable>
+          ) : null}
         </AppCard>
       </View>
 

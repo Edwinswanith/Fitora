@@ -1,14 +1,14 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { ActivityIndicator, Pressable, ScrollView, StyleSheet, TextInput, View } from "react-native";
+import { ActivityIndicator, Pressable, StyleSheet, TextInput, View } from "react-native";
+import { useRouter } from "expo-router";
 import { Text } from "../../components/AppText";
-import { SafeAreaView } from "react-native-safe-area-context";
 import { Ionicons } from "@expo/vector-icons";
 import Svg, { Circle, Defs, Line, LinearGradient, Path, Stop } from "react-native-svg";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import * as Notifications from "expo-notifications";
 import { apiFetch, apiJson } from "../../lib/api";
 import { colors, radius } from "../../lib/theme";
-import { Card, Muted } from "../../components/ui";
+import { AppCard, ScreenContainer } from "../../components/fitora";
 
 // The web hydration card renders a blue water ring — mirror that here rather
 // than the athlete gold accent, so both platforms read as the same feature.
@@ -73,7 +73,7 @@ function HydrationBars({ series, goalMl }: { series: WaterPoint[]; goalMl: numbe
   const padX = 8;
   const padTop = 10;
   const padBottom = 6;
-  if (series.length === 0) return <Muted style={{ fontSize: 12 }}>No chart data yet.</Muted>;
+  if (series.length === 0) return <Text style={styles.mutedSmall}>No chart data yet.</Text>;
   const max = Math.max(goalMl, ...series.map((p) => p.totalMl ?? 0), 1) * 1.12;
   const plotW = Math.max(1, w - padX * 2);
   const plotH = height - padTop - padBottom;
@@ -120,6 +120,7 @@ function HydrationBars({ series, goalMl }: { series: WaterPoint[]; goalMl: numbe
 }
 
 export default function Water() {
+  const router = useRouter();
   const [day, setDay] = useState<WaterDay | null>(null);
   const [historyDays, setHistoryDays] = useState<7 | 30>(7);
   const [history, setHistory] = useState<WaterSeries | null>(null);
@@ -289,196 +290,210 @@ export default function Water() {
   );
 
   return (
-    <SafeAreaView style={styles.safe} edges={["top"]}>
-      <ScrollView contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
+    <ScreenContainer>
+      <View style={styles.header}>
+        <Pressable onPress={() => router.back()} style={styles.backButton} hitSlop={10}>
+          <Ionicons name="chevron-back" size={26} color={colors.ink} />
+        </Pressable>
         <Text style={styles.title}>Water</Text>
-        <Muted style={{ marginBottom: 16 }}>Stay on top of hydration.</Muted>
+      </View>
+      <Text style={styles.tagline}>Stay on top of hydration.</Text>
 
-        {loading && !day ? (
-          <ActivityIndicator color={WATER} style={{ marginTop: 40 }} />
-        ) : (
-          <View style={{ gap: 12 }}>
-            {/* Water goal — ring + Drunk / Remaining / Goal + status */}
-            <Card>
-              <Text style={styles.cardTitle}>Water goal</Text>
-              <View style={{ alignItems: "center", gap: 16, marginTop: 8 }}>
-                <WaterRing pct={pct} reached={reached} />
-                <View style={styles.tileRow}>
-                  <MetricTile label="Drunk" value={`${litres(total)} L`} />
-                  <MetricTile label="Remaining" value={`${litres(remaining)} L`} good={reached} />
-                  <MetricTile label="Goal" value={`${litres(goal)} L`} />
-                </View>
-                <View style={[styles.statusBox, reached ? styles.statusBoxOk : null]}>
-                  <Text style={[styles.statusText, reached ? { color: OK } : null]}>
-                    {reached ? "Daily hydration achieved" : `${remaining} ml remaining today`}
-                  </Text>
-                  <Text style={styles.statusSub}>
-                    {achievedDays} of last {historyDays} days reached the goal.
-                  </Text>
-                </View>
+      {loading && !day ? (
+        <ActivityIndicator color={WATER} style={{ marginTop: 40 }} />
+      ) : (
+        <View style={{ gap: 12 }}>
+          {/* Water goal — ring + Drunk / Remaining / Goal + status */}
+          <AppCard>
+            <Text style={styles.cardTitle}>Water goal</Text>
+            <View style={{ alignItems: "center", gap: 16, marginTop: 8 }}>
+              <WaterRing pct={pct} reached={reached} />
+              <View style={styles.tileRow}>
+                <MetricTile label="Drunk" value={`${litres(total)} L`} />
+                <MetricTile label="Remaining" value={`${litres(remaining)} L`} good={reached} />
+                <MetricTile label="Goal" value={`${litres(goal)} L`} />
               </View>
-            </Card>
+              <View style={[styles.statusBox, reached ? styles.statusBoxOk : null]}>
+                <Text style={[styles.statusText, reached ? { color: OK } : null]}>
+                  {reached ? "Daily hydration achieved" : `${remaining} ml remaining today`}
+                </Text>
+                <Text style={styles.statusSub}>
+                  {achievedDays} of last {historyDays} days reached the goal.
+                </Text>
+              </View>
+            </View>
+          </AppCard>
 
-            {/* Daily goal presets + custom */}
-            <Card>
-              <Text style={styles.cardTitle}>Daily water goal</Text>
-              <View style={styles.presetRow}>
-                {GOAL_PRESETS.map((ml) => (
+          {/* Daily goal presets + custom */}
+          <AppCard>
+            <Text style={styles.cardTitle}>Daily water goal</Text>
+            <View style={styles.presetRow}>
+              {GOAL_PRESETS.map((ml) => (
+                <Pressable
+                  key={ml}
+                  disabled={busy}
+                  onPress={() => saveGoal(ml)}
+                  style={[styles.preset, goal === ml ? styles.presetOn : null]}
+                >
+                  <Text style={[styles.presetText, goal === ml ? styles.presetTextOn : null]}>{litres(ml)} L</Text>
+                </Pressable>
+              ))}
+            </View>
+            <View style={styles.inlineRow}>
+              <TextInput
+                value={goalDraft}
+                onChangeText={setGoalDraft}
+                keyboardType="number-pad"
+                placeholder="ml"
+                placeholderTextColor={colors.inkFaint}
+                style={styles.input}
+              />
+              <Pressable disabled={busy} onPress={() => saveGoal()} style={[styles.primaryBtn, { backgroundColor: WATER }]}>
+                <Text style={styles.primaryBtnText}>Save</Text>
+              </Pressable>
+            </View>
+            {goalError ? <Text style={styles.errText}>{goalError}</Text> : null}
+          </AppCard>
+
+          {/* Log intake */}
+          <AppCard>
+            <Text style={styles.cardTitle}>Log water intake</Text>
+            <View style={styles.quickRow}>
+              {QUICK.map((q) => (
+                <Pressable key={q} disabled={busy} onPress={() => add(q)} style={styles.quick}>
+                  <Ionicons name="water" size={17} color={WATER} />
+                  <Text style={styles.quickText}>+{q} ml</Text>
+                </Pressable>
+              ))}
+            </View>
+            <View style={styles.inlineRow}>
+              <TextInput
+                value={amountDraft}
+                onChangeText={setAmountDraft}
+                keyboardType="number-pad"
+                placeholder="Custom ml"
+                placeholderTextColor={colors.inkFaint}
+                style={styles.input}
+              />
+              <Pressable disabled={busy || !amountDraft.trim()} onPress={addCustom} style={[styles.primaryBtn, { backgroundColor: WATER, opacity: !amountDraft.trim() ? 0.5 : 1 }]}>
+                <Text style={styles.primaryBtnText}>Add</Text>
+              </Pressable>
+            </View>
+            {amountError ? <Text style={styles.errText}>{amountError}</Text> : null}
+          </AppCard>
+
+          {/* Reminders (on-device local notifications) */}
+          <AppCard>
+            <Text style={styles.cardTitle}>Reminder notifications</Text>
+            <View style={styles.reminderHead}>
+              <View style={{ flex: 1, minWidth: 0 }}>
+                <Text style={styles.reminderTitle}>Hydration reminders</Text>
+                <Text style={styles.reminderSub}>
+                  {remindersEnabled ? `Every ${reminderMinutes} minutes.` : "Off"}
+                </Text>
+              </View>
+              <Pressable onPress={toggleReminders} style={[styles.toggle, remindersEnabled ? { backgroundColor: WATER, borderColor: WATER } : null]}>
+                <Text style={[styles.toggleText, remindersEnabled ? { color: "#fff" } : null]}>
+                  {remindersEnabled ? "On" : "Enable"}
+                </Text>
+              </Pressable>
+            </View>
+            <View style={styles.presetRow}>
+              {[60, 90, 120].map((m) => (
+                <Pressable
+                  key={m}
+                  onPress={() => chooseMinutes(m as ReminderMinutes)}
+                  style={[styles.preset, reminderMinutes === m ? styles.presetOn : null]}
+                >
+                  <Text style={[styles.presetText, reminderMinutes === m ? styles.presetTextOn : null]}>{m} min</Text>
+                </Pressable>
+              ))}
+            </View>
+            {reminderError ? <Text style={styles.errText}>{reminderError}</Text> : null}
+          </AppCard>
+
+          {/* Weekly / monthly chart */}
+          <AppCard>
+            <View style={styles.cardTitleRow}>
+              <Text style={styles.cardTitle}>{historyDays === 7 ? "Weekly chart" : "Monthly chart"}</Text>
+              <View style={styles.seg}>
+                {[7, 30].map((d) => (
                   <Pressable
-                    key={ml}
-                    disabled={busy}
-                    onPress={() => saveGoal(ml)}
-                    style={[styles.preset, goal === ml ? styles.presetOn : null]}
+                    key={d}
+                    onPress={() => setHistoryDays(d as 7 | 30)}
+                    style={[styles.segBtn, historyDays === d ? styles.segBtnOn : null]}
                   >
-                    <Text style={[styles.presetText, goal === ml ? styles.presetTextOn : null]}>{litres(ml)} L</Text>
+                    <Text style={[styles.segText, historyDays === d ? styles.segTextOn : null]}>{d === 7 ? "Week" : "Month"}</Text>
                   </Pressable>
                 ))}
               </View>
-              <View style={styles.inlineRow}>
-                <TextInput
-                  value={goalDraft}
-                  onChangeText={setGoalDraft}
-                  keyboardType="number-pad"
-                  placeholder="ml"
-                  placeholderTextColor={colors.inkFaint}
-                  style={styles.input}
-                />
-                <Pressable disabled={busy} onPress={() => saveGoal()} style={[styles.primaryBtn, { backgroundColor: WATER }]}>
-                  <Text style={styles.primaryBtnText}>Save</Text>
-                </Pressable>
-              </View>
-              {goalError ? <Text style={styles.errText}>{goalError}</Text> : null}
-            </Card>
+            </View>
+            <HydrationBars series={history?.series ?? []} goalMl={historyGoal} />
+          </AppCard>
 
-            {/* Log intake */}
-            <Card>
-              <Text style={styles.cardTitle}>Log water intake</Text>
-              <View style={styles.quickRow}>
-                {QUICK.map((q) => (
-                  <Pressable key={q} disabled={busy} onPress={() => add(q)} style={styles.quick}>
-                    <Ionicons name="water" size={17} color={WATER} />
-                    <Text style={styles.quickText}>+{q} ml</Text>
-                  </Pressable>
-                ))}
-              </View>
-              <View style={styles.inlineRow}>
-                <TextInput
-                  value={amountDraft}
-                  onChangeText={setAmountDraft}
-                  keyboardType="number-pad"
-                  placeholder="Custom ml"
-                  placeholderTextColor={colors.inkFaint}
-                  style={styles.input}
-                />
-                <Pressable disabled={busy || !amountDraft.trim()} onPress={addCustom} style={[styles.primaryBtn, { backgroundColor: WATER, opacity: !amountDraft.trim() ? 0.5 : 1 }]}>
-                  <Text style={styles.primaryBtnText}>Add</Text>
-                </Pressable>
-              </View>
-              {amountError ? <Text style={styles.errText}>{amountError}</Text> : null}
-            </Card>
-
-            {/* Reminders (on-device local notifications) */}
-            <Card>
-              <Text style={styles.cardTitle}>Reminder notifications</Text>
-              <View style={styles.reminderHead}>
-                <View style={{ flex: 1, minWidth: 0 }}>
-                  <Text style={styles.reminderTitle}>Hydration reminders</Text>
-                  <Text style={styles.reminderSub}>
-                    {remindersEnabled ? `Every ${reminderMinutes} minutes.` : "Off"}
-                  </Text>
-                </View>
-                <Pressable onPress={toggleReminders} style={[styles.toggle, remindersEnabled ? { backgroundColor: WATER, borderColor: WATER } : null]}>
-                  <Text style={[styles.toggleText, remindersEnabled ? { color: "#fff" } : null]}>
-                    {remindersEnabled ? "On" : "Enable"}
-                  </Text>
-                </Pressable>
-              </View>
-              <View style={styles.presetRow}>
-                {[60, 90, 120].map((m) => (
-                  <Pressable
-                    key={m}
-                    onPress={() => chooseMinutes(m as ReminderMinutes)}
-                    style={[styles.preset, reminderMinutes === m ? styles.presetOn : null]}
-                  >
-                    <Text style={[styles.presetText, reminderMinutes === m ? styles.presetTextOn : null]}>{m} min</Text>
-                  </Pressable>
-                ))}
-              </View>
-              {reminderError ? <Text style={styles.errText}>{reminderError}</Text> : null}
-            </Card>
-
-            {/* Weekly / monthly chart */}
-            <Card>
-              <View style={styles.cardTitleRow}>
-                <Text style={styles.cardTitle}>{historyDays === 7 ? "Weekly chart" : "Monthly chart"}</Text>
-                <View style={styles.seg}>
-                  {[7, 30].map((d) => (
-                    <Pressable
-                      key={d}
-                      onPress={() => setHistoryDays(d as 7 | 30)}
-                      style={[styles.segBtn, historyDays === d ? styles.segBtnOn : null]}
-                    >
-                      <Text style={[styles.segText, historyDays === d ? styles.segTextOn : null]}>{d === 7 ? "Week" : "Month"}</Text>
-                    </Pressable>
-                  ))}
-                </View>
-              </View>
-              <HydrationBars series={history?.series ?? []} goalMl={historyGoal} />
-            </Card>
-
-            {/* History list */}
-            <Card>
-              <Text style={styles.cardTitle}>Hydration history</Text>
-              {history && history.series.length > 0 ? (
-                <View>
-                  {[...history.series].reverse().slice(0, 10).map((p, i) => {
-                    const amount = p.totalMl ?? 0;
-                    const met = amount >= historyGoal;
-                    return (
-                      <View key={p.date} style={[styles.histRow, i > 0 ? styles.histDivider : null]}>
-                        <View style={{ flex: 1 }}>
-                          <Text style={styles.histDate}>{shortDate(p.date)}</Text>
-                          <Text style={styles.histSub}>{met ? "Goal achieved" : `${Math.max(0, historyGoal - amount)} ml remaining`}</Text>
-                        </View>
-                        <Text style={[styles.histValue, met ? { color: OK } : null]}>{litres(amount)} L</Text>
+          {/* History list */}
+          <AppCard>
+            <Text style={styles.cardTitle}>Hydration history</Text>
+            {history && history.series.length > 0 ? (
+              <View>
+                {[...history.series].reverse().slice(0, 10).map((p, i) => {
+                  const amount = p.totalMl ?? 0;
+                  const met = amount >= historyGoal;
+                  return (
+                    <View key={p.date} style={[styles.histRow, i > 0 ? styles.histDivider : null]}>
+                      <View style={{ flex: 1 }}>
+                        <Text style={styles.histDate}>{shortDate(p.date)}</Text>
+                        <Text style={styles.histSub}>{met ? "Goal achieved" : `${Math.max(0, historyGoal - amount)} ml remaining`}</Text>
                       </View>
-                    );
-                  })}
-                </View>
-              ) : (
-                <Muted style={{ fontSize: 12 }}>No hydration history yet.</Muted>
-              )}
-            </Card>
+                      <Text style={[styles.histValue, met ? { color: OK } : null]}>{litres(amount)} L</Text>
+                    </View>
+                  );
+                })}
+              </View>
+            ) : (
+              <Text style={styles.mutedSmall}>No hydration history yet.</Text>
+            )}
+          </AppCard>
 
-            {/* Today's entries */}
-            <Card>
-              <Text style={styles.cardTitle}>Today&apos;s entries</Text>
-              {day && day.entries.length > 0 ? (
-                <View style={styles.entryWrap}>
-                  {[...day.entries].reverse().map((e) => (
-                    <Pressable key={e.id} disabled={busy} onPress={() => remove(e.id)} style={styles.entryChip}>
-                      <Text style={styles.entryChipText}>{e.amountMl} ml</Text>
-                      <Ionicons name="close" size={12} color={colors.inkFaint} />
-                    </Pressable>
-                  ))}
-                </View>
-              ) : (
-                <Muted style={{ fontSize: 12 }}>No water logged for this date.</Muted>
-              )}
-            </Card>
-          </View>
-        )}
-      </ScrollView>
-    </SafeAreaView>
+          {/* Today's entries */}
+          <AppCard>
+            <Text style={styles.cardTitle}>Today&apos;s entries</Text>
+            {day && day.entries.length > 0 ? (
+              <View style={styles.entryWrap}>
+                {[...day.entries].reverse().map((e) => (
+                  <Pressable key={e.id} disabled={busy} onPress={() => remove(e.id)} style={styles.entryChip}>
+                    <Text style={styles.entryChipText}>{e.amountMl} ml</Text>
+                    <Ionicons name="close" size={12} color={colors.inkFaint} />
+                  </Pressable>
+                ))}
+              </View>
+            ) : (
+              <Text style={styles.mutedSmall}>No water logged for this date.</Text>
+            )}
+          </AppCard>
+        </View>
+      )}
+    </ScreenContainer>
   );
 }
 
 const styles = StyleSheet.create({
-  safe: { flex: 1, backgroundColor: colors.surface },
-  content: { padding: 20, paddingTop: 12, paddingBottom: 32 },
-  title: { fontSize: 26, fontWeight: "800", color: colors.ink, letterSpacing: -0.4 },
+  header: { minHeight: 58, flexDirection: "row", alignItems: "center", gap: 10 },
+  backButton: {
+    height: 42,
+    width: 42,
+    borderRadius: 21,
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: colors.surfaceRaised,
+    borderWidth: 1,
+    borderColor: colors.line,
+  },
+  title: { flex: 1, color: colors.ink, fontSize: 26, lineHeight: 32, fontWeight: "900" },
+  tagline: { color: colors.inkMuted, fontSize: 14, lineHeight: 19, marginTop: -6, marginBottom: 4 },
   cardTitle: { fontSize: 15, fontWeight: "800", color: colors.ink },
   cardTitleRow: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", marginBottom: 8 },
+  mutedSmall: { fontSize: 12, color: colors.inkMuted },
   // Ring
   ringPct: { position: "absolute", fontSize: 34, fontWeight: "800", color: colors.ink },
   ringLabel: { position: "absolute", marginTop: 44, fontSize: 12, fontWeight: "700" },

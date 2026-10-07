@@ -1,42 +1,95 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { KeyboardAvoidingView, Platform, Pressable, ScrollView, StyleSheet, TextInput, View } from "react-native";
 import { useRouter } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
 import { Text } from "../../components/AppText";
-import { ActionButton, AppCard, ScreenContainer } from "../../components/fitora";
-import { apiFetch } from "../../lib/api";
-import { todayKey, titleCase, updateCachedData, mealCalories, type AthleteDashboardData, type Meal } from "../../lib/fitoraData";
+import { ActionButton, AppCard, EmptyState, ScreenContainer } from "../../components/fitora";
+import { apiFetch, apiJson } from "../../lib/api";
+import { addDays, todayKey, titleCase, updateCachedData, mealCalories, type AthleteDashboardData, type Meal } from "../../lib/fitoraData";
 import { colors, radius } from "../../lib/theme";
 
 const MEAL_TYPES = ["breakfast", "lunch", "snack", "dinner"] as const;
 type MealType = typeof MEAL_TYPES[number];
 
+type RecentFood = { name: string; calories: number; proteinG: number; carbsG: number; fatG: number };
+
 export default function LogMealScreen() {
   const router = useRouter();
   const [mealType, setMealType] = useState<MealType>("snack");
-  const [mealName, setMealName] = useState("");
   const [foodName, setFoodName] = useState("");
   const [calories, setCalories] = useState("");
   const [proteinG, setProteinG] = useState("");
   const [carbsG, setCarbsG] = useState("");
   const [fatG, setFatG] = useState("");
+  const [showDetails, setShowDetails] = useState(false);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
+  const [recentFoods, setRecentFoods] = useState<RecentFood[]>([]);
+  const [recentLoading, setRecentLoading] = useState(true);
+
+  // "Recent" reuses the last 3 days of already-logged meals (same single-date
+  // endpoint the dashboard uses, just called a few times) rather than a
+  // separate favorites system — there's no food database in this app, so
+  // this is the cleanest way to offer "log this again" without building one.
+  useEffect(() => {
+    let active = true;
+    (async () => {
+      const days = [0, 1, 2].map((offset) => addDays(todayKey(), -offset));
+      const results = await Promise.all(
+        days.map((day) => apiJson<{ meals: Meal[] }>(`/api/athlete/nutrition/meals?date=${day}`).catch(() => ({ meals: [] })))
+      );
+      const seen = new Set<string>();
+      const items: RecentFood[] = [];
+      for (const result of results) {
+        for (const meal of [...result.meals].reverse()) {
+          for (const food of meal.foods) {
+            const key = food.name.trim().toLowerCase();
+            if (!key || seen.has(key)) continue;
+            seen.add(key);
+            items.push({
+              name: food.name,
+              calories: Number(food.calories) || 0,
+              proteinG: Number(food.proteinG) || 0,
+              carbsG: Number(food.carbsG) || 0,
+              fatG: Number(food.fatG) || 0,
+            });
+          }
+        }
+      }
+      if (active) {
+        setRecentFoods(items.slice(0, 8));
+        setRecentLoading(false);
+      }
+    })();
+    return () => {
+      active = false;
+    };
+  }, []);
+
   const macroSummary = useMemo(
-    () => `${Number(proteinG || 0)}g protein - ${Number(carbsG || 0)}g carbs - ${Number(fatG || 0)}g fat`,
+    () => `${Number(proteinG || 0)}g protein · ${Number(carbsG || 0)}g carbs · ${Number(fatG || 0)}g fat`,
     [proteinG, carbsG, fatG]
   );
 
+  function applyRecent(food: RecentFood) {
+    setFoodName(food.name);
+    setCalories(String(Math.round(food.calories)));
+    setProteinG(String(Math.round(food.proteinG)));
+    setCarbsG(String(Math.round(food.carbsG)));
+    setFatG(String(Math.round(food.fatG)));
+    setShowDetails(true);
+  }
+
   async function saveMeal() {
-    const kcal = Number(calories);
-    const protein = Number(proteinG);
-    const carbs = Number(carbsG);
-    const fat = Number(fatG);
-    if (!mealName.trim() || !foodName.trim()) {
-      setError("Meal and food names are required.");
+    if (!foodName.trim()) {
+      setError("Enter what you ate first.");
       return;
     }
+    const kcal = Number(calories || 0);
+    const protein = Number(proteinG || 0);
+    const carbs = Number(carbsG || 0);
+    const fat = Number(fatG || 0);
     if (![kcal, protein, carbs, fat].every((value) => Number.isFinite(value) && value >= 0)) {
       setError("Calories and macros must be valid numbers.");
       return;
@@ -51,7 +104,7 @@ export default function LogMealScreen() {
           date: todayKey(),
           mealType,
           source: "ad_hoc",
-          name: mealName.trim(),
+          name: foodName.trim(),
           foods: [
             {
               name: foodName.trim(),
@@ -125,18 +178,64 @@ export default function LogMealScreen() {
           </AppCard>
 
           <AppCard>
-            <Field label="Meal name" value={mealName} onChangeText={setMealName} placeholder="Chicken rice bowl" />
-            <Field label="Food item" value={foodName} onChangeText={setFoodName} placeholder="Chicken rice bowl" />
-            <View style={styles.grid}>
-              <Field label="Calories" value={calories} onChangeText={setCalories} keyboardType="numeric" />
-              <Field label="Protein" value={proteinG} onChangeText={setProteinG} keyboardType="numeric" suffix="g" />
-              <Field label="Carbs" value={carbsG} onChangeText={setCarbsG} keyboardType="numeric" suffix="g" />
-              <Field label="Fat" value={fatG} onChangeText={setFatG} keyboardType="numeric" suffix="g" />
+            <Text style={styles.cardTitle}>What did you eat?</Text>
+            <View style={{ marginTop: 10 }}>
+              <TextInput
+                value={foodName}
+                onChangeText={setFoodName}
+                placeholder="e.g. Chicken rice bowl"
+                placeholderTextColor={colors.inkFaint}
+                style={styles.mainInput}
+              />
             </View>
-            <Text style={styles.summary}>{macroSummary}</Text>
+
+            <Pressable onPress={() => router.push("/athlete/meal-scan" as never)} style={styles.scanRow} hitSlop={6}>
+              <Ionicons name="camera-outline" size={16} color={colors.primary} />
+              <Text style={styles.scanRowText}>Scan a photo instead</Text>
+            </Pressable>
+
+            {recentLoading || recentFoods.length ? (
+              <View style={styles.recentBlock}>
+                <Text style={styles.recentLabel}>RECENT</Text>
+                {recentLoading ? (
+                  <Text style={styles.muted}>Loading your recent foods...</Text>
+                ) : (
+                  <View style={styles.recentChipRow}>
+                    {recentFoods.map((food) => (
+                      <Pressable key={food.name} onPress={() => applyRecent(food)} style={styles.recentChip}>
+                        <Text style={styles.recentChipText} numberOfLines={1}>{food.name}</Text>
+                        <Text style={styles.recentChipMeta}>{Math.round(food.calories)} kcal</Text>
+                      </Pressable>
+                    ))}
+                  </View>
+                )}
+              </View>
+            ) : null}
+          </AppCard>
+
+          <AppCard>
+            <Pressable onPress={() => setShowDetails((value) => !value)} style={styles.detailsToggle} hitSlop={8}>
+              <Ionicons name={showDetails ? "chevron-up" : "chevron-down"} size={16} color={colors.inkMuted} />
+              <Text style={styles.detailsToggleText}>Nutrition details (optional)</Text>
+            </Pressable>
+            {showDetails ? (
+              <>
+                <View style={styles.grid}>
+                  <Field label="Calories" value={calories} onChangeText={setCalories} keyboardType="numeric" />
+                  <Field label="Protein" value={proteinG} onChangeText={setProteinG} keyboardType="numeric" suffix="g" />
+                  <Field label="Carbs" value={carbsG} onChangeText={setCarbsG} keyboardType="numeric" suffix="g" />
+                  <Field label="Fat" value={fatG} onChangeText={setFatG} keyboardType="numeric" suffix="g" />
+                </View>
+                <Text style={styles.summary}>{macroSummary}</Text>
+              </>
+            ) : null}
             {error ? <Text style={styles.error}>{error}</Text> : null}
             <ActionButton label={saving ? "Saving..." : "Save Meal"} icon="checkmark-outline" variant="filled" onPress={saveMeal} disabled={saving} />
           </AppCard>
+
+          {!recentLoading && !recentFoods.length ? (
+            <EmptyState icon="restaurant-outline" title="No meal history yet" body="Foods you log will show up here as quick Recent picks next time." />
+          ) : null}
         </ScrollView>
       </KeyboardAvoidingView>
     </ScreenContainer>
@@ -195,7 +294,37 @@ const styles = StyleSheet.create({
   chipActive: { backgroundColor: colors.primary, borderColor: colors.primary },
   chipText: { color: colors.ink, fontSize: 13, fontWeight: "800" },
   chipTextActive: { color: "#fff" },
-  fieldBlock: { marginBottom: 12 },
+  mainInput: {
+    minHeight: 54,
+    borderRadius: radius.md,
+    borderWidth: 1,
+    borderColor: colors.lineStrong,
+    backgroundColor: colors.surfaceInset,
+    paddingHorizontal: 14,
+    color: colors.ink,
+    fontSize: 17,
+    fontWeight: "700",
+  },
+  scanRow: { flexDirection: "row", alignItems: "center", gap: 6, marginTop: 12 },
+  scanRowText: { color: colors.primary, fontSize: 13, fontWeight: "800" },
+  recentBlock: { marginTop: 16 },
+  recentLabel: { color: colors.inkMuted, fontSize: 11, fontWeight: "900", letterSpacing: 0.4, marginBottom: 8 },
+  muted: { color: colors.inkMuted, fontSize: 13 },
+  recentChipRow: { flexDirection: "row", flexWrap: "wrap", gap: 8 },
+  recentChip: {
+    maxWidth: 170,
+    borderRadius: radius.md,
+    borderWidth: 1,
+    borderColor: colors.line,
+    backgroundColor: colors.surfaceInset,
+    paddingHorizontal: 12,
+    paddingVertical: 9,
+  },
+  recentChipText: { color: colors.ink, fontSize: 13, fontWeight: "800" },
+  recentChipMeta: { color: colors.inkMuted, fontSize: 11, fontWeight: "700", marginTop: 2 },
+  detailsToggle: { flexDirection: "row", alignItems: "center", gap: 6 },
+  detailsToggleText: { color: colors.inkMuted, fontSize: 13, fontWeight: "700" },
+  fieldBlock: { marginBottom: 12, marginTop: 12 },
   label: { color: colors.inkMuted, fontSize: 11, fontWeight: "900", textTransform: "uppercase" },
   inputWrap: { position: "relative", justifyContent: "center", marginTop: 6 },
   input: {
@@ -212,6 +341,6 @@ const styles = StyleSheet.create({
   },
   suffix: { position: "absolute", right: 14, color: colors.inkMuted, fontSize: 14, fontWeight: "800" },
   grid: { flexDirection: "row", flexWrap: "wrap", columnGap: 10 },
-  summary: { color: colors.inkMuted, fontSize: 13, lineHeight: 18, marginBottom: 12 },
-  error: { color: colors.bad, fontSize: 13, lineHeight: 18, fontWeight: "800", marginBottom: 12 },
+  summary: { color: colors.inkMuted, fontSize: 13, lineHeight: 18, marginBottom: 4 },
+  error: { color: colors.bad, fontSize: 13, lineHeight: 18, fontWeight: "800", marginTop: 8, marginBottom: 12 },
 });

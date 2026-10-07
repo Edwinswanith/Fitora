@@ -11,6 +11,7 @@ import {
   IconTile,
   LoadingState,
   MetricTile,
+  MiniLineChart,
   PrimaryAppBar,
   RowLink,
   ScreenContainer,
@@ -88,6 +89,12 @@ function CoachHomeView({ data, onSessionUpdate }: { data: CoachHomeData; onSessi
     () => new Map(data.roster.map((athlete) => [athlete.athleteId, athlete])),
     [data.roster]
   );
+  const membershipStats = useMemo(() => {
+    const total = data.roster.length;
+    const paid = data.roster.filter((athlete) => athlete.hasActiveMembership).length;
+    return { total, paid, unpaid: total - paid };
+  }, [data.roster]);
+  const latestSquadPoint = data.squadSeries.length ? data.squadSeries[data.squadSeries.length - 1] : null;
   const nextSession = nextFutureSession(data.sessions);
   const sessionsToday = data.sessions.filter((session) => session.scheduledStart.slice(0, 10) === data.date && session.status !== "cancelled").length;
   const trainingToday = data.cards.filter((card) => Object.values(card.sessions ?? {}).some((session) => session?.status)).length;
@@ -336,6 +343,17 @@ function CoachHomeView({ data, onSessionUpdate }: { data: CoachHomeData; onSessi
         )}
       </AppCard>
 
+      {data.squadSeries.length ? (
+        <AppCard>
+          <SectionHeader title="Squad Readiness - 7 Days" />
+          <MiniLineChart values={data.squadSeries.map((point) => point.avgReadiness)} height={72} />
+          <View style={styles.squadStatRow}>
+            <Text style={styles.muted}>Attendance today: {latestSquadPoint?.attendanceRate == null ? "--" : `${latestSquadPoint.attendanceRate}%`}</Text>
+            <Text style={styles.muted}>Red flags today: {latestSquadPoint?.redFlags ?? 0}</Text>
+          </View>
+        </AppCard>
+      ) : null}
+
       <AppCard>
         <View style={styles.metricGrid}>
           <MetricTile icon="people-outline" value={String(activeClients)} label="Active Clients" />
@@ -350,9 +368,15 @@ function CoachHomeView({ data, onSessionUpdate }: { data: CoachHomeData; onSessi
           <IconTile icon="ribbon-outline" size={44} />
           <View style={styles.membershipCopy}>
             <Text style={styles.cardTitle}>Memberships</Text>
-            <Text style={styles.muted}>Track renewals, failed payments, and active plans.</Text>
+            <Text style={styles.muted}>
+              {membershipStats.total === 0
+                ? "No clients yet."
+                : membershipStats.unpaid === 0
+                  ? `All ${membershipStats.total} clients on a paid plan.`
+                  : `${membershipStats.paid} of ${membershipStats.total} clients on a paid plan - ${membershipStats.unpaid} unpaid.`}
+            </Text>
           </View>
-          <Pressable onPress={() => router.push("/coach/profile" as never)} style={styles.reviewButton}>
+          <Pressable onPress={() => router.push({ pathname: "/coach/athletes", params: { filter: "membership" } } as never)} style={styles.reviewButton}>
             <Text style={styles.reviewButtonText}>Review</Text>
           </Pressable>
         </View>
@@ -476,6 +500,7 @@ const styles = StyleSheet.create({
     paddingVertical: 3,
   },
   actionRow: { flexDirection: "row", gap: 9, marginTop: 9 },
+  squadStatRow: { flexDirection: "row", justifyContent: "space-between", marginTop: 6 },
   metricGrid: { flexDirection: "row", gap: 8 },
   membershipRow: { flexDirection: "row", alignItems: "center", gap: 10 },
   membershipCopy: { flex: 1, minWidth: 0 },

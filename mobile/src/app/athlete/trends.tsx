@@ -1,12 +1,11 @@
 import { useCallback, useEffect, useState } from "react";
-import { ActivityIndicator, ScrollView, StyleSheet, View } from "react-native";
+import { Pressable, StyleSheet, View } from "react-native";
+import { useRouter } from "expo-router";
+import { Ionicons } from "@expo/vector-icons";
 import { Text } from "../../components/AppText";
-import { SafeAreaView } from "react-native-safe-area-context";
+import { AppCard, EmptyState, LoadingState, ScreenContainer } from "../../components/fitora";
 import { apiJson } from "../../lib/api";
-import { ROLE_THEMES, colors } from "../../lib/theme";
-import { Card, Muted } from "../../components/ui";
-
-const accent = ROLE_THEMES.athlete.accentStrong;
+import { colors } from "../../lib/theme";
 
 type Point = {
   date: string;
@@ -25,6 +24,7 @@ function bandColor(score: number | null) {
 }
 
 export default function Trends() {
+  const router = useRouter();
   const [series, setSeries] = useState<Point[] | null>(null);
   const [loading, setLoading] = useState(true);
 
@@ -50,85 +50,96 @@ export default function Trends() {
     : null;
 
   return (
-    <SafeAreaView style={styles.safe} edges={["top"]}>
-      <ScrollView contentContainerStyle={styles.content}>
+    <ScreenContainer>
+      <View style={styles.header}>
+        <Pressable onPress={() => router.back()} style={styles.backButton} hitSlop={10}>
+          <Ionicons name="chevron-back" size={26} color={colors.ink} />
+        </Pressable>
         <Text style={styles.title}>Trends</Text>
-        <Muted style={{ marginBottom: 16 }}>Last 14 days</Muted>
+      </View>
+      <Text style={styles.tagline}>Last 14 days</Text>
 
-        {loading && !series ? (
-          <ActivityIndicator color={accent} style={{ marginTop: 40 }} />
-        ) : series && series.length ? (
-          <>
-            <View style={styles.statRow}>
-              <Stat label="Latest readiness" value={latest == null ? "—" : String(latest)} />
-              <Stat label="14-day average" value={avg == null ? "—" : String(avg)} />
-            </View>
+      {loading && !series ? (
+        <LoadingState label="Loading trends..." />
+      ) : series && series.length ? (
+        <>
+          <View style={styles.statRow}>
+            <Stat label="Latest readiness" value={latest == null ? "—" : String(latest)} />
+            <Stat label="14-day average" value={avg == null ? "—" : String(avg)} />
+          </View>
 
-            <Card>
-              <Text style={styles.cardLabel}>Readiness</Text>
-              <View style={styles.bars}>
-                {series.map((p) => {
-                  const h = p.readiness == null ? 4 : Math.max(4, (p.readiness / 100) * 120);
-                  return (
-                    <View key={p.date} style={styles.barCol}>
-                      <View style={[styles.bar, { height: h, backgroundColor: bandColor(p.readiness) }]} />
-                    </View>
-                  );
-                })}
-              </View>
-              <View style={styles.axis}>
-                <Text style={styles.axisText}>{series[0]?.date.slice(5)}</Text>
-                <Text style={styles.axisText}>{series[series.length - 1]?.date.slice(5)}</Text>
-              </View>
-            </Card>
-
-            <Card style={{ marginTop: 12 }}>
-              <Text style={styles.cardLabel}>Recent days</Text>
-              <View style={{ marginTop: 8, gap: 8 }}>
-                {[...series].reverse().slice(0, 7).map((p) => (
-                  <View key={p.date} style={styles.dayRow}>
-                    <Text style={styles.dayDate}>{p.date.slice(5)}</Text>
-                    <Text style={styles.dayMeta}>
-                      R {p.readiness ?? "—"} · Sleep {p.sleepHours ?? "—"}h · Rec {p.recoveryScore ?? "—"}
-                    </Text>
+          <AppCard>
+            <Text style={styles.cardLabel}>Readiness</Text>
+            <View style={styles.bars}>
+              {series.map((p) => {
+                const h = p.readiness == null ? 4 : Math.max(4, (p.readiness / 100) * 120);
+                return (
+                  <View key={p.date} style={styles.barCol}>
+                    <View style={[styles.bar, { height: h, backgroundColor: bandColor(p.readiness) }]} />
                   </View>
-                ))}
-              </View>
-            </Card>
-          </>
-        ) : (
-          <Card>
-            <Muted>No trend data yet — log a few daily check-ins.</Muted>
-          </Card>
-        )}
-      </ScrollView>
-    </SafeAreaView>
+                );
+              })}
+            </View>
+            <View style={styles.axis}>
+              <Text style={styles.axisText}>{series[0]?.date.slice(5)}</Text>
+              <Text style={styles.axisText}>{series[series.length - 1]?.date.slice(5)}</Text>
+            </View>
+          </AppCard>
+
+          <AppCard>
+            <Text style={styles.cardLabel}>Recent days</Text>
+            <View style={{ marginTop: 8, gap: 8 }}>
+              {[...series].reverse().slice(0, 7).map((p) => (
+                <View key={p.date} style={styles.dayRow}>
+                  <Text style={styles.dayDate}>{p.date.slice(5)}</Text>
+                  <Text style={styles.dayMeta}>
+                    R {p.readiness ?? "—"} · Sleep {p.sleepHours ?? "—"}h · Rec {p.recoveryScore ?? "—"}
+                  </Text>
+                </View>
+              ))}
+            </View>
+          </AppCard>
+        </>
+      ) : (
+        <EmptyState title="No trend data yet" body="Log a few daily check-ins to see your trends." icon="trending-up-outline" />
+      )}
+    </ScreenContainer>
   );
 }
 
 function Stat({ label, value }: { label: string; value: string }) {
   return (
-    <Card style={styles.stat}>
+    <AppCard style={styles.stat}>
       <Text style={styles.statLabel}>{label}</Text>
       <Text style={styles.statValue}>{value}</Text>
-    </Card>
+    </AppCard>
   );
 }
 
 const styles = StyleSheet.create({
-  safe: { flex: 1, backgroundColor: colors.surface },
-  content: { padding: 20, paddingTop: 12, paddingBottom: 32 },
-  title: { fontSize: 26, fontWeight: "800", color: colors.ink, letterSpacing: -0.4 },
-  statRow: { flexDirection: "row", gap: 10, marginBottom: 16 },
+  header: { minHeight: 58, flexDirection: "row", alignItems: "center", gap: 10 },
+  backButton: {
+    height: 42,
+    width: 42,
+    borderRadius: 21,
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: colors.surfaceRaised,
+    borderWidth: 1,
+    borderColor: colors.line,
+  },
+  title: { flex: 1, color: colors.ink, fontSize: 26, lineHeight: 32, fontWeight: "900" },
+  tagline: { color: colors.inkMuted, fontSize: 14, lineHeight: 19, marginTop: -6, marginBottom: 4 },
+  statRow: { flexDirection: "row", gap: 10 },
   stat: { flex: 1, padding: 12 },
-  statLabel: { fontSize: 11, color: colors.inkMuted, fontWeight: "600" },
+  statLabel: { fontSize: 11, color: colors.inkMuted, fontWeight: "700" },
   statValue: { fontSize: 24, fontWeight: "800", color: colors.ink, marginTop: 4 },
-  cardLabel: { fontSize: 12, fontWeight: "700", color: colors.inkMuted, textTransform: "uppercase", letterSpacing: 1 },
+  cardLabel: { fontSize: 12, fontWeight: "800", color: colors.inkMuted, textTransform: "uppercase", letterSpacing: 1 },
   bars: { flexDirection: "row", alignItems: "flex-end", gap: 4, height: 124, marginTop: 12 },
   barCol: { flex: 1, alignItems: "center", justifyContent: "flex-end" },
   bar: { width: "100%", borderRadius: 4 },
   axis: { flexDirection: "row", justifyContent: "space-between", marginTop: 6 },
-  axisText: { fontSize: 11, color: colors.inkFaint },
+  axisText: { fontSize: 11, color: colors.inkFaint, fontWeight: "600" },
   dayRow: { flexDirection: "row", justifyContent: "space-between", alignItems: "center" },
   dayDate: { fontSize: 14, fontWeight: "700", color: colors.ink },
   dayMeta: { fontSize: 13, color: colors.inkMuted },

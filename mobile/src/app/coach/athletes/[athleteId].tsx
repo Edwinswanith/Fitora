@@ -23,6 +23,8 @@ import {
   attentionRank,
   attentionReason,
   loadCoachClientDetailData,
+  nextFutureSession,
+  sessionClock,
   todayKey,
   titleCase,
   useAsyncData,
@@ -108,12 +110,14 @@ function ClientDetailView({ data }: { data: CoachClientDetailData }) {
   const activeSessions = sessions.filter((session) => session?.status);
   const completedSessions = activeSessions.filter((session) => session.status === "completed");
   const trendValues = useMemo(() => data.trends.map((point) => point.readiness), [data.trends]);
+  const nextSession = nextFutureSession(data.sessions);
   const [noteOpen, setNoteOpen] = useState(false);
   const [noteText, setNoteText] = useState("");
   const [noteMessage, setNoteMessage] = useState<string | null>(null);
   const [savingNote, setSavingNote] = useState(false);
 
-  const goPlan = () => router.push("/coach/plan" as never);
+  const goPlan = () => router.push({ pathname: "/coach/plan", params: { athleteId: data.athleteId } } as never);
+  const goAssignWorkout = () => router.push({ pathname: "/coach/plan", params: { athleteId: data.athleteId, mode: "workout" } } as never);
   const goMessages = () => router.push({ pathname: "/coach/messages", params: { athleteId: data.athleteId } } as never);
 
   async function saveNote() {
@@ -165,11 +169,14 @@ function ClientDetailView({ data }: { data: CoachClientDetailData }) {
             <WorkoutRow workout={workout} />
             <View style={styles.actionRow}>
               <ActionButton label="View" onPress={goPlan} />
-              <ActionButton label="Adjust" variant="filled" onPress={goPlan} />
+              <ActionButton label="Adjust" variant="filled" onPress={goAssignWorkout} />
             </View>
           </>
         ) : (
-          <EmptyState title="No workout assigned today" body="Assign a workout from the Plan tab." icon="barbell-outline" />
+          <>
+            <EmptyState title="No workout assigned today" body="Assign a workout from the Plan tab." icon="barbell-outline" />
+            <ActionButton label="Assign Workout" icon="add-outline" variant="filled" onPress={goAssignWorkout} style={styles.assignEmptyButton} />
+          </>
         )}
       </AppCard>
 
@@ -197,7 +204,7 @@ function ClientDetailView({ data }: { data: CoachClientDetailData }) {
       </AppCard>
 
       <AppCard>
-        <Text style={styles.cardTitle}>Upcoming Session</Text>
+        <Text style={styles.cardTitle}>{"Today's Sessions"}</Text>
         {activeSessions.length ? (
           activeSessions.slice(0, 2).map((session, index) => {
             const visual = planVisual(session.type, "session");
@@ -210,6 +217,21 @@ function ClientDetailView({ data }: { data: CoachClientDetailData }) {
           })
         ) : (
           <Text style={styles.muted}>{"No session status is attached to today's card."}</Text>
+        )}
+      </AppCard>
+
+      <AppCard>
+        <Text style={styles.cardTitle}>Next Booked Session</Text>
+        {nextSession ? (
+          <RowLink
+            icon="calendar-outline"
+            title={titleCase(nextSession.type) || "Session"}
+            subtitle={sessionClock(nextSession)}
+            value={titleCase(nextSession.status)}
+            onPress={() => router.push("/coach/dashboard" as never)}
+          />
+        ) : (
+          <Text style={styles.muted}>No upcoming session booked with this client.</Text>
         )}
       </AppCard>
 
@@ -237,7 +259,7 @@ function ClientDetailView({ data }: { data: CoachClientDetailData }) {
 
       <AppCard>
         <View style={styles.actionRow}>
-          <ActionButton label="Assign" icon="add-outline" variant="filled" onPress={goPlan} />
+          <ActionButton label="Assign" icon="add-outline" variant="filled" onPress={goAssignWorkout} />
           <ActionButton label="Message" icon="chatbubble-outline" onPress={goMessages} />
           <ActionButton label="Add Note" icon="create-outline" onPress={() => setNoteOpen((value) => !value)} />
         </View>
@@ -300,6 +322,7 @@ const styles = StyleSheet.create({
   metricValue: { color: colors.ink, fontSize: 20, fontWeight: "900" },
   metricLabel: { color: colors.inkMuted, fontSize: 12, textAlign: "center" },
   actionRow: { flexDirection: "row", gap: 10, marginTop: 12 },
+  assignEmptyButton: { marginTop: 10 },
   notePanel: { gap: 9, marginTop: 12, paddingTop: 12, borderTopWidth: 1, borderTopColor: colors.line },
   noteInput: { minHeight: 82, borderRadius: 12, borderWidth: 1, borderColor: colors.lineStrong, backgroundColor: colors.surfaceInset, padding: 10, color: colors.ink, fontSize: 14, fontWeight: "700", textAlignVertical: "top" },
   successText: { color: colors.ok, fontSize: 12, lineHeight: 17, fontWeight: "800", marginTop: 8 },

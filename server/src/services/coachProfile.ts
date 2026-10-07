@@ -1,6 +1,7 @@
 import { Types, type PipelineStage } from "mongoose";
 import { CoachProfile, type CoachProfileDoc } from "../models/CoachProfile";
 import type { CoachPricingPlanDoc } from "../models/CoachPricingPlan";
+import { CoachAvailability } from "../models/CoachAvailability";
 import { avatarSummary, type AvatarSummary } from "./avatar";
 
 /** Lazily creates a CoachProfile on first access — no backfill migration needed. */
@@ -72,7 +73,8 @@ export function serializePublicCoachProfile(
   coachUserId: Types.ObjectId,
   profile: CoachProfileDoc,
   user: { name?: string; avatarKind?: string | null; avatarDefaultId?: string | null },
-  pricingPlans: CoachPricingPlanDoc[]
+  pricingPlans: CoachPricingPlanDoc[],
+  availableDays: number[] = []
 ) {
   return {
     coachId: coachUserId.toString(),
@@ -90,7 +92,19 @@ export function serializePublicCoachProfile(
     avgRating: profile.avgRating ?? null,
     reviewCount: profile.reviewCount ?? 0,
     pricingPlans: pricingPlans.filter((p) => p.active).map(serializePricingPlan),
+    // Recurring weekly pattern only (0=Sun..6=Sat) — never resolved bookable
+    // slots, which require an active relationship to compute (see
+    // routes/athleteSessions.ts). This is just an honest "does this coach
+    // publish any weekly availability at all, and roughly which days"
+    // signal for browsing, not a booking surface.
+    availableDays,
   };
+}
+
+/** Distinct weekday numbers (0=Sun..6=Sat) this coach has ANY availability rule for. */
+export async function loadAvailableDays(coachUserId: Types.ObjectId): Promise<number[]> {
+  const days = await CoachAvailability.distinct("dayOfWeek", { coachId: coachUserId });
+  return (days as number[]).sort((a, b) => a - b);
 }
 
 export type MarketplaceFilters = {
@@ -117,6 +131,7 @@ type MarketplaceAggRow = {
   reviewCount: number;
   user: { name?: string; avatarKind?: string | null; avatarDefaultId?: string | null } | null;
   startingPrice: { amount: number; currency: string } | null;
+  hasAvailability: boolean;
 };
 
 /**
@@ -154,10 +169,19 @@ export async function listMarketplaceCoaches(filters: MarketplaceFilters) {
       },
     },
     {
+      $lookup: {
+        from: "coachavailabilities",
+        let: { coachId: "$userId" },
+        pipeline: [{ $match: { $expr: { $eq: ["$coachId", "$$coachId"] } } }, { $limit: 1 }, { $project: { _id: 1 } }],
+        as: "availabilityRows",
+      },
+    },
+    {
       $addFields: {
         startingPrice: {
           $cond: [{ $gt: [{ $size: "$pricing" }, 0] }, { amount: { $arrayElemAt: ["$pricing.minPrice", 0] }, currency: { $arrayElemAt: ["$pricing.currency", 0] } }, null],
         },
+        hasAvailability: { $gt: [{ $size: "$availabilityRows" }, 0] },
       },
     },
   ];
@@ -191,6 +215,7 @@ export async function listMarketplaceCoaches(filters: MarketplaceFilters) {
     avgRating: r.avgRating ?? null,
     reviewCount: r.reviewCount ?? 0,
     startingPrice: r.startingPrice ?? null,
+    hasAvailability: Boolean(r.hasAvailability),
   }));
 
   return { coaches, total, page: filters.page, limit: filters.limit };

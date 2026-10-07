@@ -1,11 +1,11 @@
 import { useCallback, useEffect, useState } from "react";
-import { ActivityIndicator, KeyboardAvoidingView, Platform, RefreshControl, ScrollView, StyleSheet, TextInput, View } from "react-native";
+import { KeyboardAvoidingView, Platform, RefreshControl, ScrollView, StyleSheet, TextInput, View } from "react-native";
 import { Text } from "../../components/AppText";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { Ionicons } from "@expo/vector-icons";
 import { apiFetch, apiJson } from "../../lib/api";
 import { ROLE_THEMES, colors, radius } from "../../lib/theme";
-import { Banner, Card, Muted, PrimaryButton } from "../../components/ui";
+import { ActionButton, AppCard, EmptyState, ErrorState, LoadingState } from "../../components/fitora";
 import { ScreenHeader } from "../../components/ScreenHeader";
 import { useTourHighlight, useTourScrollView } from "../../lib/tour/MobileTourProvider";
 import { SpotlightTarget } from "../../lib/tour/SpotlightTarget";
@@ -112,7 +112,7 @@ export default function Announcements() {
           />
 
           <SpotlightTarget id="mobile-coach-announce" style={announceHighlight}>
-          <Card style={styles.composeCard}>
+          <AppCard style={styles.composeCard}>
             <View style={styles.cardTitleRow}>
               <View style={styles.cardTitleIcon}>
                 <Ionicons name="megaphone-outline" size={15} color={accent} />
@@ -141,18 +141,15 @@ export default function Announcements() {
               </View>
               <Text style={styles.helper}>{1000 - draft.length}</Text>
             </View>
-            {postError ? <Banner kind="error">{postError}</Banner> : null}
-            <PrimaryButton
-              label={`Send to ${recipientCount} athlete${recipientCount === 1 ? "" : "s"}`}
-              onPress={post}
-              loading={posting}
-              disabled={!draft.trim() || recipientCount === 0}
-              successLabel="Sent"
-              accent={accent}
-              accentInk="#fff"
+            {postError ? <Text style={styles.errorText}>{postError}</Text> : null}
+            <ActionButton
+              label={posting ? "Sending..." : `Send to ${recipientCount} athlete${recipientCount === 1 ? "" : "s"}`}
               icon="paper-plane"
+              variant="filled"
+              onPress={post}
+              disabled={posting || !draft.trim() || recipientCount === 0}
             />
-          </Card>
+          </AppCard>
           </SpotlightTarget>
 
           <View style={styles.sentHeaderRow}>
@@ -161,15 +158,13 @@ export default function Announcements() {
           </View>
 
           {loading && !items ? (
-            <ActivityIndicator color={accent} style={{ marginTop: 40 }} />
+            <LoadingState label="Loading announcements..." />
           ) : error ? (
-            <Card>
-              <Muted>{error}</Muted>
-            </Card>
+            <ErrorState message={error} onRetry={load} />
           ) : items && items.length > 0 ? (
             <View style={{ gap: 10 }}>
               {items.map((a, i) => (
-                <Card key={a.id ?? i} style={styles.sentCard}>
+                <AppCard key={a.id ?? i} style={styles.sentCard}>
                   <View style={styles.sentIconTile}>
                     <Ionicons name={announcementIcon(a.body)} size={16} color={accent} />
                   </View>
@@ -182,15 +177,11 @@ export default function Announcements() {
                       ) : null}
                     </View>
                   </View>
-                </Card>
+                </AppCard>
               ))}
             </View>
           ) : (
-            <Card style={styles.emptyCard}>
-              <Ionicons name="chatbox-outline" size={18} color={colors.inkMuted} />
-              <Text style={styles.emptyTitle}>No announcements yet</Text>
-              <Muted style={styles.emptyCopy}>Your team updates will appear here.</Muted>
-            </Card>
+            <EmptyState icon="chatbox-outline" title="No announcements yet" body="Your team updates will appear here." />
           )}
         </ScrollView>
       </KeyboardAvoidingView>
@@ -235,6 +226,7 @@ const styles = StyleSheet.create({
   composeMeta: { flexDirection: "row", justifyContent: "space-between", alignItems: "center" },
   composeMetaLeft: { flexDirection: "row", alignItems: "center", gap: 6 },
   helper: { color: colors.inkMuted, fontSize: 13, fontWeight: "500" },
+  errorText: { color: colors.bad, fontSize: 13, fontWeight: "800" },
   sentHeaderRow: { flexDirection: "row", alignItems: "center", gap: 10, marginBottom: 8 },
   sentLabel: {
     color: colors.ink,
@@ -256,7 +248,4 @@ const styles = StyleSheet.create({
   body: { fontSize: 15, fontWeight: "600", color: colors.ink, lineHeight: 21 },
   metaRow: { flexDirection: "row", gap: 6, marginTop: 8 },
   meta: { fontSize: 12, fontWeight: "500", color: colors.inkFaint },
-  emptyCard: { minHeight: 140, alignItems: "center", justifyContent: "center" },
-  emptyTitle: { marginTop: 8, fontSize: 15, fontWeight: "700", color: colors.ink },
-  emptyCopy: { marginTop: 4, textAlign: "center" },
 });

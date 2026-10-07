@@ -59,6 +59,11 @@ async function notifyBookingEvent(
       timezone,
       entityRef: { collection: "CoachSession", id: session._id },
       ...template,
+      // Every booking template defaults link to null (sessions are an inline
+      // dashboard widget, not their own route) — without this, tapping any
+      // booking notification did nothing at all. See notificationTemplates.ts's
+      // module doc comment for the same pattern used by readiness_risk_flag.
+      link: recipientRole === "coach" ? "/coach/dashboard" : "/athlete/dashboard?section=coach",
     });
   } catch (err) {
     console.error("[coachSession] notification dispatch failed (non-fatal)", (err as Error).message);

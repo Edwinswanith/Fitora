@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from "react";
 import { StyleSheet, View } from "react-native";
-import { useLocalSearchParams, usePathname, useRouter } from "expo-router";
+import { useGlobalSearchParams, usePathname, useRouter } from "expo-router";
 import { AskAgentControl } from "../AskAgentControl";
 import { Banner } from "../ui";
 import { ROLE_THEMES, space } from "../../lib/theme";
@@ -65,7 +65,7 @@ function screenContextFor(pathname: string, section?: string): string | undefine
 export function AthleteAskAgentOverlayV2() {
   const router = useRouter();
   const pathname = usePathname();
-  const { section } = useLocalSearchParams<{ section?: string }>();
+  const { section } = useGlobalSearchParams<{ section?: string }>();
   const currentScreen = screenContextFor(pathname, section);
   const accent = ROLE_THEMES.athlete.accent;
   const accentInk = ROLE_THEMES.athlete.accentInk;
@@ -147,7 +147,7 @@ export function AthleteAskAgentOverlayV2() {
 
   return (
     <>
-      <AskAgentControl accent={accent} accentInk={accentInk} onCommand={handleCommand} onInputOpenChange={setInputOpen} />
+      <AskAgentControl accent={accent} accentInk={accentInk} labeled={currentScreen === "today"} onCommand={handleCommand} onInputOpenChange={setInputOpen} />
       {!inputOpen && (state.phase === "confirming" || state.phase === "needs_coach") ? (
         <ConfirmationCard state={state} accent={accent} accentInk={accentInk} onConfirm={confirm} onCancel={cancel} onEditField={editField} onChooseCoach={chooseCoach} />
       ) : null}

@@ -121,14 +121,14 @@ describe("GET /api/athlete/trends (self)", () => {
     expect(res.body.series[6].readiness).toBe(75);
   });
 
-  test("days param is clamped (0 → 1, 999 → 30)", async () => {
+  test("days param is clamped (0 → 1, 999 → 90)", async () => {
     const { user } = await makeAthlete("clamp-trend");
     const app = buildApp();
     const t = tokenFor(user._id, "athlete");
     const lo = await request(app).get("/api/athlete/trends?days=0").set("Authorization", `Bearer ${t}`);
     expect(lo.body.series).toHaveLength(1);
     const hi = await request(app).get("/api/athlete/trends?days=999").set("Authorization", `Bearer ${t}`);
-    expect(hi.body.series).toHaveLength(30);
+    expect(hi.body.series).toHaveLength(90);
   });
 });
 
@@ -155,4 +155,3 @@ describe("GET /api/coach/athletes/:id/trends (scoped)", () => {
     expect(denied.body.error).toBe("not_in_assignments");
   });
 });
-

@@ -21,6 +21,8 @@ const athleteProfileSchema = new Schema(
     position: { type: String },
     heightCm: { type: Number },
     weightKg: { type: Number },
+    /** Athlete-set target body weight — optional, self-service, no history/trend implied (see ProgressView). */
+    targetWeightKg: { type: Number },
     timezone: { type: String, default: "UTC" },
     /** Daily hydration target in millilitres (progress is measured against this). */
     hydrationGoalMl: { type: Number, default: 3000, min: 500, max: 8000 },

@@ -269,6 +269,7 @@ function serializeSelfProfile(
     dob: profile.dob instanceof Date ? profile.dob.toISOString().slice(0, 10) : null,
     heightCm: profile.heightCm ?? null,
     weightKg: profile.weightKg ?? null,
+    targetWeightKg: profile.targetWeightKg ?? null,
     timezone: profile.timezone ?? "UTC",
     hydrationGoalMl: profile.hydrationGoalMl ?? 3000,
     fitnessGoal: profile.fitnessGoal ?? null,
@@ -395,6 +396,16 @@ router.patch("/me", async (req: Request, res: Response) => {
     }
     if (weightKg === null) profileUnset.weightKg = 1;
     else profileSet.weightKg = weightKg;
+  }
+
+  if (Object.prototype.hasOwnProperty.call(body, "targetWeightKg")) {
+    const targetWeightKg = optionalNumberUpdate(body.targetWeightKg, 20, 250);
+    if (targetWeightKg === false) {
+      res.status(400).json({ error: "invalid_targetWeightKg" });
+      return;
+    }
+    if (targetWeightKg === null) profileUnset.targetWeightKg = 1;
+    else profileSet.targetWeightKg = targetWeightKg;
   }
 
   if (Object.prototype.hasOwnProperty.call(body, "hydrationGoalMl")) {

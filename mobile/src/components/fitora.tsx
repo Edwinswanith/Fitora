@@ -95,6 +95,7 @@ export function PrimaryAppBar({
   greeting,
   showNotifications = true,
   showAvatar = true,
+  variant = "default",
   rightIcon,
   onRightPress,
   actionLabel,
@@ -105,6 +106,7 @@ export function PrimaryAppBar({
   greeting?: string;
   showNotifications?: boolean;
   showAvatar?: boolean;
+  variant?: "default" | "today";
   rightIcon?: IconName;
   onRightPress?: () => void;
   actionLabel?: string;
@@ -128,14 +130,16 @@ export function PrimaryAppBar({
     };
   }, [showNotifications]);
 
+  const today = variant === "today";
+
   return (
-    <View style={styles.appBar}>
+    <View style={[styles.appBar, today ? styles.appBarToday : null]}>
       <View style={styles.appBarText}>
-        {greeting ? <Text style={styles.greeting}>{greeting}</Text> : null}
-        <Text style={styles.appTitle} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.72}>
+        {greeting ? <Text style={[styles.greeting, today ? styles.greetingToday : null]}>{greeting}</Text> : null}
+        <Text style={[styles.appTitle, today ? styles.appTitleToday : null]} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.72}>
           {title}
         </Text>
-        {subtitle ? <Text style={styles.appSubtitle} numberOfLines={1}>{subtitle}</Text> : null}
+        {subtitle ? <Text style={[styles.appSubtitle, today ? styles.appSubtitleToday : null]} numberOfLines={1}>{subtitle}</Text> : null}
       </View>
       <View style={styles.appActions}>
         {actionLabel && onAction ? (
@@ -155,24 +159,24 @@ export function PrimaryAppBar({
         {showNotifications ? (
           <Pressable
             onPress={() => router.push("/notifications" as never)}
-            style={({ pressed }) => [styles.iconButton, pressed ? styles.pressed : null]}
+            style={({ pressed }) => [styles.iconButton, today ? styles.iconButtonToday : null, pressed ? styles.pressed : null]}
             accessibilityLabel="Notifications"
           >
-            <Ionicons name="notifications-outline" size={22} color={colors.ink} />
-            {unread > 0 ? <View style={styles.unreadDot} /> : null}
+            <Ionicons name="notifications-outline" size={today ? 25 : 22} color={colors.ink} />
+            {unread > 0 ? <View style={[styles.unreadDot, today ? styles.unreadDotToday : null]} /> : null}
           </Pressable>
         ) : null}
         {showAvatar ? (
           <Pressable
             onPress={() => router.push("/account" as never)}
             hitSlop={8}
-            style={({ pressed }) => [styles.avatarButton, pressed ? styles.pressed : null]}
+            style={({ pressed }) => [styles.avatarButton, today ? styles.avatarButtonToday : null, pressed ? styles.pressed : null]}
             accessibilityLabel="Open profile"
           >
             <Avatar
               avatar={user?.avatar}
               name={user?.name ?? "Profile"}
-              size={34}
+              size={today ? 40 : 34}
               accentSoft={theme.accentSoft}
               accentStrong={theme.accentStrong}
             />
@@ -205,7 +209,7 @@ export function BottomNavigation({
             accessibilityRole="tab"
             accessibilityState={{ selected }}
           >
-            <Ionicons name={item.icon} size={22} color={selected ? colors.primary : colors.inkFaint} />
+            <Ionicons name={item.icon} size={26} color={selected ? colors.primary : colors.inkFaint} />
             <Text style={[styles.bottomLabel, selected ? styles.bottomLabelActive : null]} numberOfLines={1}>
               {item.label}
             </Text>
@@ -638,7 +642,11 @@ export function SettingsRow({
 const styles = StyleSheet.create({
   safe: { flex: 1, backgroundColor: colors.surface },
   shell: { flex: 1 },
-  content: { paddingHorizontal: 15, paddingTop: 1, paddingBottom: 18, gap: 7 },
+  // 150 clears the floating Ask Agent FAB (56dp circle anchored at bottom:84,
+  // so its top edge sits at 140dp) — without this, a screen with no bottom
+  // nav bar can scroll its last control permanently behind the FAB with no
+  // way to reveal it.
+  content: { paddingHorizontal: 15, paddingTop: 1, paddingBottom: 150, gap: 7 },
   contentWithNav: { paddingBottom: 98 },
   card: {
     backgroundColor: "#fdfeff",
@@ -653,15 +661,22 @@ const styles = StyleSheet.create({
     elevation: 1,
   },
   appBar: { minHeight: 48, flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: 8 },
+  appBarToday: { minHeight: 60, alignItems: "flex-start", paddingTop: 0, marginBottom: 2 },
   appBarText: { flex: 1, minWidth: 0 },
   greeting: { fontSize: 12, lineHeight: 16, color: colors.inkMuted, marginBottom: 1 },
+  greetingToday: { fontSize: 14, lineHeight: 18, color: "#53647e", marginBottom: 1 },
   appTitle: { fontSize: 18, lineHeight: 23, color: colors.ink, fontWeight: "900", letterSpacing: 0 },
+  appTitleToday: { fontSize: 24, lineHeight: 30, color: "#060b21", fontWeight: "900" },
   appSubtitle: { fontSize: 12, lineHeight: 16, color: colors.inkMuted, marginTop: 1 },
-  appActions: { flexDirection: "row", alignItems: "center", gap: 6 },
+  appSubtitleToday: { fontSize: 14, lineHeight: 18 },
+  appActions: { flexDirection: "row", alignItems: "center", gap: 8 },
   iconButton: { height: 32, width: 32, borderRadius: 16, alignItems: "center", justifyContent: "center" },
+  iconButtonToday: { height: 40, width: 40, borderRadius: 20, marginTop: 4 },
   iconButtonDisabled: { opacity: 0.55 },
   avatarButton: { height: 34, width: 34, borderRadius: 17, alignItems: "center", justifyContent: "center" },
+  avatarButtonToday: { height: 40, width: 40, borderRadius: 20, marginTop: 4 },
   unreadDot: { position: "absolute", right: 6, top: 4, height: 9, width: 9, borderRadius: 5, backgroundColor: colors.primary },
+  unreadDotToday: { right: 7, top: 5, backgroundColor: colors.bad },
   textAction: { minHeight: 36, alignItems: "center", justifyContent: "center", paddingHorizontal: 4 },
   textActionLabel: { color: colors.primary, fontSize: 15, fontWeight: "800" },
   bottomNav: {
@@ -669,8 +684,8 @@ const styles = StyleSheet.create({
     left: 0,
     right: 0,
     bottom: 0,
-    minHeight: 70,
-    paddingTop: 5,
+    minHeight: 82,
+    paddingTop: 8,
     paddingHorizontal: 6,
     flexDirection: "row",
     backgroundColor: colors.surfaceRaised,
@@ -682,10 +697,10 @@ const styles = StyleSheet.create({
     shadowOffset: { width: 0, height: -2 },
     elevation: 2,
   },
-  bottomItem: { flex: 1, alignItems: "center", justifyContent: "flex-start", gap: 2 },
-  bottomLabel: { fontSize: 9, lineHeight: 13, color: colors.inkMuted, fontWeight: "600" },
+  bottomItem: { flex: 1, alignItems: "center", justifyContent: "flex-start", gap: 4 },
+  bottomLabel: { fontSize: 12, lineHeight: 16, color: colors.inkMuted, fontWeight: "600" },
   bottomLabelActive: { color: colors.primary, fontWeight: "800" },
-  bottomIndicator: { height: 3, width: 32, borderRadius: 2, backgroundColor: "transparent", marginBottom: 1 },
+  bottomIndicator: { height: 4, width: 34, borderRadius: 2, backgroundColor: "transparent", marginBottom: 1 },
   bottomIndicatorActive: { backgroundColor: colors.primary },
   sectionHeader: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: 12, marginTop: 2 },
   sectionTitle: { color: colors.ink, fontSize: 15, fontWeight: "900", lineHeight: 20 },

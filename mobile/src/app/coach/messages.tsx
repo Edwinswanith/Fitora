@@ -51,7 +51,7 @@ function paletteFor(id: string): { bg: string; fg: string } {
   return AVATAR_PALETTE[hash % AVATAR_PALETTE.length];
 }
 
-type HomeFilter = "all" | "unread" | "recent" | "archived";
+type HomeFilter = "all" | "unread" | "recent";
 
 type ThreadSummary = {
   partyId: string;
@@ -114,6 +114,8 @@ export default function CoachMessages() {
   const [messages, setMessages] = useState<MessageView[]>([]);
   const [loading, setLoading] = useState(true);
   const [threadLoading, setThreadLoading] = useState(false);
+  const [hasMoreMessages, setHasMoreMessages] = useState(false);
+  const [loadingOlder, setLoadingOlder] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [threadError, setThreadError] = useState<string | null>(null);
   const [draft, setDraft] = useState("");
@@ -128,6 +130,7 @@ export default function CoachMessages() {
   const [tableDraft, setTableDraft] = useState<WorkoutTableRow[] | null>(null);
   const [tableDirty, setTableDirty] = useState(false);
   const scrollRef = useRef<ScrollView>(null);
+  const skipAutoScrollRef = useRef(false);
 
   const parties = useMemo<Party[]>(() => {
     const athleteById = new Map(athletes.map((athlete) => [athlete.athleteId, athlete]));
@@ -173,7 +176,21 @@ export default function CoachMessages() {
         const res = await apiJson<{ messages: MessageView[]; hasMore: boolean }>(
           `/api/coach/athletes/${selectedId}/messages?limit=50`
         );
-        setMessages(res.messages ?? []);
+        if (initial) {
+          // Fresh thread selection — replace outright.
+          setMessages(res.messages ?? []);
+          setHasMoreMessages(Boolean(res.hasMore));
+        } else {
+          // A background poll only ever re-fetches the newest 50, so merge
+          // by id instead of replacing — otherwise any older history the
+          // coach loaded via "Load earlier messages" would vanish again on
+          // the very next 4s poll tick.
+          setMessages((prev) => {
+            const byId = new Map(prev.map((m) => [m.id, m]));
+            for (const m of res.messages ?? []) byId.set(m.id, m);
+            return Array.from(byId.values()).sort((a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime());
+          });
+        }
         setThreadError(null);
         setThreads((prev) =>
           prev.map((thread) => (thread.partyId === selectedId ? { ...thread, unreadCount: 0 } : thread))
@@ -190,6 +207,28 @@ export default function CoachMessages() {
     },
     [selectedId]
   );
+
+  async function loadOlderMessages() {
+    if (!selectedId || loadingOlder || !messages.length) return;
+    setLoadingOlder(true);
+    try {
+      const oldest = messages[0].createdAt;
+      const res = await apiJson<{ messages: MessageView[]; hasMore: boolean }>(
+        `/api/coach/athletes/${selectedId}/messages?limit=50&before=${encodeURIComponent(oldest)}`
+      );
+      skipAutoScrollRef.current = true;
+      setMessages((prev) => {
+        const byId = new Map((res.messages ?? []).map((m) => [m.id, m]));
+        for (const m of prev) byId.set(m.id, m);
+        return Array.from(byId.values()).sort((a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime());
+      });
+      setHasMoreMessages(Boolean(res.hasMore));
+    } catch {
+      setThreadError("Couldn't load earlier messages.");
+    } finally {
+      setLoadingOlder(false);
+    }
+  }
 
   useEffect(() => {
     load();
@@ -215,6 +254,10 @@ export default function CoachMessages() {
   }, [selectedId, loadThread]);
 
   useEffect(() => {
+    if (skipAutoScrollRef.current) {
+      skipAutoScrollRef.current = false;
+      return;
+    }
     requestAnimationFrame(() => scrollRef.current?.scrollToEnd({ animated: true }));
   }, [messages]);
 
@@ -386,7 +429,13 @@ export default function CoachMessages() {
                 <Text style={styles.chatEmptySub}>Say hello to start the conversation.</Text>
               </View>
             ) : (
-              messages.map((message, i) => {
+              <>
+                {hasMoreMessages ? (
+                  <Pressable onPress={loadOlderMessages} disabled={loadingOlder} style={styles.loadOlderButton}>
+                    {loadingOlder ? <ActivityIndicator color={accent} /> : <Text style={styles.loadOlderText}>Load earlier messages</Text>}
+                  </Pressable>
+                ) : null}
+                {messages.map((message, i) => {
                 const prevMessage = messages[i - 1];
                 const showDay =
                   !prevMessage || new Date(prevMessage.createdAt).toDateString() !== new Date(message.createdAt).toDateString();
@@ -416,13 +465,17 @@ export default function CoachMessages() {
                     </View>
                   </View>
                 );
-              })
+                })}
+              </>
             )}
           </ScrollView>
 
           {threadError ? (
             <View style={{ paddingHorizontal: 16 }}>
               <Muted style={{ color: colors.bad }}>{threadError}</Muted>
+              <Pressable onPress={() => void loadThread(true)} hitSlop={8}>
+                <Text style={styles.retryText}>Retry</Text>
+              </Pressable>
             </View>
           ) : null}
 
@@ -521,6 +574,9 @@ export default function CoachMessages() {
         ) : error ? (
           <Card>
             <Muted>{error}</Muted>
+            <Pressable onPress={load} hitSlop={8} style={{ marginTop: 8, alignSelf: "flex-start" }}>
+              <Text style={styles.retryText}>Retry</Text>
+            </Pressable>
           </Card>
         ) : (
           <>
@@ -632,7 +688,6 @@ const HOME_FILTERS: { key: HomeFilter; label: string }[] = [
   { key: "all", label: "All" },
   { key: "unread", label: "Unread" },
   { key: "recent", label: "Recent" },
-  { key: "archived", label: "Archived" },
 ];
 
 function MessagesHome({
@@ -661,11 +716,7 @@ function MessagesHome({
   const filteredThreads = useMemo(() => {
     const q = query.trim().toLowerCase();
     return threads
-      .filter((thread) => {
-        if (filter === "unread") return thread.unreadCount > 0;
-        if (filter === "archived") return false; // no archiving feature yet — always empty, never fabricated
-        return true;
-      })
+      .filter((thread) => (filter === "unread" ? thread.unreadCount > 0 : true))
       .filter((thread) => {
         if (!q) return true;
         return thread.partyName.toLowerCase().includes(q) || thread.lastMessage.toLowerCase().includes(q);
@@ -904,6 +955,9 @@ const styles = StyleSheet.create({
   chatName: { color: colors.ink, fontSize: 15, fontWeight: "800" },
   chatSubtitle: { color: colors.inkFaint, fontSize: 11, marginTop: 1 },
   chatBody: { padding: 14, gap: 8, flexGrow: 1 },
+  loadOlderButton: { alignSelf: "center", minHeight: 32, paddingHorizontal: 14, justifyContent: "center", marginBottom: 6 },
+  loadOlderText: { color: theme.accentStrong, fontSize: 12, fontWeight: "800" },
+  retryText: { color: theme.accentStrong, fontSize: 13, fontWeight: "800" },
   chatEmpty: { flex: 1, alignItems: "center", justifyContent: "center", gap: 4, paddingVertical: 60 },
   chatEmptyTitle: { color: colors.inkMuted, fontSize: 14, fontWeight: "700" },
   chatEmptySub: { color: colors.inkFaint, fontSize: 11 },

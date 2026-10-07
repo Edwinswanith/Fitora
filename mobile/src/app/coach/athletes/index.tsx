@@ -1,6 +1,6 @@
 import { useMemo, useState } from "react";
 import { Pressable, StyleSheet, TextInput, View } from "react-native";
-import { useRouter } from "expo-router";
+import { useLocalSearchParams, useRouter } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
 import { Text } from "../../../components/AppText";
 import {
@@ -72,8 +72,10 @@ export default function CoachClients() {
 
 function ClientsView({ data }: { data: CoachHomeData }) {
   const router = useRouter();
+  const params = useLocalSearchParams<{ filter?: Filter }>();
+  const initialFilter: Filter = ["all", "attention", "active", "membership"].includes(params.filter ?? "") ? (params.filter as Filter) : "all";
   const [query, setQuery] = useState("");
-  const [filter, setFilter] = useState<Filter>("all");
+  const [filter, setFilter] = useState<Filter>(initialFilter);
   const summary = useMemo(() => Object.fromEntries(data.cards.map((card) => [card.athleteId, card])), [data.cards]);
   const sessionsByAthlete = useMemo(() => {
     const map = new Map<string, CoachSession[]>();

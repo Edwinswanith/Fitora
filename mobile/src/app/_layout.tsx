@@ -27,8 +27,8 @@ SplashScreen.preventAutoHideAsync().catch(() => undefined);
 
 const KNOWN_PUSH_ROUTES = [
   "/athlete/dashboard", "/athlete/check-in", "/athlete/rpe", "/athlete/water", "/athlete/trends",
-  "/athlete/active-workout", "/athlete/meal-scan", "/athlete/coach-discovery",
-  "/coach/dashboard", "/coach/athletes", "/coach/plan", "/coach/content", "/coach/profile",
+  "/athlete/active-workout", "/athlete/meal-scan", "/athlete/coach-discovery", "/athlete/coach-profile",
+  "/coach/dashboard", "/coach/athletes", "/coach/plan", "/coach/content", "/coach/profile", "/coach/messages",
   "/account", "/notifications",
 ];
 

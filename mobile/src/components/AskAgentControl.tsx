@@ -1,5 +1,5 @@
 import { useRef, useState } from "react";
-import { Platform, Pressable, StyleSheet, TextInput, View } from "react-native";
+import { Platform, Pressable, StyleSheet, TextInput, useWindowDimensions, View } from "react-native";
 import Animated, { useAnimatedStyle, useSharedValue, withTiming } from "react-native-reanimated";
 import { Ionicons } from "@expo/vector-icons";
 import { Text } from "./AppText";
@@ -12,6 +12,7 @@ import { startVoiceConversation, type VoiceConversationHandle } from "../lib/voi
 export function AskAgentControl({
   accent = "#ffad45",
   accentInk = "#1a0c00",
+  labeled = false,
   onCommand,
   tourTargetId,
   onInputOpenChange,
@@ -19,12 +20,14 @@ export function AskAgentControl({
 }: {
   accent?: string;
   accentInk?: string;
+  labeled?: boolean;
   onCommand: (text: string) => Promise<string | void> | string | void;
   /** Anchor id for the guided app tour (see lib/tour/steps.ts) — spotlighted when this step is active. */
   tourTargetId?: string;
   onInputOpenChange?: (open: boolean) => void;
   onListeningChange?: (listening: boolean) => void;
 }) {
+  const { width } = useWindowDimensions();
   const { highlightStyle } = useTourHighlight(tourTargetId);
   // The FAB is already absolutely positioned, so its live rect is measured
   // directly off this ref rather than adding a wrapping SpotlightTarget View
@@ -42,6 +45,7 @@ export function AskAgentControl({
   const longPressRef = useRef(false);
   const conversationRef = useRef<VoiceConversationHandle | null>(null);
   const submitLockRef = useRef(false);
+  const compactLabeled = labeled && width < 370;
   // Driven by real mic input level (see lib/voiceSession) — powers the glow
   // that pulses around the FAB while the user is actually speaking.
   const glow = useSharedValue(0);
@@ -181,7 +185,7 @@ export function AskAgentControl({
             </View>
           ) : null}
           {active || listening || speaking ? (
-            <Animated.View pointerEvents="none" style={[styles.glow, { backgroundColor: modeColor }, glowStyle]} />
+            <Animated.View pointerEvents="none" style={[compactLabeled ? styles.glowLabeledCompact : labeled ? styles.glowLabeled : styles.glow, { backgroundColor: modeColor }, glowStyle]} />
           ) : null}
           <Animated.View pointerEvents={showExecute ? "auto" : "none"} style={[styles.executeFabWrap, executeStyle]}>
             <Pressable
@@ -205,18 +209,27 @@ export function AskAgentControl({
             delayLongPress={3000}
             disabled={busy && !active}
             style={({ pressed }) => [
-              styles.fab,
-              { backgroundColor: modeColor },
+              compactLabeled ? styles.fabLabeledCompact : labeled ? styles.fabLabeled : styles.fab,
+              labeled ? styles.fabLabeledShell : { backgroundColor: modeColor },
               active || listening || speaking ? styles.fabActive : null,
               pressed ? { transform: [{ scale: 0.98 }] } : null,
-              highlightStyle ? [highlightStyle, { borderRadius: 28 }] : null,
+              highlightStyle ? [highlightStyle, { borderRadius: compactLabeled ? 24 : labeled ? 27 : 28 }] : null,
             ]}
             accessibilityRole="button"
             accessibilityLabel="Ask agent"
             accessibilityState={{ selected: active || listening || speaking }}
             {...(Platform.OS === "web" ? ({ onContextMenu: (event: { preventDefault?: () => void }) => event.preventDefault?.() } as any) : {})}
           >
-            <Ionicons name={speaking ? "volume-high-outline" : active || listening ? "stop-outline" : "sparkles-outline"} size={22} color={active || listening || speaking ? modeColor : accentInk} />
+            {labeled ? (
+              <>
+                <View style={[compactLabeled ? styles.fabLabeledIconCompact : styles.fabLabeledIcon, { backgroundColor: modeColor }]}>
+                  <Ionicons name={speaking ? "volume-high-outline" : active || listening ? "stop-outline" : "sparkles-outline"} size={compactLabeled ? 19 : 22} color="#ffffff" />
+                </View>
+                <Text style={compactLabeled ? styles.fabLabeledTextCompact : styles.fabLabeledText}>Ask{"\n"}Agent</Text>
+              </>
+            ) : (
+              <Ionicons name={speaking ? "volume-high-outline" : active || listening ? "stop-outline" : "sparkles-outline"} size={22} color={active || listening || speaking ? modeColor : accentInk} />
+            )}
           </Pressable>
         </>
       ) : null}
@@ -268,6 +281,65 @@ const styles = StyleSheet.create({
     shadowRadius: 18,
     shadowOffset: { width: 0, height: 10 },
   },
+  fabLabeled: {
+    position: "absolute",
+    right: 10,
+    bottom: 96,
+    zIndex: 2000,
+    elevation: 40,
+    height: 50,
+    width: 112,
+    borderRadius: 27,
+    borderWidth: 1,
+    borderColor: colors.line,
+    paddingLeft: 5,
+    paddingRight: 11,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+    shadowColor: "#0f172a",
+    shadowOpacity: 0.12,
+    shadowRadius: 16,
+    shadowOffset: { width: 0, height: 8 },
+  },
+  fabLabeledCompact: {
+    position: "absolute",
+    right: 8,
+    bottom: 84,
+    zIndex: 2000,
+    elevation: 40,
+    height: 44,
+    width: 98,
+    borderRadius: 24,
+    borderWidth: 1,
+    borderColor: colors.line,
+    paddingLeft: 5,
+    paddingRight: 9,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 7,
+    shadowColor: "#0f172a",
+    shadowOpacity: 0.12,
+    shadowRadius: 14,
+    shadowOffset: { width: 0, height: 7 },
+  },
+  fabLabeledShell: { backgroundColor: colors.surfaceRaised },
+  fabLabeledIcon: {
+    height: 40,
+    width: 40,
+    borderRadius: 20,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  fabLabeledIconCompact: {
+    height: 34,
+    width: 34,
+    borderRadius: 17,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  fabLabeledText: { color: colors.primary, fontSize: 13, lineHeight: 15, fontWeight: "800" },
+  fabLabeledTextCompact: { color: colors.primary, fontSize: 12, lineHeight: 13, fontWeight: "800" },
   fabActive: { borderWidth: 1, borderColor: colors.line },
   dismissLayer: {
     position: "absolute",
@@ -313,6 +385,26 @@ const styles = StyleSheet.create({
     height: 56,
     width: 56,
     borderRadius: 28,
+  },
+  glowLabeled: {
+    position: "absolute",
+    right: 68,
+    bottom: 101,
+    zIndex: 1999,
+    elevation: 39,
+    height: 40,
+    width: 40,
+    borderRadius: 20,
+  },
+  glowLabeledCompact: {
+    position: "absolute",
+    right: 60,
+    bottom: 89,
+    zIndex: 1999,
+    elevation: 39,
+    height: 34,
+    width: 34,
+    borderRadius: 17,
   },
   statusPill: {
     position: "absolute",

@@ -6,6 +6,7 @@ import { Ionicons } from "@expo/vector-icons";
 import { Text } from "../../components/AppText";
 import {
   ActionButton,
+  AlertBanner,
   AppCard,
   EmptyState,
   ErrorState,
@@ -21,9 +22,28 @@ import {
 import { apiFetch } from "../../lib/api";
 import { colors, radius } from "../../lib/theme";
 import { formatDuration, loadCoachContentData, titleCase, todayKey, useAsyncData, type CoachContentData, type CoachVideo } from "../../lib/fitoraData";
+import { VideoPlayerModal } from "../../components/VideoPlayerModal";
 
 type Tab = "library" | "assigned" | "analytics";
-type Category = "all" | "exercise" | "workouts" | "nutrition" | "recovery";
+/**
+ * Mirrors server/src/models/CoachVideo.ts's COACH_VIDEO_CATEGORIES exactly —
+ * mobile and server are separate packages with no shared-types package (same
+ * convention as mobile/src/lib/voiceAssistant/types.ts), so this is a
+ * deliberate, minimal re-declaration. Keep it in sync by hand if the
+ * server's enum changes; a mismatch here means every upload with the
+ * default/mismatched category gets rejected with invalid_category.
+ */
+const COACH_VIDEO_CATEGORIES = [
+  "exercise_tutorial",
+  "full_workout",
+  "mobility",
+  "nutrition",
+  "recovery",
+  "coaching_tip",
+  "recorded_session",
+  "program",
+] as const;
+type Category = "all" | "archived" | (typeof COACH_VIDEO_CATEGORIES)[number];
 type ContentAction = "assign" | "workout";
 type UploadDraft = {
   uri: string;
@@ -36,10 +56,8 @@ type UploadDraft = {
 
 const CATEGORY_FILTERS: { value: Category; label: string }[] = [
   { value: "all", label: "All" },
-  { value: "exercise", label: "Exercise" },
-  { value: "workouts", label: "Workouts" },
-  { value: "nutrition", label: "Nutrition" },
-  { value: "recovery", label: "Recovery" },
+  ...COACH_VIDEO_CATEGORIES.map((value) => ({ value, label: titleCase(value) })),
+  { value: "archived", label: "Archived" },
 ];
 
 export default function CoachContent() {
@@ -54,6 +72,7 @@ export default function CoachContent() {
   const [editingVideo, setEditingVideo] = useState<CoachVideo | null>(null);
   const [videoActionMessage, setVideoActionMessage] = useState<string | null>(null);
   const [videoActionBusy, setVideoActionBusy] = useState<string | null>(null);
+  const [playingVideo, setPlayingVideo] = useState<CoachVideo | null>(null);
 
   async function archiveVideo(video: CoachVideo) {
     setVideoActionBusy(video.id);
@@ -110,7 +129,7 @@ export default function CoachContent() {
       name: asset.name ?? "video.mp4",
       mimeType: asset.mimeType ?? "video/mp4",
       title: baseTitle,
-      category: "exercise",
+      category: "exercise_tutorial",
       visibility: "private",
     });
   }
@@ -165,12 +184,19 @@ export default function CoachContent() {
   const data = state.data;
   if (!data) return null;
 
-  const filtered = data.videos.filter((video) => category === "all" || video.category === category);
-  const recent = [...data.videos].sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())[0] ?? null;
-  const subscriberCount = data.videos.filter((video) => video.visibility === "subscribers").length;
-  const publicCount = data.videos.filter((video) => video.visibility === "public_preview").length;
-  const assignedCount = data.videos.filter((video) => video.visibility === "selected_clients").length;
-  const libraryTotal = data.videos.length;
+  // Archived videos never appear in the active library (they'd otherwise
+  // clutter "All" and every count/stat) — they're only reachable through the
+  // explicit "Archived" filter, which is the only way to reach the
+  // Unarchive action once a video has been archived.
+  const activeVideos = data.videos.filter((video) => !video.isArchived);
+  const filtered = category === "archived"
+    ? data.videos.filter((video) => video.isArchived)
+    : activeVideos.filter((video) => category === "all" || video.category === category);
+  const recent = [...activeVideos].sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())[0] ?? null;
+  const subscriberCount = activeVideos.filter((video) => video.visibility === "subscribers").length;
+  const publicCount = activeVideos.filter((video) => video.visibility === "public_preview").length;
+  const assignedCount = activeVideos.filter((video) => video.visibility === "selected_clients").length;
+  const libraryTotal = activeVideos.length;
   const subscriberTotal = subscriberCount;
   const publicTotal = publicCount;
 
@@ -196,10 +222,15 @@ export default function CoachContent() {
           data={data}
           action={action}
           onClose={() => setAction(null)}
-          onDone={(updatedVideo) => {
-            if (updatedVideo) {
-              state.setData((prev) => (prev ? { ...prev, videos: prev.videos.map((v) => (v.id === updatedVideo.id ? updatedVideo : v)) } : prev));
-            }
+          onDone={(updatedVideo, newTemplate) => {
+            state.setData((prev) => {
+              if (!prev) return prev;
+              return {
+                ...prev,
+                videos: updatedVideo ? prev.videos.map((v) => (v.id === updatedVideo.id ? updatedVideo : v)) : prev.videos,
+                templates: newTemplate ? [newTemplate, ...prev.templates] : prev.templates,
+              };
+            });
           }}
         />
       ) : null}
@@ -231,7 +262,7 @@ export default function CoachContent() {
             ))}
           </View>
 
-          <SectionHeader title="Recently Added" action={recent ? "View all" : undefined} onAction={() => setCategory("all")} />
+          <SectionHeader title="Recently Added" />
           {recent ? (
             <FeaturedVideo
               video={recent}
@@ -241,10 +272,11 @@ export default function CoachContent() {
               onEdit={() => { setEditingVideo(recent); setMenuVideoId(null); }}
               onArchive={() => archiveVideo(recent)}
               onDelete={() => deleteVideo(recent)}
+              onPlay={() => setPlayingVideo(recent)}
             />
           ) : <EmptyState title="No videos yet" body="Upload your first coaching video to build a reusable library." icon="videocam-outline" />}
 
-          <SectionHeader title="Video Library" action={filtered.length ? "View all" : undefined} onAction={() => setCategory("all")} />
+          <SectionHeader title="Video Library" action={category !== "all" ? "Clear filter" : undefined} onAction={() => setCategory("all")} />
           <AppCard>
             {filtered.length ? (
               filtered.map((video, index) => (
@@ -257,6 +289,7 @@ export default function CoachContent() {
                     onEdit={() => { setEditingVideo(video); setMenuVideoId(null); }}
                     onArchive={() => archiveVideo(video)}
                     onDelete={() => deleteVideo(video)}
+                    onPlay={() => setPlayingVideo(video)}
                   />
                   {index < filtered.length - 1 ? <Divider /> : null}
                 </View>
@@ -286,7 +319,7 @@ export default function CoachContent() {
       {tab === "assigned" ? (
         <AppCard>
           {assignedCount ? (
-            data.videos
+            activeVideos
               .filter((video) => video.visibility === "selected_clients")
               .map((video, index, list) => (
                 <View key={video.id}>
@@ -298,6 +331,7 @@ export default function CoachContent() {
                     onEdit={() => { setEditingVideo(video); setMenuVideoId(null); }}
                     onArchive={() => archiveVideo(video)}
                     onDelete={() => deleteVideo(video)}
+                    onPlay={() => setPlayingVideo(video)}
                   />
                   {index < list.length - 1 ? <Divider /> : null}
                 </View>
@@ -321,6 +355,23 @@ export default function CoachContent() {
           </View>
         </AppCard>
       ) : null}
+
+      {playingVideo ? (
+        <VideoPlayerModal
+          visible
+          title={playingVideo.title}
+          streamPath={`/api/coach/videos/${playingVideo.id}/stream`}
+          onClose={() => setPlayingVideo(null)}
+        />
+      ) : null}
+
+      {data.partialIssues.length ? (
+        <AlertBanner
+          tone="primary"
+          title="Some content data is unavailable"
+          body={data.partialIssues.slice(0, 3).join(", ")}
+        />
+      ) : null}
     </ScreenContainer>
   );
 }
@@ -334,13 +385,14 @@ function ContentActionCard({
   data: CoachContentData;
   action: ContentAction;
   onClose: () => void;
-  onDone: (updatedVideo?: CoachVideo) => void;
+  onDone: (updatedVideo?: CoachVideo, newTemplate?: CoachContentData["templates"][number]) => void;
 }) {
-  const [videoId, setVideoId] = useState(data.videos[0]?.id ?? "");
+  const assignableVideos = data.videos.filter((video) => !video.isArchived);
+  const [videoId, setVideoId] = useState(assignableVideos[0]?.id ?? "");
   const [selectedAthleteIds, setSelectedAthleteIds] = useState<string[]>(() => data.roster[0]?.athleteId ? [data.roster[0].athleteId] : []);
   const [saving, setSaving] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
-  const selectedVideo = data.videos.find((video) => video.id === videoId) ?? null;
+  const selectedVideo = assignableVideos.find((video) => video.id === videoId) ?? null;
 
   function toggleAthlete(id: string) {
     setSelectedAthleteIds((current) => current.includes(id) ? current.filter((item) => item !== id) : [...current, id]);
@@ -368,33 +420,53 @@ function ContentActionCard({
       if (!patchRes.ok) throw new Error("video_assign_failed");
       const patchJson = (await patchRes.json().catch(() => ({}))) as { video?: CoachVideo };
 
+      let newTemplate: CoachContentData["templates"][number] | undefined;
       if (action === "workout") {
-        const templateRes = await apiFetch("/api/workout-templates", {
-          method: "POST",
-          body: JSON.stringify({
-            name: `Watch: ${selectedVideo.title}`,
-            description: "Video task created from the Fitora content library.",
-            exercises: [
-              {
-                title: `Watch ${selectedVideo.title}`,
-                type: "checklist",
-                instructions: "Open the assigned video in Content and mark this item complete after watching.",
-              },
-            ],
-          }),
-        });
-        const templateJson = await templateRes.json().catch(() => ({}));
-        if (!templateRes.ok || !templateJson.template?.id) throw new Error("template_failed");
+        const templateName = `Watch: ${selectedVideo.title}`;
+        // Reuse an existing "Watch: <title>" template for this video instead
+        // of minting a duplicate every time this action is used again.
+        const existing = data.templates.find((template) => template.name === templateName);
+        let templateId = existing?.id;
+        if (!templateId) {
+          const templateRes = await apiFetch("/api/workout-templates", {
+            method: "POST",
+            body: JSON.stringify({
+              name: templateName,
+              description: "Video task created from the Fitora content library.",
+              exercises: [
+                {
+                  title: `Watch ${selectedVideo.title}`,
+                  type: "checklist",
+                  instructions: "Open the assigned video in Content and mark this item complete after watching.",
+                },
+              ],
+            }),
+          });
+          const templateJson = await templateRes.json().catch(() => ({}));
+          if (!templateRes.ok || !templateJson.template?.id) throw new Error("template_failed");
+          templateId = String(templateJson.template.id);
+          newTemplate = { id: templateId, name: templateName };
+        }
         const assignRes = await apiFetch("/api/coach/workout-assignments/bulk", {
           method: "POST",
-          body: JSON.stringify({ templateId: templateJson.template.id, athleteIds: selectedAthleteIds, scheduledDate: todayKey() }),
+          body: JSON.stringify({ templateId, athleteIds: selectedAthleteIds, scheduledDate: todayKey() }),
         });
-        const assignJson = await assignRes.json().catch(() => ({}));
+        const assignJson = (await assignRes.json().catch(() => ({}))) as { results?: { athleteId: string; ok?: boolean }[]; error?: string };
         if (!assignRes.ok && assignRes.status !== 207) throw new Error(assignJson.error || "workout_assign_failed");
+        // A 207 always means "per-athlete results", not "all succeeded" — a
+        // fully-failed batch is still HTTP 207, so it must be inspected
+        // instead of trusted, or a coach sees "success" with nothing assigned.
+        const succeeded = assignJson.results?.filter((item) => item.ok).length ?? 0;
+        if (succeeded === 0) throw new Error("workout_assign_failed");
+        if (succeeded < selectedAthleteIds.length) {
+          setMessage(`Video task added for ${succeeded} of ${selectedAthleteIds.length} clients - some already had a workout today.`);
+          onDone(patchJson.video, newTemplate);
+          return;
+        }
       }
 
       setMessage(action === "assign" ? "Video assigned to selected clients." : "Video task added to selected clients' workouts.");
-      onDone(patchJson.video);
+      onDone(patchJson.video, newTemplate);
     } catch {
       setMessage("Could not complete this action. Try another video or client.");
     } finally {
@@ -417,7 +489,7 @@ function ContentActionCard({
 
       <Text style={styles.formLabel}>Video</Text>
       <View style={styles.choiceStack}>
-        {data.videos.length ? data.videos.slice(0, 5).map((video) => (
+        {assignableVideos.length ? assignableVideos.map((video) => (
           <ChoiceRow
             key={video.id}
             selected={video.id === videoId}
@@ -433,6 +505,7 @@ function ContentActionCard({
         {data.roster.length ? data.roster.map((client) => (
           <ChoiceRow
             key={client.athleteId}
+            multi
             selected={selectedAthleteIds.includes(client.athleteId)}
             title={client.name}
             subtitle={client.sport || "Client"}
@@ -442,17 +515,24 @@ function ContentActionCard({
       </View>
 
       {message ? <Text style={message.startsWith("Video") ? styles.successText : styles.errorText}>{message}</Text> : null}
-      <Pressable onPress={submit} disabled={saving || !data.videos.length || !data.roster.length} style={[styles.uploadButton, saving ? styles.disabled : null]}>
+      <Pressable onPress={submit} disabled={saving || !assignableVideos.length || !data.roster.length} style={[styles.uploadButton, saving ? styles.disabled : null]}>
         {saving ? <ActivityIndicator color="#fff" /> : <Text style={styles.uploadButtonText}>{action === "assign" ? "Assign Video" : "Create Workout Task"}</Text>}
       </Pressable>
     </AppCard>
   );
 }
 
-function ChoiceRow({ selected, title, subtitle, onPress }: { selected: boolean; title: string; subtitle?: string; onPress: () => void }) {
+/** `multi` swaps the round single-select radio for a square multi-select checkbox — see mobile/src/app/coach/plan.tsx's ChoiceRow for the same pattern. */
+function ChoiceRow({ selected, title, subtitle, onPress, multi }: { selected: boolean; title: string; subtitle?: string; onPress: () => void; multi?: boolean }) {
   return (
     <Pressable onPress={onPress} style={[styles.choiceRow, selected ? styles.choiceRowActive : null]}>
-      <View style={[styles.radio, selected ? styles.radioOn : null]} />
+      {multi ? (
+        <View style={[styles.checkbox, selected ? styles.checkboxOn : null]}>
+          {selected ? <Ionicons name="checkmark" size={12} color="#fff" /> : null}
+        </View>
+      ) : (
+        <View style={[styles.radio, selected ? styles.radioOn : null]} />
+      )}
       <View style={{ flex: 1, minWidth: 0 }}>
         <Text style={styles.choiceTitle} numberOfLines={1}>{title}</Text>
         {subtitle ? <Text style={styles.choiceSub} numberOfLines={1}>{subtitle}</Text> : null}
@@ -492,7 +572,7 @@ function UploadCard({
         style={styles.input}
       />
       <View style={styles.pickerRow}>
-        {["exercise", "workouts", "nutrition", "recovery"].map((item) => (
+        {COACH_VIDEO_CATEGORIES.map((item) => (
           <Pressable
             key={item}
             onPress={() => setDraft({ ...draft, category: item })}
@@ -535,13 +615,16 @@ type VideoRowActions = {
   onEdit: () => void;
   onArchive: () => void;
   onDelete: () => void;
+  onPlay: () => void;
 };
 
 function FeaturedVideo({ video, ...actions }: { video: CoachVideo } & VideoRowActions) {
   return (
     <AppCard>
       <View style={styles.featuredRow}>
-        <VideoThumb duration={formatDuration(video.durationSec)} title={video.title} category={video.category} compact />
+        <Pressable onPress={actions.onPlay} accessibilityRole="button" accessibilityLabel={`Play ${video.title}`}>
+          <VideoThumb duration={formatDuration(video.durationSec)} title={video.title} category={video.category} compact />
+        </Pressable>
         <View style={{ flex: 1, minWidth: 0 }}>
           <Text style={styles.videoTitle} numberOfLines={2}>{video.title}</Text>
           <Text style={styles.muted}>{titleCase(video.category)}</Text>
@@ -562,7 +645,9 @@ function VideoRow({ video, ...actions }: { video: CoachVideo } & VideoRowActions
   return (
     <View>
       <View style={styles.videoRow}>
-        <VideoThumb duration={formatDuration(video.durationSec)} title={video.title} category={video.category} compact />
+        <Pressable onPress={actions.onPlay} accessibilityRole="button" accessibilityLabel={`Play ${video.title}`}>
+          <VideoThumb duration={formatDuration(video.durationSec)} title={video.title} category={video.category} compact />
+        </Pressable>
         <View style={{ flex: 1, minWidth: 0 }}>
           <Text style={styles.videoTitle} numberOfLines={2}>{video.title}</Text>
           <Text style={styles.muted} numberOfLines={1}>{titleCase(video.category)}</Text>
@@ -651,7 +736,7 @@ function EditVideoCard({ video, onClose, onSaved }: { video: CoachVideo; onClose
         style={styles.input}
       />
       <View style={styles.pickerRow}>
-        {["exercise", "workouts", "nutrition", "recovery"].map((item) => (
+        {COACH_VIDEO_CATEGORIES.map((item) => (
           <Pressable
             key={item}
             onPress={() => setCategory(item)}
@@ -740,6 +825,8 @@ const styles = StyleSheet.create({
   choiceRowActive: { borderColor: colors.primary, backgroundColor: colors.primarySoft },
   radio: { width: 15, height: 15, borderRadius: 8, borderWidth: 2, borderColor: colors.inkFaint },
   radioOn: { borderColor: colors.primary, backgroundColor: colors.primary },
+  checkbox: { width: 18, height: 18, borderRadius: 5, borderWidth: 2, borderColor: colors.inkFaint, alignItems: "center", justifyContent: "center" },
+  checkboxOn: { borderColor: colors.primary, backgroundColor: colors.primary },
   choiceTitle: { color: colors.ink, fontSize: 13, lineHeight: 17, fontWeight: "900" },
   choiceSub: { color: colors.inkMuted, fontSize: 11, lineHeight: 15 },
   input: {

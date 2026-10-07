@@ -360,6 +360,10 @@ export async function buildAthleteCandidates(
       academyId,
       entityRef: { collection: "CoachSession", id: session._id as Types.ObjectId },
       ...templates.buildSessionStarting({ counterpartName: (coach?.name as string) || "your coach", minutesUntil }),
+      // buildSessionStarting's own default is null (no per-role knowledge at
+      // the template layer) — sessions live inline on each role's dashboard,
+      // not a dedicated route, so this is the correct concrete destination.
+      link: "/athlete/dashboard?section=coach",
     });
   }
 
@@ -491,6 +495,8 @@ export async function buildCoachCandidates(
           counterpartName: names.get((session.athleteId as Types.ObjectId).toString()) ?? "your athlete",
           minutesUntil,
         }),
+        // See the athlete-side buildSessionStarting call above — same reason.
+        link: "/coach/dashboard",
       });
     }
   }

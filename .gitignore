@@ -30,6 +30,7 @@ all_env.txt
 /twa-build/
 /mobile-ui-audit-*/
 /ui-consistency-review-*/
+/qa-artifacts/
 /.gradle/
 /rn-*.png
 /web-*.png

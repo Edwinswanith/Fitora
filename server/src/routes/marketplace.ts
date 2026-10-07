@@ -5,7 +5,7 @@ import { User } from "../models/User";
 import { CoachProfile } from "../models/CoachProfile";
 import { CoachPricingPlan } from "../models/CoachPricingPlan";
 import { CoachReview } from "../models/CoachReview";
-import { listMarketplaceCoaches, serializePublicCoachProfile } from "../services/coachProfile";
+import { listMarketplaceCoaches, serializePublicCoachProfile, loadAvailableDays } from "../services/coachProfile";
 import { avatarFilePath } from "../services/avatar";
 import { serializeReview } from "../services/coachReview";
 
@@ -62,8 +62,12 @@ router.get("/coaches/:coachId", async (req: Request, res: Response) => {
     return;
   }
 
-  const pricingPlans = await CoachPricingPlan.find({ coachId, active: true }).sort({ priority: 1 }).lean();
-  res.json({ profile: serializePublicCoachProfile(new Types.ObjectId(coachId), profile as never, user, pricingPlans as never) });
+  const coachObjectId = new Types.ObjectId(coachId);
+  const [pricingPlans, availableDays] = await Promise.all([
+    CoachPricingPlan.find({ coachId, active: true }).sort({ priority: 1 }).lean(),
+    loadAvailableDays(coachObjectId),
+  ]);
+  res.json({ profile: serializePublicCoachProfile(coachObjectId, profile as never, user, pricingPlans as never, availableDays) });
 });
 
 /** GET /marketplace/coaches/:coachId/reviews?page=&limit= — public, paginated, newest first. */

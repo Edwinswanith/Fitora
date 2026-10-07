@@ -31,7 +31,7 @@ export function buildTrainingSessionReminder(input: { slot: ReminderSlot }): Tem
   return {
     title: `${label} session reminder`,
     body: `Please mark your ${label} session as completed or skipped.`,
-    link: "/athlete/dashboard",
+    link: "/athlete/dashboard?section=workouts",
   };
 }
 
@@ -40,7 +40,7 @@ export function buildRpeMonitoringReminder(input: { slot: ReminderSlot }): Templ
   return {
     title: `${label} RPE reminder`,
     body: `Please log your ${label} RPE so your coach can review today's load.`,
-    link: "/athlete/dashboard",
+    link: "/athlete/dashboard?section=workouts",
   };
 }
 
@@ -57,7 +57,7 @@ export function buildMissedActivityReminder(input: { count: number }): TemplateR
   return {
     title: "Activity log reminder",
     body: `You still have ${input.count} planned ${sessionLabel} from yesterday to mark as completed or skipped.`,
-    link: "/athlete/dashboard",
+    link: "/athlete/dashboard?section=workouts",
   };
 }
 
@@ -115,7 +115,7 @@ export function buildAthleteWeeklySummary(input: {
   return {
     title: "Weekly summary ready",
     body: `This week: ${input.checkins}/7 check-ins, ${input.sessions} ${sessionLabel}, readiness average ${avg}.`,
-    link: "/athlete/dashboard",
+    link: "/athlete/dashboard?section=progress",
   };
 }
 
@@ -142,7 +142,7 @@ export function buildStreakMilestone(input: {
   return {
     title: `${input.badgeLabel} unlocked`,
     body: `${input.streakCount}-day ${goalLabel} streak. Keep it going.`,
-    link: "/athlete/achievements",
+    link: "/athlete/dashboard?section=achievements",
   };
 }
 
@@ -150,7 +150,7 @@ export function buildCoachFeedback(input: { coachName: string; preview: string }
   return {
     title: `Feedback from ${input.coachName}`,
     body: notificationPreview(input.preview),
-    link: "/athlete/dashboard",
+    link: "/athlete/dashboard?section=coach",
   };
 }
 
@@ -238,7 +238,7 @@ export function buildWorkoutAssigned(input: { coachName: string; workoutName: st
   return {
     title: "New workout assigned",
     body: `${input.coachName} assigned you "${input.workoutName}".`,
-    link: "/athlete/dashboard",
+    link: "/athlete/dashboard?section=workouts",
   };
 }
 
@@ -246,7 +246,7 @@ export function buildWorkoutUpdated(input: { coachName: string; workoutName: str
   return {
     title: "Workout template updated",
     body: `${input.coachName} updated "${input.workoutName}". Your current assignment is unaffected.`,
-    link: "/athlete/dashboard",
+    link: "/athlete/dashboard?section=workouts",
   };
 }
 
@@ -254,7 +254,7 @@ export function buildWorkoutDue(input: { workoutName: string }): TemplateResult 
   return {
     title: "Workout due today",
     body: `"${input.workoutName}" is on today's plan — mark it completed or skipped when you're done.`,
-    link: "/athlete/dashboard",
+    link: "/athlete/dashboard?section=workouts",
   };
 }
 
@@ -262,7 +262,7 @@ export function buildMealPlanAssigned(input: { coachName: string; planName: stri
   return {
     title: "New meal plan assigned",
     body: `${input.coachName} assigned you "${input.planName}".`,
-    link: "/athlete/dashboard",
+    link: "/athlete/dashboard?section=nutrition",
   };
 }
 
@@ -270,7 +270,7 @@ export function buildMealPlanUpdated(input: { coachName: string; planName: strin
   return {
     title: "Meal plan template updated",
     body: `${input.coachName} updated "${input.planName}". Your current assignment is unaffected.`,
-    link: "/athlete/dashboard",
+    link: "/athlete/dashboard?section=nutrition",
   };
 }
 
@@ -278,7 +278,7 @@ export function buildCoachVideoAssigned(input: { coachName: string; videoTitle: 
   return {
     title: "New video shared with you",
     body: `${input.coachName} shared "${input.videoTitle}" with you.`,
-    link: "/athlete/dashboard",
+    link: "/athlete/dashboard?section=coach",
   };
 }
 

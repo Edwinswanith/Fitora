@@ -222,6 +222,7 @@ function AthleteProfileContent({ data, onManageGoal }: { data: AthleteDashboardD
       <AppCard>
         <SectionHeader title="Personal" />
         <SettingsRow icon="scale-outline" label="Weight" value={profile?.weightKg ? `${profile.weightKg} kg` : "Not set"} />
+        <SettingsRow icon="flag-outline" label="Target Weight" value={profile?.targetWeightKg ? `${profile.targetWeightKg} kg` : "Not set"} />
         <SettingsRow icon="resize-outline" label="Height" value={profile?.heightCm ? `${profile.heightCm} cm` : "Not set"} />
         <SettingsRow icon="calendar-outline" label="Age" value={profile?.dob ? String(ageFromDob(profile.dob)) : "Not set"} />
         <SettingsRow icon="pulse-outline" label="Activity Level" value={titleCase(profile?.activityLevel) || "Not set"} />
@@ -333,6 +334,7 @@ function AthleteEditForm({
 }) {
   const profile = data.profile;
   const [weightKg, setWeightKg] = useState(profile?.weightKg != null ? String(profile.weightKg) : "");
+  const [targetWeightKg, setTargetWeightKg] = useState(profile?.targetWeightKg != null ? String(profile.targetWeightKg) : "");
   const [heightCm, setHeightCm] = useState(profile?.heightCm != null ? String(profile.heightCm) : "");
   const [dob, setDob] = useState(profile?.dob ? profile.dob.slice(0, 10) : "");
   const [biologicalSex, setBiologicalSex] = useState(profile?.biologicalSex ?? "");
@@ -352,9 +354,14 @@ function AthleteEditForm({
   async function save() {
     setError(null);
     const parsedWeight = weightKg.trim() ? Number(weightKg) : null;
+    const parsedTargetWeight = targetWeightKg.trim() ? Number(targetWeightKg) : null;
     const parsedHeight = heightCm.trim() ? Number(heightCm) : null;
     if (weightKg.trim() && !Number.isFinite(parsedWeight)) {
       setError("Weight must be a number.");
+      return;
+    }
+    if (targetWeightKg.trim() && !Number.isFinite(parsedTargetWeight)) {
+      setError("Target weight must be a number.");
       return;
     }
     if (heightCm.trim() && !Number.isFinite(parsedHeight)) {
@@ -373,6 +380,7 @@ function AthleteEditForm({
         allergies: splitList(allergies),
       };
       if (parsedWeight != null) body.weightKg = parsedWeight;
+      if (parsedTargetWeight != null) body.targetWeightKg = parsedTargetWeight;
       if (parsedHeight != null) body.heightCm = parsedHeight;
       if (dob.trim()) body.dob = dob.trim();
       if (biologicalSex) body.biologicalSex = biologicalSex;
@@ -420,6 +428,9 @@ function AthleteEditForm({
 
       <Text style={styles.formLabel}>Weight (kg)</Text>
       <TextInput value={weightKg} onChangeText={setWeightKg} keyboardType="numeric" style={styles.input} placeholder="e.g. 72" placeholderTextColor={colors.inkFaint} />
+
+      <Text style={styles.formLabel}>Target Weight (kg)</Text>
+      <TextInput value={targetWeightKg} onChangeText={setTargetWeightKg} keyboardType="numeric" style={styles.input} placeholder="e.g. 68" placeholderTextColor={colors.inkFaint} />
 
       <Text style={styles.formLabel}>Height (cm)</Text>
       <TextInput value={heightCm} onChangeText={setHeightCm} keyboardType="numeric" style={styles.input} placeholder="e.g. 178" placeholderTextColor={colors.inkFaint} />

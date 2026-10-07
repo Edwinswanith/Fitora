@@ -42,6 +42,14 @@ export type WorkoutAssignmentSummary = {
   exerciseCount: number;
   completedCount: number;
   progressPercent: number;
+  /**
+   * Only populated on items from the /workout-assignments?from=&to= range
+   * endpoint (used for upcomingWorkouts/recentWorkouts) — that endpoint
+   * returns the full WorkoutAssignmentView, not this lighter summary shape,
+   * so exerciseCount/completedCount/progressPercent are NOT reliable there.
+   * Prefer a loaded WorkoutAssignmentDetail's `exercises.length` instead.
+   */
+  assignedByRole?: string;
 };
 
 export type WorkoutAssignmentDetail = WorkoutAssignmentSummary & {
@@ -80,6 +88,7 @@ export type AthleteProfile = {
   dob?: string | null;
   heightCm?: number | null;
   weightKg?: number | null;
+  targetWeightKg?: number | null;
   timezone?: string | null;
   hydrationGoalMl?: number | null;
   fitnessGoal?: string | null;
@@ -209,10 +218,20 @@ export type PublicCoachProfile = {
   avgRating?: number | null;
   reviewCount?: number;
   pricingPlans?: PricingPlan[];
+  /** Distinct weekday numbers (0=Sun..6=Sat) this coach has ANY recurring availability rule for — a weekly pattern, never resolved bookable slots (those require an active relationship to compute). */
+  availableDays?: number[];
 };
 
 export type MarketplaceCoach = Omit<PublicCoachProfile, "pricingPlans" | "bio" | "philosophy" | "certifications"> & {
   startingPrice?: { amount: number; currency: string } | null;
+  hasAvailability?: boolean;
+};
+
+export type MarketplaceFilters = {
+  specialization?: string;
+  nutritionSupport?: boolean;
+  minExperience?: number;
+  minRating?: number;
 };
 
 export type PricingPlan = {
@@ -358,6 +377,8 @@ export type CoachPlanData = CoachHomeData & {
     workoutStatus: string | null;
     mealPlanName: string | null;
     mealPlanActive: boolean;
+    /** True when a fetch for this athlete failed — workoutName/mealPlanName are unknown, not genuinely empty. */
+    dataUnavailable?: boolean;
   }[];
 };
 
@@ -395,6 +416,7 @@ export type CoachClientDetailData = {
   trends: TrendPoint[];
   activity: ActivityItem[];
   nutrition: CoachClientNutrition | null;
+  sessions: CoachSession[];
   partialIssues: string[];
 };
 
@@ -655,6 +677,138 @@ export function workoutStatusText(workout?: WorkoutAssignmentSummary | null): st
   return `${workout.completedCount} / ${workout.exerciseCount} exercises complete`;
 }
 
+const MEAL_SLOT_ORDER: Record<string, number> = { breakfast: 0, lunch: 1, snack: 2, dinner: 3 };
+
+/** The next PlannedMeal for the day that hasn't been logged yet (by `Meal.plannedMealId`), in meal order. */
+export function nextPendingPlannedMeal(plannedMeals: PlannedMeal[], meals: Meal[]): PlannedMeal | null {
+  const loggedPlannedIds = new Set(meals.map((meal) => meal.plannedMealId).filter(Boolean) as string[]);
+  const pending = plannedMeals.filter((meal) => !loggedPlannedIds.has(meal.id));
+  if (!pending.length) return null;
+  return [...pending].sort((a, b) => (MEAL_SLOT_ORDER[a.mealType] ?? 99) - (MEAL_SLOT_ORDER[b.mealType] ?? 99))[0];
+}
+
+export type NextActionKind =
+  | "payment"
+  | "checkin"
+  | "workout_active"
+  | "workout_upcoming"
+  | "rpe"
+  | "session"
+  | "meal"
+  | "hydration"
+  | "complete";
+
+export type NextAction = {
+  kind: NextActionKind;
+  eyebrow: string;
+  title: string;
+  body: string;
+  ctaLabel: string;
+};
+
+/**
+ * The single highest-priority thing the athlete should do right now, derived
+ * from real dashboard state (Today's "what should I do next?" engine). Order
+ * matters: each branch below is only reached once every higher-priority
+ * condition is ruled out.
+ */
+export function deriveNextAction(data: AthleteDashboardData): NextAction {
+  if (data.subscription?.status === "payment_failed") {
+    return {
+      kind: "payment",
+      eyebrow: "Action needed",
+      title: "Payment failed",
+      body: "Update your payment method to keep training with your coach.",
+      ctaLabel: "View Membership",
+    };
+  }
+
+  if (data.daily?.readinessScore == null) {
+    return {
+      kind: "checkin",
+      eyebrow: "Next up",
+      title: "Daily Check-in",
+      body: "Complete your wellness check before training.",
+      ctaLabel: "Check In",
+    };
+  }
+
+  const workout = data.workouts[0] ?? null;
+  if (workout) {
+    const inProgress = workout.status === "in_progress" || (workout.completedCount > 0 && workout.completedCount < workout.exerciseCount);
+    if (inProgress) {
+      return {
+        kind: "workout_active",
+        eyebrow: "Next up",
+        title: workout.name,
+        body: `${workout.completedCount} / ${workout.exerciseCount} exercises complete`,
+        ctaLabel: "Continue Workout",
+      };
+    }
+    if (workout.status === "scheduled" && workout.completedCount === 0) {
+      return {
+        kind: "workout_upcoming",
+        eyebrow: "Next up",
+        title: workout.name,
+        body: `${workout.exerciseCount} exercise${workout.exerciseCount === 1 ? "" : "s"}`,
+        ctaLabel: "Start Workout",
+      };
+    }
+    if (workout.status === "completed") {
+      const rpeLogged = workout.slot ? data.daily?.rpeEntries?.[workout.slot] : data.daily?.rpe;
+      if (!rpeLogged) {
+        return {
+          kind: "rpe",
+          eyebrow: "Next up",
+          title: "Daily review",
+          body: "Training completed. Log your session effort.",
+          ctaLabel: "Log RPE",
+        };
+      }
+    }
+  }
+
+  const nextSession = nextFutureSession(data.sessions);
+  if (nextSession && dateKey(new Date(nextSession.scheduledStart)) === data.date) {
+    return {
+      kind: "session",
+      eyebrow: "Next up",
+      title: "Coach Session",
+      body: sessionClock(nextSession),
+      ctaLabel: "View Session",
+    };
+  }
+
+  const pendingMeal = nextPendingPlannedMeal(data.plannedMeals, data.meals);
+  if (pendingMeal) {
+    return {
+      kind: "meal",
+      eyebrow: "Next up",
+      title: pendingMeal.name || titleCase(pendingMeal.mealType) || "Meal",
+      body: `${titleCase(pendingMeal.mealType)} planned by your coach`,
+      ctaLabel: "Log Meal",
+    };
+  }
+
+  if (data.water && data.water.goalMl > 0 && data.water.totalMl < data.water.goalMl) {
+    return {
+      kind: "hydration",
+      eyebrow: "Next up",
+      title: "Hydration",
+      body: `${(Math.max(0, data.water.goalMl - data.water.totalMl) / 1000).toFixed(1)} L left to reach your goal`,
+      ctaLabel: "Log Water",
+    };
+  }
+
+  return {
+    kind: "complete",
+    eyebrow: "All set",
+    title: "Day complete",
+    body: "Nice work — you're all caught up for today.",
+    ctaLabel: "",
+  };
+}
+
 export async function loadAthleteDashboardData(): Promise<AthleteDashboardData> {
   const date = todayKey();
   const issues: string[] = [];
@@ -768,6 +922,54 @@ export async function loadWorkoutDetail(assignmentId: string): Promise<WorkoutAs
   return result.assignment;
 }
 
+export type MarketplaceData = {
+  coaches: MarketplaceCoach[];
+  total: number;
+  /** The athlete's current active coach, if any — from the real CoachAthleteAssignment, not just a paid subscription (see coach-discovery.tsx). */
+  currentCoachId: string | null;
+};
+
+/**
+ * Sends every filter the backend actually supports as a real query param
+ * (server/src/routes/marketplace.ts) — specialization/coachingType/language
+ * are exact-match on coach-entered free text with no enumeration endpoint,
+ * so the UI only offers values it has already seen in a loaded batch rather
+ * than a fabricated fixed list.
+ */
+export async function loadMarketplaceCoaches(filters: MarketplaceFilters = {}): Promise<MarketplaceData> {
+  const params = new URLSearchParams({ limit: "50" });
+  if (filters.specialization) params.set("specialization", filters.specialization);
+  if (filters.nutritionSupport) params.set("nutritionSupport", "true");
+  if (filters.minExperience != null) params.set("minExperience", String(filters.minExperience));
+  if (filters.minRating != null) params.set("minRating", String(filters.minRating));
+  const [coaches, assigned] = await Promise.all([
+    apiJson<{ coaches: MarketplaceCoach[]; total: number }>(`/api/marketplace/coaches?${params.toString()}`),
+    apiJson<{ coaches: { coachId: string; name: string }[] }>("/api/athlete/coaches").catch(() => ({ coaches: [] })),
+  ]);
+  return { coaches: coaches.coaches, total: coaches.total, currentCoachId: assigned.coaches[0]?.coachId ?? null };
+}
+
+export type CoachMarketplaceProfileData = {
+  profile: PublicCoachProfile;
+  reviews: CoachReview[];
+  reviewsTotal: number;
+};
+
+const REVIEWS_PAGE_SIZE = 5;
+
+export async function loadCoachMarketplaceProfile(coachId: string): Promise<CoachMarketplaceProfileData> {
+  const [profileResult, reviewsResult] = await Promise.all([
+    apiJson<{ profile: PublicCoachProfile }>(`/api/marketplace/coaches/${coachId}`),
+    apiJson<{ reviews: CoachReview[]; total: number }>(`/api/marketplace/coaches/${coachId}/reviews?limit=${REVIEWS_PAGE_SIZE}`),
+  ]);
+  return { profile: profileResult.profile, reviews: reviewsResult.reviews, reviewsTotal: reviewsResult.total };
+}
+
+export async function loadMoreCoachReviews(coachId: string, page: number): Promise<CoachReview[]> {
+  const result = await apiJson<{ reviews: CoachReview[] }>(`/api/marketplace/coaches/${coachId}/reviews?limit=${REVIEWS_PAGE_SIZE}&page=${page}`);
+  return result.reviews;
+}
+
 export async function loadCoachHomeData(): Promise<CoachHomeData> {
   const date = todayKey();
   const issues: string[] = [];
@@ -825,11 +1027,13 @@ export async function loadCoachPlanData(): Promise<CoachPlanData> {
   const routineStatus = await Promise.all(
     base.roster.slice(0, 20).map(async (athlete) => {
       const [todayWorkout, mealPlanAssignments] = await Promise.all([
-        apiJson<{ assignments: WorkoutAssignmentSummary[] }>(`/api/coach/athletes/${athlete.athleteId}/workout-assignments?date=${base.date}`).catch(() => null),
-        apiJson<{ assignments: { name: string; status: string; isPast: boolean }[] }>(`/api/coach/athletes/${athlete.athleteId}/meal-plan-assignments`).catch(() => null),
+        apiJson<{ assignments: WorkoutAssignmentSummary[] }>(`/api/coach/athletes/${athlete.athleteId}/workout-assignments?date=${base.date}`).catch(() => "error" as const),
+        apiJson<{ assignments: { name: string; status: string; isPast: boolean }[] }>(`/api/coach/athletes/${athlete.athleteId}/meal-plan-assignments`).catch(() => "error" as const),
       ]);
-      const workout = todayWorkout?.assignments?.[0] ?? null;
-      const mealPlan = mealPlanAssignments?.assignments?.find((a) => a.status === "active") ?? mealPlanAssignments?.assignments?.[0] ?? null;
+      const dataUnavailable = todayWorkout === "error" || mealPlanAssignments === "error";
+      if (dataUnavailable) issues.push(`routine status: ${athlete.name}`);
+      const workout = todayWorkout === "error" ? null : todayWorkout?.assignments?.[0] ?? null;
+      const mealPlan = mealPlanAssignments === "error" ? null : mealPlanAssignments?.assignments?.find((a) => a.status === "active") ?? mealPlanAssignments?.assignments?.[0] ?? null;
       return {
         athleteId: athlete.athleteId,
         athleteName: athlete.name,
@@ -837,6 +1041,7 @@ export async function loadCoachPlanData(): Promise<CoachPlanData> {
         workoutStatus: workout?.status ?? null,
         mealPlanName: mealPlan?.name ?? null,
         mealPlanActive: mealPlan ? mealPlan.status === "active" && !mealPlan.isPast : false,
+        dataUnavailable,
       };
     })
   );
@@ -854,7 +1059,7 @@ export async function loadCoachPlanData(): Promise<CoachPlanData> {
 export async function loadCoachContentData(): Promise<CoachContentData> {
   const issues: string[] = [];
   const [videos, roster, templates] = await Promise.all([
-    optional("videos", apiJson<{ videos: CoachVideo[] }>("/api/coach/videos"), issues),
+    optional("videos", apiJson<{ videos: CoachVideo[] }>("/api/coach/videos?includeArchived=1"), issues),
     optional("clients", apiJson<{ athletes: CoachRosterAthlete[] }>("/api/coach/athletes"), issues),
     optional("workout templates", apiJson<{ templates: CoachPlanData["templates"] }>("/api/workout-templates"), issues),
   ]);
@@ -897,12 +1102,13 @@ export async function loadCoachProfileData(): Promise<CoachProfileData> {
 export async function loadCoachClientDetailData(athleteId: string): Promise<CoachClientDetailData> {
   const date = todayKey();
   const issues: string[] = [];
-  const [daily, workouts, trends, activity, nutrition] = await Promise.all([
+  const [daily, workouts, trends, activity, nutrition, sessions] = await Promise.all([
     optional("daily card", apiJson<{ card: DailyCard; workoutAssignments?: WorkoutAssignmentSummary[] }>(`/api/coach/athletes/${athleteId}/daily-card?date=${date}`), issues),
     optional("workouts", apiJson<{ assignments: WorkoutAssignmentSummary[] }>(`/api/coach/athletes/${athleteId}/workout-assignments?date=${date}`), issues),
     optional("trends", apiJson<{ series: TrendPoint[] }>(`/api/coach/athletes/${athleteId}/trends?days=28`), issues),
     optional("activity", apiJson<{ items: ActivityItem[] }>(`/api/coach/athletes/${athleteId}/activity?limit=20`), issues),
     optional("nutrition", apiJson<CoachClientNutrition>(`/api/coach/athletes/${athleteId}/nutrition?date=${date}`), issues),
+    optional("sessions", apiJson<{ sessions: CoachSession[] }>(`/api/coach/sessions?athleteId=${athleteId}`), issues),
   ]);
   return {
     athleteId,
@@ -911,6 +1117,7 @@ export async function loadCoachClientDetailData(athleteId: string): Promise<Coac
     trends: trends?.series ?? [],
     activity: activity?.items ?? [],
     nutrition: nutrition ?? null,
+    sessions: sessions?.sessions ?? [],
     partialIssues: issues,
   };
 }

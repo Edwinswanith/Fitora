@@ -1,11 +1,11 @@
 import { useCallback, useEffect, useState } from "react";
-import { ActivityIndicator, KeyboardAvoidingView, Platform, Pressable, RefreshControl, ScrollView, StyleSheet, View } from "react-native";
+import { KeyboardAvoidingView, Platform, Pressable, RefreshControl, ScrollView, StyleSheet, TextInput, View } from "react-native";
 import { Text } from "../../components/AppText";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { Ionicons } from "@expo/vector-icons";
 import { apiFetch, apiJson, isAuthFailure, ApiError } from "../../lib/api";
 import { ROLE_THEMES, colors, radius } from "../../lib/theme";
-import { Banner, Card, Label, Muted, PrimaryButton, TextField } from "../../components/ui";
+import { ActionButton, AppCard, EmptyState, ErrorState, LoadingState, StatusChip } from "../../components/fitora";
 import { ScreenHeader } from "../../components/ScreenHeader";
 import { useTourHighlight, useTourScrollView } from "../../lib/tour/MobileTourProvider";
 import { useSpotlightRef } from "../../lib/tour/SpotlightTarget";
@@ -117,48 +117,55 @@ export default function Coaches() {
           />
 
           {created ? (
-            <Card style={[styles.created, { gap: 10 }]}>
+            <AppCard style={[styles.created, { gap: 10 }]}>
               <Text style={styles.createdTitle}>Coach added — {created.name}</Text>
               <Secret label="Email" value={created.email} />
               <Secret label="Temporary password" value={created.tempPassword} />
               <Text style={styles.once}>Shown once — copy it now.</Text>
-            </Card>
+            </AppCard>
           ) : null}
 
           {adding ? (
-            <Card style={{ gap: 14, marginBottom: 16 }}>
+            <AppCard style={{ gap: 14, marginBottom: 16 }}>
               <View>
-                <Label>Full name</Label>
-                <View style={{ marginTop: 6 }}>
-                  <TextField value={name} onChangeText={setName} placeholder="Jane Doe" autoCapitalize="words" />
-                </View>
+                <Text style={styles.fieldLabel}>Full name</Text>
+                <TextInput
+                  value={name}
+                  onChangeText={setName}
+                  placeholder="Jane Doe"
+                  placeholderTextColor={colors.inkFaint}
+                  autoCapitalize="words"
+                  style={[styles.input, { marginTop: 6 }]}
+                />
               </View>
               <View>
-                <Label>Email</Label>
-                <View style={{ marginTop: 6 }}>
-                  <TextField value={email} onChangeText={setEmail} placeholder="jane@academy.com" autoCapitalize="none" autoCorrect={false} keyboardType="email-address" />
-                </View>
+                <Text style={styles.fieldLabel}>Email</Text>
+                <TextInput
+                  value={email}
+                  onChangeText={setEmail}
+                  placeholder="jane@academy.com"
+                  placeholderTextColor={colors.inkFaint}
+                  autoCapitalize="none"
+                  autoCorrect={false}
+                  keyboardType="email-address"
+                  style={[styles.input, { marginTop: 6 }]}
+                />
               </View>
-              {formError ? <Banner kind="error">{formError}</Banner> : null}
-              <PrimaryButton label="Create coach" onPress={submit} loading={saving} accent={accent} accentInk="#fff" />
-            </Card>
+              {formError ? <Text style={styles.errorText}>{formError}</Text> : null}
+              <ActionButton label={saving ? "Creating..." : "Create coach"} icon="person-add-outline" variant="filled" onPress={submit} disabled={saving} />
+            </AppCard>
           ) : null}
 
           {loading && !coaches && !forbidden ? (
-            <ActivityIndicator color={accent} style={{ marginTop: 40 }} />
+            <LoadingState label="Loading coaches..." />
           ) : forbidden ? (
-            <Card>
-              <Text style={styles.empty}>Owner only</Text>
-              <Muted style={{ marginTop: 4 }}>Only the academy owner can manage coaches.</Muted>
-            </Card>
+            <EmptyState icon="lock-closed-outline" title="Owner only" body="Only the academy owner can manage coaches." />
           ) : error ? (
-            <Card>
-              <Muted>{error}</Muted>
-            </Card>
+            <ErrorState message={error} onRetry={load} />
           ) : coaches && coaches.length > 0 ? (
             <View style={{ gap: 10 }}>
               {coaches.map((c) => (
-                <Card key={c.userId} style={styles.row}>
+                <AppCard key={c.userId} style={styles.row}>
                   <View style={[styles.avatar, { backgroundColor: accent + "1e" }]}>
                     <Ionicons name="person" size={18} color={accent} />
                   </View>
@@ -166,18 +173,12 @@ export default function Coaches() {
                     <Text style={styles.name}>{c.name}</Text>
                     <Text style={styles.meta}>{c.email}</Text>
                   </View>
-                  {c.isAcademyOwner ? (
-                    <View style={[styles.ownerChip, { backgroundColor: accent + "1e" }]}>
-                      <Text style={[styles.ownerText, { color: accent }]}>OWNER</Text>
-                    </View>
-                  ) : null}
-                </Card>
+                  {c.isAcademyOwner ? <StatusChip label="OWNER" tone="primary" /> : null}
+                </AppCard>
               ))}
             </View>
           ) : (
-            <Card>
-              <Text style={styles.empty}>No coaches found.</Text>
-            </Card>
+            <EmptyState icon="people-outline" title="No coaches found" />
           )}
         </ScrollView>
       </KeyboardAvoidingView>
@@ -197,17 +198,25 @@ function Secret({ label, value }: { label: string; value: string }) {
 const styles = StyleSheet.create({
   safe: { flex: 1, backgroundColor: colors.surface },
   content: { padding: 20, paddingTop: 12, paddingBottom: 32 },
-  headerRow: { flexDirection: "row", alignItems: "center", gap: 12 },
   addBtn: { flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 6, height: 40, paddingHorizontal: 14, borderRadius: 12 },
   addBtnLabel: { color: "#fff", fontWeight: "800", fontSize: 13 },
-  title: { fontSize: 26, fontWeight: "800", color: colors.ink, letterSpacing: -0.4 },
-  row: { flexDirection: "row", alignItems: "center", gap: 14, paddingVertical: 14 },
+  row: { flexDirection: "row", alignItems: "center", gap: 14 },
   avatar: { height: 40, width: 40, borderRadius: 20, alignItems: "center", justifyContent: "center" },
   name: { fontSize: 16, fontWeight: "700", color: colors.ink },
   meta: { fontSize: 13, color: colors.inkMuted, marginTop: 2 },
-  ownerChip: { borderRadius: 8, paddingHorizontal: 8, paddingVertical: 4 },
-  ownerText: { fontSize: 10, fontWeight: "800", letterSpacing: 1 },
-  empty: { fontSize: 15, fontWeight: "700", color: colors.ink },
+  fieldLabel: { color: colors.inkMuted, fontSize: 11, fontWeight: "900", textTransform: "uppercase", letterSpacing: 0.4 },
+  input: {
+    minHeight: 48,
+    borderRadius: radius.md,
+    borderWidth: 1,
+    borderColor: colors.lineStrong,
+    backgroundColor: colors.surfaceInset,
+    paddingHorizontal: 14,
+    color: colors.ink,
+    fontSize: 15,
+    fontWeight: "600",
+  },
+  errorText: { color: colors.bad, fontSize: 13, fontWeight: "800" },
   created: { borderColor: colors.ok + "55", marginBottom: 16 },
   createdTitle: { fontSize: 15, fontWeight: "800", color: colors.ink },
   secret: { backgroundColor: colors.surfaceInset, borderRadius: radius.md, padding: 12 },

@@ -1,5 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { ActivityIndicator, Pressable, StyleSheet, View } from "react-native";
+import { useLocalSearchParams } from "expo-router";
+import { Ionicons } from "@expo/vector-icons";
 import { Text } from "../../components/AppText";
 import {
   ActionButton,
@@ -22,10 +24,15 @@ import { addDays, loadCoachPlanData, titleCase, todayKey, useAsyncData, type Coa
 type Tab = "assignments" | "templates" | "routines";
 type PlanMode = "workout" | "tasks" | "meal" | "routine";
 
+const PLAN_MODES: PlanMode[] = ["workout", "tasks", "meal", "routine"];
+
 export default function CoachPlan() {
+  const params = useLocalSearchParams<{ athleteId?: string; mode?: string }>();
+  const initialAthleteId = typeof params.athleteId === "string" ? params.athleteId : undefined;
+  const initialMode = PLAN_MODES.includes(params.mode as PlanMode) ? (params.mode as PlanMode) : null;
   const state = useAsyncData(loadCoachPlanData, [], "coach-plan");
   const [tab, setTab] = useState<Tab>("assignments");
-  const [mode, setMode] = useState<PlanMode | null>(null);
+  const [mode, setMode] = useState<PlanMode | null>(initialMode);
 
   if (state.loading && !state.data) {
     return (
@@ -57,10 +64,19 @@ export default function CoachPlan() {
           { value: "routines", label: "Routines", icon: "repeat-outline" },
         ]}
       />
-      {mode ? <PlanComposer data={state.data} mode={mode} onModeChange={setMode} onDone={state.reload} /> : null}
+      {mode ? (
+        <PlanComposer data={state.data} mode={mode} onModeChange={setMode} onDone={state.reload} initialAthleteId={initialAthleteId} />
+      ) : null}
       {tab === "assignments" ? <Assignments data={state.data} openMode={setMode} showTemplates={() => setTab("templates")} /> : null}
       {tab === "templates" ? <Templates data={state.data} openMode={setMode} /> : null}
       {tab === "routines" ? <Routines data={state.data} openMode={setMode} /> : null}
+      {state.data.partialIssues.length ? (
+        <AlertBanner
+          tone="primary"
+          title="Some plan data is unavailable"
+          body={`${state.data.partialIssues.slice(0, 3).join(", ")} - pull to refresh to retry.`}
+        />
+      ) : null}
     </ScreenContainer>
   );
 }
@@ -88,6 +104,7 @@ function Assignments({
     }
     return Array.from(map.values());
   }, [data.cards]);
+  const planningGaps = useMemo(() => data.routineStatus.filter((status) => !status.workoutName && !status.dataUnavailable), [data.routineStatus]);
 
   return (
     <>
@@ -146,12 +163,16 @@ function Assignments({
         )}
       </AppCard>
 
-      <AlertBanner
-        title="Planning gaps"
-        body={data.roster.length ? "Review clients without upcoming workouts from the roster before assigning a routine." : "Add clients before assigning plans."}
-        action="Review"
-        onPress={() => openMode("routine")}
-      />
+      {planningGaps.length ? (
+        <AlertBanner
+          title="Planning gaps"
+          body={`${planningGaps.length} client${planningGaps.length === 1 ? "" : "s"} - ${planningGaps.map((status) => status.athleteName).join(", ")} - ${planningGaps.length === 1 ? "has" : "have"} no workout assigned today.`}
+          action="Review"
+          onPress={() => openMode("routine")}
+        />
+      ) : data.roster.length ? (
+        <AlertBanner tone="primary" title="No planning gaps" body="Every client has a workout assigned today." />
+      ) : null}
 
       <SectionHeader title="Templates" action={data.templates.length ? "View Templates" : undefined} onAction={showTemplates} />
       <AppCard>
@@ -279,13 +300,20 @@ function PlanComposer({
   mode,
   onModeChange,
   onDone,
+  initialAthleteId,
 }: {
   data: CoachPlanData;
   mode: PlanMode;
   onModeChange: (mode: PlanMode | null) => void;
   onDone: () => void;
+  initialAthleteId?: string;
 }) {
-  const [selectedAthleteIds, setSelectedAthleteIds] = useState<string[]>(() => data.roster[0]?.athleteId ? [data.roster[0].athleteId] : []);
+  const [selectedAthleteIds, setSelectedAthleteIds] = useState<string[]>(() => {
+    const seedId = initialAthleteId && data.roster.some((athlete) => athlete.athleteId === initialAthleteId)
+      ? initialAthleteId
+      : data.roster[0]?.athleteId;
+    return seedId ? [seedId] : [];
+  });
   const [selectedTemplateId, setSelectedTemplateId] = useState(data.templates[0]?.id ?? "");
   const [selectedMealPlanId, setSelectedMealPlanId] = useState(data.mealPlans[0]?.id ?? "");
   const [scheduledDate, setScheduledDate] = useState(mode === "meal" ? todayKey() : addDays(todayKey(), 1));
@@ -446,7 +474,7 @@ function PlanComposer({
           <Text style={styles.label}>Workout template</Text>
           <View style={styles.stack}>
             {data.templates.length ? (
-              data.templates.slice(0, 4).map((template) => (
+              data.templates.map((template) => (
                 <ChoiceRow
                   key={template.id}
                   selected={selectedTemplateId === template.id}
@@ -467,7 +495,7 @@ function PlanComposer({
           <Text style={styles.label}>Meal plan</Text>
           <View style={styles.stack}>
             {data.mealPlans.length ? (
-              data.mealPlans.slice(0, 4).map((plan) => (
+              data.mealPlans.map((plan) => (
                 <ChoiceRow
                   key={plan.id}
                   selected={selectedMealPlanId === plan.id}
@@ -488,6 +516,7 @@ function PlanComposer({
         {data.roster.map((client) => (
           <ChoiceRow
             key={client.athleteId}
+            multi
             selected={selectedAthleteIds.includes(client.athleteId)}
             title={client.name}
             subtitle={client.sport || "Client"}
@@ -504,10 +533,23 @@ function PlanComposer({
   );
 }
 
-function ChoiceRow({ selected, title, subtitle, onPress }: { selected: boolean; title: string; subtitle?: string; onPress: () => void }) {
+/**
+ * `multi` swaps the indicator from a round radio (implying only one choice
+ * can be active, as with template/meal-plan pickers) to a square checkbox
+ * (implying several can be active at once, as with the client picker) — the
+ * indicator shape communicates the real selection behavior instead of
+ * contradicting it.
+ */
+function ChoiceRow({ selected, title, subtitle, onPress, multi }: { selected: boolean; title: string; subtitle?: string; onPress: () => void; multi?: boolean }) {
   return (
     <Pressable onPress={onPress} style={[styles.choiceRow, selected ? styles.choiceRowActive : null]}>
-      <View style={[styles.radio, selected ? styles.radioOn : null]} />
+      {multi ? (
+        <View style={[styles.checkbox, selected ? styles.checkboxOn : null]}>
+          {selected ? <Ionicons name="checkmark" size={12} color="#fff" /> : null}
+        </View>
+      ) : (
+        <View style={[styles.radio, selected ? styles.radioOn : null]} />
+      )}
       <View style={{ flex: 1, minWidth: 0 }}>
         <Text style={styles.choiceTitle} numberOfLines={1}>{title}</Text>
         {subtitle ? <Text style={styles.choiceSub} numberOfLines={1}>{subtitle}</Text> : null}
@@ -578,6 +620,8 @@ const styles = StyleSheet.create({
   choiceRowActive: { borderColor: colors.primary, backgroundColor: colors.primarySoft },
   radio: { width: 15, height: 15, borderRadius: 8, borderWidth: 2, borderColor: colors.inkFaint },
   radioOn: { borderColor: colors.primary, backgroundColor: colors.primary },
+  checkbox: { width: 18, height: 18, borderRadius: 5, borderWidth: 2, borderColor: colors.inkFaint, alignItems: "center", justifyContent: "center" },
+  checkboxOn: { borderColor: colors.primary, backgroundColor: colors.primary },
   choiceTitle: { color: colors.ink, fontSize: 13, lineHeight: 17, fontWeight: "900" },
   choiceSub: { color: colors.inkMuted, fontSize: 11, lineHeight: 15 },
   submitButton: { minHeight: 42, borderRadius: 12, backgroundColor: colors.primary, alignItems: "center", justifyContent: "center" },

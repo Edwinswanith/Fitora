@@ -1,5 +1,192 @@
 # Fitora Mobile Frontend Design QA
 
+## Athlete Progress Redesign - 2026-09-24
+
+**Source Visual Truth**
+- Reference image: `c:\Users\bizzz\Downloads\c7580c52-4899-4155-8fdb-b343a3141f97.png`.
+- Request brief: `C:\Users\bizzz\.codex\attachments\111dd62a-44d8-4009-8d0a-f524b9c60d84\pasted-text.txt`.
+
+**Native Android Evidence**
+- Device: `emulator-5554`, package `app.fitora.coaching`.
+- Standard viewport: 1080 x 2400.
+- Final screenshot: `qa-artifacts\athlete-progress-warningfix-final.png`.
+- Interaction evidence: `qa-artifacts\athlete-progress-warningfix-final.xml`, `athlete-progress-range-7d.xml`, `athlete-progress-range-3m.xml`, `athlete-progress-range-4w.xml`, `athlete-progress-category-body-final.xml`, `athlete-progress-category-nutrition-final.xml`, `athlete-progress-category-recovery-final.xml`, and `athlete-progress-category-training-final.xml`.
+
+**Comparison History**
+- Pass 1: the screen rendered, but the hero summary and weekly blocks were too tall, some metric labels truncated, and the hero trend artwork competed with the metric cards.
+- Final pass: the vertical hierarchy was tightened, metric text was made readable at Android scale, the hero chart was clipped behind content, and the detail section is visible in the first viewport.
+
+**Final Notes**
+- Real backend/app state drives the screen. The QA athlete currently shows no check-in today, low/needs-attention recovery, 20% training consistency, 14% nutrition adherence, 1/5 training this week, 1/7 nutrition/check-ins, and no coach feedback.
+- These values intentionally differ from the static reference, which uses idealized sample data such as strong progress, 100% consistency, and 72% nutrition adherence.
+- Coach Feedback remains present and is disabled when no coach comments are available for the selected period.
+- The Trends service now supports the 3M range by allowing up to 90 days of trend history.
+
+**Interaction Test Results**
+- Progress tab opens and remains selected in bottom navigation.
+- `7D`, `4W`, and `3M` update selected state and section labels to `LAST 7 DAYS`, `LAST 4 WEEKS`, and `LAST 3 MONTHS`.
+- `Body`, `Nutrition`, `Recovery`, and `Training` swap the active detail card.
+- Today to Progress after reload/focus works, and the final screenshot was recaptured without the React duplicate-key warning overlay.
+- The top-right calendar icon is wired to the Trends route in code, but the emulator tap did not navigate during QA; this remains listed as an issue to re-test.
+
+**Verification**
+- `npm run typecheck --workspace mobile` passed.
+- `npm run typecheck --workspace server` passed.
+- `npm run lint --workspace mobile` passed with one existing warning in `mobile/src/lib/__tests__/voiceLanguage.test.ts`.
+- `npm test --workspace mobile -- --runInBand` passed: 12 suites, 153 tests.
+- `npm test --workspace server -- --runInBand` passed: 61 suites, 615 tests.
+- Final result: passed for Athlete Progress native Android visual QA, with the calendar tap issue noted above.
+
+## Athlete Coach Redesign - 2026-09-24
+
+**Source Visual Truth**
+- Reference image: `c:\Users\bizzz\Downloads\b86a2a12-3230-44ac-b63b-dad1d107e4ac.png`.
+- Request brief: `C:\Users\bizzz\.codex\attachments\5dc6e5b0-98d0-42ff-9d33-cbd2feef61f1\pasted-text.txt`.
+
+**Native Android Evidence**
+- Device: `emulator-5554`, package `app.fitora.coaching`.
+- Standard viewport: 1080 x 2400.
+- Final screenshot: `qa-artifacts\athlete-coach-redesign-final-postqa.png`.
+- Interaction evidence: `qa-artifacts\athlete-coach-message-open.xml`, `athlete-coach-profile-open.xml`, `athlete-coach-reply-open.xml`, `athlete-coach-training-row.xml`, `athlete-coach-nutrition-row.xml`, `athlete-coach-videos-panel.xml`, `athlete-coach-lower.xml`, `athlete-coach-switch-alert.xml`, and `athlete-coach-leave-alert.xml`.
+
+**Comparison History**
+- Pass 1: the screen rendered, but the Coach hero was taller than the reference and the fixed Ask Agent control covered lower program-row affordances on this emulator height.
+- Final pass: the Coach hero was tightened, the no-session card was reduced, and program-row right gutters were reserved so chevrons stay clear of the floating control.
+
+**Final Notes**
+- Real backend/app state drives the screen. The QA athlete has no upcoming coaching session, no direct coach messages, no assigned videos, and no active membership, so those areas show honest empty or discovery states rather than mocked reference content.
+- The coach hero uses the real coach profile fields, avatar endpoint/fallback initials, rating/reviews, experience, and specialties.
+- `View Plans` routes to coach discovery when no active subscription exists; active subscriptions keep the inline membership details path.
+- The no-coach fallback remains data-driven and was not exercised on this seeded athlete because Coach Kumar is assigned.
+
+**Interaction Test Results**
+- Coach tab opens and remains selected in bottom navigation.
+- `Message` opens and closes the inline conversation panel with composer and `Send Message`.
+- `View Profile` opens the existing athlete coach profile route and Back returns to Coach.
+- Latest Message `Reply` opens the same conversation panel.
+- Training row switches to the redesigned Training tab.
+- Nutrition row switches to the redesigned Nutrition tab.
+- Coach Videos opens the inline empty state for the current no-video data.
+- `View Plans` opens coach discovery for the current no-subscription data.
+- `Switch Coach` shows the confirmation dialog; it was cancelled.
+- `Leave Coach` shows the destructive confirmation dialog; it was cancelled.
+
+**Verification**
+- `npm run typecheck --workspace mobile` passed.
+- `npm run lint --workspace mobile` passed with one existing warning in `mobile/src/lib/__tests__/voiceLanguage.test.ts`.
+- `npm test --workspace mobile -- --runInBand` passed: 12 suites, 153 tests.
+- Final result: passed for Athlete Coach native Android QA.
+
+## Athlete Nutrition Redesign - 2026-09-24
+
+**Source Visual Truth**
+- Reference image: `c:\Users\bizzz\Downloads\8d6b0db0-9e43-4240-b465-ea1da55315db.png`.
+- Request brief: `C:\Users\bizzz\.codex\attachments\126eb5b6-53fe-4857-8174-5ac339cdd3a4\pasted-text.txt`.
+
+**Native Android Evidence**
+- Device: `emulator-5554`, package `app.fitora.coaching`.
+- Standard viewport: 1080 x 2400, density 420, font scale 1.0.
+- Final standard screenshot: `qa-artifacts\athlete-nutrition-redesign-final-postqa.png`.
+- Interaction evidence: `qa-artifacts\athlete-nutrition-logmeal.xml`, `athlete-nutrition-scan.xml`, `athlete-nutrition-addmeal.xml`, `athlete-nutrition-hydration-add.xml`, `athlete-nutrition-water-view.xml`, `athlete-nutrition-profile-cta.xml`, `athlete-nutrition-refresh.xml`, and `athlete-nutrition-ask-agent.xml`.
+
+**Comparison History**
+- Pass 1: the redesigned hierarchy rendered, but the Ask Agent FAB overlapped the Hydration `View` button in the current no-target data state.
+- Pass 2: Hydration actions were narrowed to leave a clear FAB lane while keeping all three quick actions visible.
+- Final pass: the screen was recaptured after interaction testing with water updated to `1.0 / 3.0 L`.
+
+**Final Notes**
+- Real backend/app state drove all values. The QA athlete currently has no nutrition target, so the screen correctly shows the setup card instead of the reference calorie/macro summary.
+- No logged or coach-planned meals were present in the current QA data, so meal rows show honest `Not logged` states and the Coach Meal Plan card is hidden.
+- The Hydration card uses the existing water API and reflects the quick-add interaction.
+- The calendar icon is retained from the existing app bar, but the current app has no dedicated Nutrition date-picker flow.
+
+**Interaction Test Results**
+- Nutrition tab opens and remains selected in bottom navigation.
+- `Log Meal` opens the existing manual log screen.
+- `Scan Food` opens the existing scan/photo flow.
+- Meal-row `Add` opens the manual log screen.
+- `+ 250 ml` updates Hydration from `0.8 / 3.0 L` to `1.0 / 3.0 L`; `View` opens the existing water detail screen.
+- `Complete Profile` opens the existing profile/account screen.
+- Pull-to-refresh completed and returned to the Nutrition screen.
+- Ask Agent opened the Android microphone permission prompt on this emulator; the prompt was dismissed.
+
+**Verification**
+- `npm run typecheck --workspace mobile` passed.
+- `npm run lint --workspace mobile` passed with one existing warning in `mobile/src/lib/__tests__/voiceLanguage.test.ts`.
+- `npm test --workspace mobile -- --runInBand` passed: 12 suites, 153 tests.
+- Final result: passed for Athlete Nutrition native Android QA.
+
+## Athlete Training Redesign - 2026-09-24
+
+**Source Visual Truth**
+- Reference image: inline Athlete Training mockup attached in the prompt.
+- Request brief: `C:\Users\bizzz\.codex\attachments\c217d71f-400b-4088-8b70-4be106db4708\pasted-text.txt`.
+
+**Native Android Evidence**
+- Device: `emulator-5554`, package `app.fitora.coaching`.
+- Standard viewport: 1080 x 2400, density 420, font scale 1.0.
+- Final standard screenshot: `qa-artifacts\athlete-training-redesign-final-standard.png`.
+- Small viewport check: `qa-artifacts\athlete-training-redesign-small.png` at 900 x 2000.
+- Large viewport check: `qa-artifacts\athlete-training-redesign-large.png` at 1440 x 3120.
+- Interaction evidence: `qa-artifacts\athlete-training-upcoming.xml`, `athlete-training-history.xml`, `athlete-training-date-mon.xml`, `athlete-training-date-thu.xml`, `athlete-training-expanded.xml`, `athlete-training-active-workout.xml`, and `athlete-training-back-from-active.xml`.
+
+**Comparison History**
+- Pass 1: the new Training hierarchy rendered, but the pull-to-refresh spinner was captured, the Ask Agent control still used the Today labeled pill, and skipped exercises showed noisy set-count values.
+- Pass 2: the Training tab and route-state sync were corrected; skipped rows stopped showing misleading set progress.
+- Final refinement: the workout hero was tightened and the title was fit to one line on the standard Android viewport, which exposed more of Up Next and brought the first screen closer to the reference.
+
+**Final Notes**
+- Real app state drives all visible values: the current QA workout is completed, so the hero shows `Completed`, `6 / 6`, and `View Summary` rather than the reference's not-started state.
+- The current QA data has no future workout assignment, so Up Next correctly shows `No upcoming workout scheduled.` instead of fabricating `Lower Body Power`.
+- The hero visual uses the existing Fitora torso/workout asset rather than the reference dumbbell render.
+- The safe coach-name helper renders `Assigned by Coach Kumar` without duplicating `Coach`.
+- The compact Ask Agent FAB is circular on Training and stays clear of the primary CTA and bottom navigation; on the short small viewport, lower preview content remains scrollable under the fixed floating control.
+
+**Interaction Test Results**
+- Training tab opens and remains selected in bottom navigation.
+- Today, Upcoming, and History switch correctly; the current dataset renders a real empty Upcoming state.
+- Weekly date selection works; selecting Monday and returning to Thursday updates the selected training day and restores the workout.
+- `View Summary` opens the existing `/athlete/active-workout` flow for the correct assignment and Back returns to Training.
+- Exercise Preview reflects the assignment snapshot and `View all` expands the full exercise list inline.
+- Returning from Active Workout leaves Training intact and triggers the dashboard refresh path.
+
+**Verification**
+- `npm run typecheck --workspace mobile` passed.
+- `npm run lint --workspace mobile` passed with one existing warning in `mobile/src/lib/__tests__/voiceLanguage.test.ts`.
+- `npm test --workspace mobile` passed: 12 suites, 153 tests.
+- Final result: passed for Athlete Training native Android QA.
+
+## Athlete Today Redesign - 2026-09-24
+
+**Source Visual Truth**
+- Reference image: `c:\Users\bizzz\Downloads\0d7f88e4-f14b-4325-9539-06f61455bd71.png`.
+- Request brief: `C:\Users\bizzz\.codex\attachments\225a26e4-3603-4e2f-a1ec-35a0eafb8a8d\pasted-text.txt`.
+
+**Native Android Evidence**
+- Device: `emulator-5554`, package `app.fitora.coaching`.
+- Standard viewport: 1080 x 2400, density 420, font scale 1.0.
+- Final standard screenshot: `qa-artifacts\athlete-today-redesign-final-standard.png`.
+- Small viewport check: `qa-artifacts\athlete-today-redesign-small-final2.png` at 900 x 2000.
+- Large viewport check: `qa-artifacts\athlete-today-redesign-large-final.png` at 1440 x 3120.
+
+**Comparison History**
+- Pass 1: the Today hierarchy was present, but the first layout was too tall; Daily Status crowded the Ask Agent control and Coach Update fell below the first viewport.
+- Pass 2: card density was improved, but Daily Status wrapped into one column after an overly wide percentage tile tweak.
+- Pass 3: two-column status layout was restored, Coach Update became visible, and the Ask Agent pill was moved clear of Coach Update on the standard viewport.
+- Responsive pass: the small Android viewport used a compact Today-only Ask Agent pill and two-line schedule workout titles so visible metric text and bottom navigation stayed readable.
+
+**Final Notes**
+- Real backend/app state drove all values in the capture: readiness 45 Low, completed Upper Body Strength, 0.8 / 3.0 L water, 0 kcal nutrition, 1 / 1 training complete, and no new coach update.
+- Current QA data has no nutrition target schedule item and no tomorrow item, so those rows are honestly hidden instead of fabricated.
+- The Next Up visual uses the existing Fitora workout torso asset rather than the exact dumbbell render from the reference.
+- Android status bar and emulator chrome differ from the iOS-like static reference.
+
+**Verification**
+- `npm run typecheck --workspace mobile` passed.
+- `npm run lint --workspace mobile` passed with one existing warning in `mobile/src/lib/__tests__/voiceLanguage.test.ts`.
+- `npm test --workspace mobile` passed: 12 suites, 153 tests.
+- Final result: passed for Athlete Today native Android QA.
+
 **Source Visual Truth**
 - Athlete Today: `c:\Users\bizzz\Downloads\b21fcd41-1af0-4f23-baf9-6b6c88523f41.png` - 842 x 1869 px.
 - Athlete Workouts: `c:\Users\bizzz\Downloads\956ba22c-49c7-476d-88ba-82caa0bc2107.png` - 842 x 1869 px.

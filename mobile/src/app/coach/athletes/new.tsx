@@ -11,17 +11,50 @@ import { Banner, Card, Label, Muted, PrimaryButton, TextField } from "../../../c
 
 const theme = ROLE_THEMES.coach;
 
-type Created = { name: string; email: string; tempPassword: string };
+type Created = { name: string; email: string; tempPassword?: string };
+type Mode = "create" | "link";
+
+const LINK_ERROR_MESSAGES: Record<string, string> = {
+  athlete_not_found: "No self-registered athlete found with that email.",
+  already_linked: "This athlete is already on your roster.",
+  athlete_has_active_coach: "This athlete already has another coach.",
+};
 
 export default function NewAthlete() {
   const router = useRouter();
+  const [mode, setMode] = useState<Mode>("create");
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
   const [sport, setSport] = useState("");
   const [position, setPosition] = useState("");
+  const [linkEmail, setLinkEmail] = useState("");
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [created, setCreated] = useState<Created | null>(null);
+
+  function addToRosterCache(athlete: { athleteId: string; userId?: string; name: string; email: string; sport: string; position?: string | null }) {
+    // The roster screen (coach/athletes/index.tsx) shares this cache key —
+    // patch it directly instead of leaving the new athlete invisible there
+    // until a manual pull-to-refresh.
+    updateCachedData<CoachHomeData>("coach-dashboard", (prev) =>
+      prev
+        ? {
+            ...prev,
+            roster: [
+              ...prev.roster,
+              {
+                athleteId: athlete.athleteId,
+                userId: athlete.userId,
+                name: athlete.name,
+                email: athlete.email,
+                sport: athlete.sport,
+                position: athlete.position ?? null,
+              },
+            ],
+          }
+        : prev
+    );
+  }
 
   async function submit() {
     setError(null);
@@ -48,31 +81,37 @@ export default function NewAthlete() {
         setError("Couldn't create athlete. Check the details and try again.");
         return;
       }
-      // The roster screen (coach/athletes/index.tsx) shares this cache key —
-      // patch it directly instead of leaving the new athlete invisible there
-      // until a manual pull-to-refresh.
-      const created = json.athlete;
-      if (created?.athleteId) {
-        updateCachedData<CoachHomeData>("coach-dashboard", (prev) =>
-          prev
-            ? {
-                ...prev,
-                roster: [
-                  ...prev.roster,
-                  {
-                    athleteId: created.athleteId,
-                    userId: created.userId,
-                    name: created.name,
-                    email: created.email,
-                    sport: created.sport,
-                    position: created.position ?? null,
-                  },
-                ],
-              }
-            : prev
-        );
-      }
+      if (json.athlete) addToRosterCache(json.athlete);
       setCreated({ name: json.athlete?.name ?? name.trim(), email: json.athlete?.email ?? email.trim(), tempPassword: json.tempPassword });
+    } catch {
+      setError("Network error. Please try again.");
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  async function submitLink() {
+    setError(null);
+    if (!linkEmail.trim()) {
+      setError("Enter the athlete's email.");
+      return;
+    }
+    setSaving(true);
+    try {
+      const res = await apiFetch("/api/coach/athletes/link", {
+        method: "POST",
+        body: JSON.stringify({ email: linkEmail.trim() }),
+      });
+      const json = (await res.json().catch(() => ({}))) as {
+        athlete?: { athleteId: string; userId?: string; name: string; email: string; sport: string; position?: string | null };
+        error?: string;
+      };
+      if (!res.ok || !json.athlete) {
+        setError((json.error && LINK_ERROR_MESSAGES[json.error]) || "Couldn't link this athlete. Check the email and try again.");
+        return;
+      }
+      addToRosterCache(json.athlete);
+      setCreated({ name: json.athlete.name, email: json.athlete.email });
     } catch {
       setError("Network error. Please try again.");
     } finally {
@@ -84,15 +123,24 @@ export default function NewAthlete() {
     return (
       <SafeAreaView style={styles.safe} edges={["top"]}>
         <ScrollView contentContainerStyle={styles.content}>
-          <Text style={styles.title}>Athlete added</Text>
-          <Muted style={{ marginBottom: 16 }}>Share these sign-in details with {created.name}.</Muted>
-          <Card style={{ gap: 12 }}>
-            <Secret label="Email" value={created.email} />
-            <Secret label="Temporary password" value={created.tempPassword} />
-            <Text style={styles.once}>Shown once — copy it now.</Text>
-          </Card>
+          <Text style={styles.title}>{created.tempPassword ? "Athlete added" : "Client linked"}</Text>
+          <Muted style={{ marginBottom: 16 }}>
+            {created.tempPassword ? `Share these sign-in details with ${created.name}.` : `You're now coaching ${created.name}.`}
+          </Muted>
+          {created.tempPassword ? (
+            <Card style={{ gap: 12 }}>
+              <Secret label="Email" value={created.email} />
+              <Secret label="Temporary password" value={created.tempPassword} />
+              <Text style={styles.once}>Shown once — copy it now.</Text>
+            </Card>
+          ) : null}
           <View style={{ marginTop: 16, gap: 10 }}>
-            <PrimaryButton label="Add another" onPress={() => { setCreated(null); setName(""); setEmail(""); setSport(""); setPosition(""); }} accent={theme.accent} accentInk={theme.accentInk} />
+            <PrimaryButton
+              label={mode === "link" ? "Link another" : "Add another"}
+              onPress={() => { setCreated(null); setName(""); setEmail(""); setSport(""); setPosition(""); setLinkEmail(""); }}
+              accent={theme.accent}
+              accentInk={theme.accentInk}
+            />
             <Pressable onPress={() => router.back()} style={styles.secondary}>
               <Text style={styles.secondaryText}>Back to roster</Text>
             </Pressable>
@@ -111,16 +159,34 @@ export default function NewAthlete() {
             <Text style={styles.backText}>ROSTER</Text>
           </Pressable>
           <Text style={styles.title}>Add athlete</Text>
-          <Muted style={{ marginBottom: 16 }}>Creates an account in your academy.</Muted>
+          <Muted style={{ marginBottom: 16 }}>Create a new account, or link an athlete who already signed up on their own.</Muted>
 
-          <Card style={{ gap: 14 }}>
-            <Field label="Full name" value={name} onChange={setName} placeholder="Jane Doe" />
-            <Field label="Email" value={email} onChange={setEmail} placeholder="jane@academy.com" email />
-            <Field label="Sport" value={sport} onChange={setSport} placeholder="Football" />
-            <Field label="Position (optional)" value={position} onChange={setPosition} placeholder="Striker" />
-            {error ? <Banner kind="error">{error}</Banner> : null}
-            <PrimaryButton label="Create athlete" onPress={submit} loading={saving} accent={theme.accent} accentInk={theme.accentInk} />
-          </Card>
+          <View style={styles.modeToggle}>
+            <Pressable onPress={() => { setMode("create"); setError(null); }} style={[styles.modeButton, mode === "create" ? styles.modeButtonActive : null]}>
+              <Text style={[styles.modeButtonText, mode === "create" ? styles.modeButtonTextActive : null]}>Create new</Text>
+            </Pressable>
+            <Pressable onPress={() => { setMode("link"); setError(null); }} style={[styles.modeButton, mode === "link" ? styles.modeButtonActive : null]}>
+              <Text style={[styles.modeButtonText, mode === "link" ? styles.modeButtonTextActive : null]}>Link existing</Text>
+            </Pressable>
+          </View>
+
+          {mode === "create" ? (
+            <Card style={{ gap: 14 }}>
+              <Field label="Full name" value={name} onChange={setName} placeholder="Jane Doe" />
+              <Field label="Email" value={email} onChange={setEmail} placeholder="jane@academy.com" email />
+              <Field label="Sport" value={sport} onChange={setSport} placeholder="Football" />
+              <Field label="Position (optional)" value={position} onChange={setPosition} placeholder="Striker" />
+              {error ? <Banner kind="error">{error}</Banner> : null}
+              <PrimaryButton label="Create athlete" onPress={submit} loading={saving} accent={theme.accent} accentInk={theme.accentInk} />
+            </Card>
+          ) : (
+            <Card style={{ gap: 14 }}>
+              <Muted>Links a self-registered athlete to your roster by email. No new account or password is created.</Muted>
+              <Field label="Athlete email" value={linkEmail} onChange={setLinkEmail} placeholder="jane@academy.com" email />
+              {error ? <Banner kind="error">{error}</Banner> : null}
+              <PrimaryButton label="Link athlete" onPress={submitLink} loading={saving} accent={theme.accent} accentInk={theme.accentInk} />
+            </Card>
+          )}
         </ScrollView>
       </KeyboardAvoidingView>
     </SafeAreaView>
@@ -153,6 +219,11 @@ const styles = StyleSheet.create({
   back: { flexDirection: "row", alignItems: "center", gap: 6, marginBottom: 16 },
   backText: { fontSize: 11, fontWeight: "700", letterSpacing: 2, color: colors.inkFaint },
   title: { fontSize: 26, fontWeight: "800", color: colors.ink, letterSpacing: -0.4 },
+  modeToggle: { flexDirection: "row", gap: 8, marginBottom: 16 },
+  modeButton: { flex: 1, minHeight: 40, borderRadius: radius.md, alignItems: "center", justifyContent: "center", backgroundColor: colors.surfaceInset },
+  modeButtonActive: { backgroundColor: colors.ink },
+  modeButtonText: { fontSize: 13, fontWeight: "800", color: colors.inkMuted },
+  modeButtonTextActive: { color: "#fff" },
   secret: { backgroundColor: colors.surfaceInset, borderRadius: radius.md, padding: 12 },
   secretLabel: { fontSize: 11, fontWeight: "700", color: colors.inkMuted, textTransform: "uppercase", letterSpacing: 1 },
   secretValue: { fontSize: 17, fontWeight: "700", color: colors.ink, marginTop: 4, fontFamily: Platform.OS === "ios" ? "Menlo" : "monospace" },
