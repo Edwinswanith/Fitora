@@ -35,6 +35,7 @@ import { celebrate, showError } from "../../lib/feedback";
 import { joinSessionCall } from "../../lib/videoCall";
 import { loadMyJoinRequest, type JoinRequest } from "../../lib/joinRequests";
 import { eligibleDays, judgeRate, localDayOf, windowStart } from "../../lib/progressWindow";
+import { average, finiteValues, halvesDelta, halvesPercentDelta, latestValue } from "../../lib/progressStats";
 import { exerciseVisual, mealVisual, workoutVisual, type FitoraVisual } from "../../lib/fitoraIcons";
 import { colors, metricColors, radius, type MetricKey } from "../../lib/theme";
 import {
@@ -3741,7 +3742,8 @@ function ProgressView({ data, onNavigate }: { data: AthleteDashboardData; onNavi
         onSelectCategory={setCategory}
       />
 
-      <ProgressWeeklyCard weekly={weekly} />
+      {/* With 7D selected the summary above already is this week. */}
+      {range === "7D" ? null : <ProgressWeeklyCard weekly={weekly} />}
 
       <SectionLabel title="Details" />
       <ProgressCategoryTabs value={category} onChange={setCategory} />
@@ -3943,12 +3945,9 @@ function ProgressWeeklyCard({ weekly }: { weekly: WeeklyProgressModel }) {
     <AppCard style={styles.progressWeekCard}>
       <Text style={styles.progressOverline}>THIS WEEK</Text>
       <View style={styles.progressWeekGrid}>
-        <View style={styles.progressWeekVerticalDivider} />
-        <View style={styles.progressWeekHorizontalDivider} />
-        <ProgressWeekMetric icon="barbell-outline" title="Training" value={`${weekly.workoutDone} / ${weekly.workoutTotal} complete`} progress={weekly.workoutRate} tone="primary" />
-        <ProgressWeekMetric icon="nutrition-outline" title="Nutrition" value={`${weekly.nutritionDone} / ${weekly.nutritionTotal} days`} progress={weekly.nutritionRate} tone="success" />
-        <ProgressWeekMetric icon="checkbox-outline" title="Check-ins" value={`${weekly.checkInDone} / ${weekly.checkInTotal} days`} progress={weekly.checkInRate} tone="primary" />
-        <ProgressWeekMetric icon="heart-outline" title="Recovery" value={weekly.recoveryLabel} tone={weekly.recoveryTone} />
+        <ProgressWeekMetric icon="barbell-outline" title="Workouts" value={weekly.workoutTotal ? `${weekly.workoutDone} of ${weekly.workoutTotal}` : "None"} progress={weekly.workoutRate} color={metricColors.training.to} />
+        <ProgressWeekMetric icon="nutrition-outline" title="Meals" value={`${weekly.nutritionDone} of ${weekly.nutritionTotal} days`} progress={weekly.nutritionRate} color={metricColors.nutrition.to} />
+        <ProgressWeekMetric icon="checkbox-outline" title="Check-ins" value={`${weekly.checkInDone} of ${weekly.checkInTotal} days`} progress={weekly.checkInRate} color={metricColors.readiness.to} />
       </View>
     </AppCard>
   );
@@ -3959,22 +3958,22 @@ function ProgressWeekMetric({
   title,
   value,
   progress,
-  tone = "primary",
+  color,
 }: {
   icon: keyof typeof Ionicons.glyphMap;
   title: string;
   value: string;
   progress?: number | null;
-  tone?: ProgressTone;
+  color: string;
 }) {
   return (
     <View style={styles.progressWeekMetric}>
-      <IconTile icon={icon} tone={tone} size={32} />
-      <View style={styles.progressWeekCopy}>
-        <Text style={styles.progressMetricTitle}>{title}</Text>
-        <Text style={[styles.progressMetricValue, { color: progress == null ? toneColor(tone) : colors.ink }]} numberOfLines={1}>{value}</Text>
-        {progress != null ? <ProgressTinyBar value={progress} color={toneColor(tone)} /> : null}
+      <View style={styles.progressWeekHead}>
+        <Ionicons name={icon} size={16} color={color} />
+        <Text style={styles.progressMetricTitle} numberOfLines={1}>{title}</Text>
       </View>
+      <Text style={styles.progressMetricValue} numberOfLines={1}>{value}</Text>
+      <ProgressTinyBar value={progress ?? 0} color={color} />
     </View>
   );
 }
@@ -4018,11 +4017,11 @@ function TrainingProgressCard({ training, rangeLabel, loading }: { training: Tra
           <Text style={[styles.progressPrimaryValue, { color: toneColor(training.consistencyTone) }]}>{formatPercent(training.consistency)}</Text>
         </View>
         <View style={styles.progressDetailChartPane}>
-          <ProgressLineChart metric="training" values={training.consistencySeries} yLabels={[100, 50, 0]} xLabels={training.seriesLabels} min={0} max={100} height={92} compact emptyLabel="No workout trend yet" />
+          <ProgressLineChart metric="training" values={training.consistencySeries} yLabels={[100, 50, 0]} xLabels={training.seriesLabels} min={0} max={100} height={130} compact emptyLabel="No workout trend yet" />
         </View>
       </View>
       <View style={styles.progressDetailMetricGrid}>
-        <ProgressDetailMetric icon="list-outline" tone="neutral" label="Workouts" value={String(training.total)} sub="scheduled" />
+        <ProgressDetailMetric icon="list-outline" tone="neutral" label="Workouts" value={training.total ? `${training.completed} of ${training.total}` : "0"} sub={training.total ? "done" : "scheduled"} />
         {training.latestRpe != null ? <ProgressDetailMetric icon="speedometer-outline" tone="neutral" label="Latest RPE" value={training.latestRpe.toFixed(1)} sub="last logged" /> : null}
         <ProgressDetailMetric
             icon="flame-outline"
@@ -4032,7 +4031,7 @@ function TrainingProgressCard({ training, rangeLabel, loading }: { training: Tra
             sub={training.streak.longest ? `longest: ${training.streak.longest} day${training.streak.longest === 1 ? "" : "s"}` : "Check in to begin"}
           />
         {training.loadDeltaPct != null ? (
-          <ProgressDetailMetric icon="trending-up-outline" tone={training.loadDeltaPct >= 0 ? "success" : "warning"} label="Training Load" value={`${formatSigned(training.loadDeltaPct)}%`} sub="vs. earlier period" />
+          <ProgressDetailMetric icon="trending-up-outline" tone={training.loadDeltaPct >= 0 ? "success" : "warning"} label="Training Load" value={`${formatSigned(training.loadDeltaPct)}%`} sub="vs. first half" />
         ) : training.avgLoad != null ? (
           <ProgressDetailMetric icon="bar-chart-outline" tone="neutral" label="Avg Load" value={String(Math.round(training.avgLoad))} sub="per logged day" />
         ) : null}
@@ -4096,7 +4095,7 @@ function RecoveryProgressCard({ recovery, rangeLabel, loading }: { recovery: Rec
           <Text style={[styles.progressPrimaryValue, { color: toneColor(recovery.avgReadinessTone) }]}>{recovery.avgReadiness == null ? "--" : String(Math.round(recovery.avgReadiness))}</Text>
         </View>
         <View style={styles.progressDetailChartPane}>
-          <ProgressLineChart values={recovery.readinessSeries} yLabels={[100, 50, 0]} xLabels={recovery.seriesLabels} min={0} max={100} height={92} compact emptyLabel="No recovery trend yet" />
+          <ProgressLineChart values={recovery.readinessSeries} yLabels={[100, 50, 0]} xLabels={recovery.seriesLabels} min={0} max={100} height={130} compact emptyLabel="No recovery trend yet" />
         </View>
       </View>
       <View style={styles.progressDetailMetricGrid}>
@@ -4111,7 +4110,7 @@ function RecoveryProgressCard({ recovery, rangeLabel, loading }: { recovery: Rec
 
 function ProgressDetailMetric({ icon, tone, label, value, sub }: { icon: keyof typeof Ionicons.glyphMap; tone: ProgressTone; label: string; value: string; sub?: string }) {
   return (
-    <View style={styles.progressDetailMetric}>
+    <View style={[styles.progressDetailMetric, styles.progressDetailMetricWide]}>
       <IconTile icon={icon} tone={tone} size={40} />
       <View style={styles.progressDetailMetricCopy}>
         <Text style={styles.progressDetailMetricLabel} numberOfLines={1}>{label}</Text>
@@ -4146,10 +4145,10 @@ function ProgressLineChart({
   emptyLabel?: string;
 }) {
   const width = compact ? 286 : 332;
-  const left = compact ? 34 : 20;
-  const right = compact ? 8 : 5;
-  const top = compact ? 8 : 10;
-  const bottom = compact ? 20 : 24;
+  const left = compact ? 30 : 20;
+  const right = compact ? 10 : 5;
+  const top = compact ? 10 : 10;
+  const bottom = compact ? 24 : 24;
   const chartWidth = width - left - right;
   const chartHeight = height - top - bottom;
   const fillId = `trendFill-${useId().replace(/:/g, "")}`;
@@ -4181,7 +4180,7 @@ function ProgressLineChart({
         const y = top + (1 - (label - min) / Math.max(1, max - min)) * chartHeight;
         return (
           <Fragment key={`y-${label}`}>
-            <SvgText x={compact ? 0 : 0} y={y + 4} fontSize={compact ? 8 : 9} fill={colors.inkMuted}>{label}</SvgText>
+            <SvgText x={0} y={y + 4} fontSize={12} fontFamily="Inter_500Medium" fill={colors.inkMuted}>{label}</SvgText>
             <Line x1={left} y1={y} x2={left + chartWidth} y2={y} stroke="#d9dee8" strokeWidth="1" strokeDasharray="2 3" />
           </Fragment>
         );
@@ -4195,7 +4194,7 @@ function ProgressLineChart({
       {xLabels.map((label, index) => {
         const x = left + (index / Math.max(1, xLabels.length - 1)) * chartWidth;
         return (
-          <SvgText key={`x-${label}-${index}`} x={x} y={height - 4} fontSize={compact ? 7.2 : 8.5} fill={colors.inkMuted} textAnchor={index === 0 ? "start" : index === xLabels.length - 1 ? "end" : "middle"}>
+          <SvgText key={`x-${label}-${index}`} x={x} y={height - 4} fontSize={12} fontFamily="Inter_500Medium" fill={colors.inkMuted} textAnchor={index === 0 ? "start" : index === xLabels.length - 1 ? "end" : "middle"}>
             {label}
           </SvgText>
         );
@@ -4272,8 +4271,6 @@ type WeeklyProgressModel = {
   checkInDone: number;
   checkInTotal: number;
   checkInRate: number | null;
-  recoveryLabel: string;
-  recoveryTone: ProgressTone;
 };
 
 type TrainingProgressModel = {
@@ -4312,6 +4309,7 @@ type RecoveryProgressModel = {
   readinessSeries: number[];
   seriesLabels: string[];
   lowDays: number;
+  checkIns: number;
   avgSleep: number | null;
 };
 
@@ -4348,7 +4346,6 @@ function buildWeeklyProgress(data: AthleteDashboardData): WeeklyProgressModel {
   const workoutDone = workouts.filter(isWorkoutCompleted).length;
   const nutritionDone = data.nutritionWeek.filter((day) => day.date >= weekStart && day.loggedMeals > 0).length;
   const checkInDone = data.trends.filter((point) => point.date >= weekStart && point.readiness != null).length;
-  const currentScore = data.daily?.readinessScore ?? data.daily?.recovery?.score ?? null;
   return {
     workoutDone,
     workoutTotal: workouts.length,
@@ -4359,8 +4356,6 @@ function buildWeeklyProgress(data: AthleteDashboardData): WeeklyProgressModel {
     checkInDone,
     checkInTotal: days,
     checkInRate: checkInDone / days,
-    recoveryLabel: readinessLabel(currentScore),
-    recoveryTone: progressToneFromReadiness(currentScore),
   };
 }
 
@@ -4377,7 +4372,7 @@ function buildTrainingProgress(workouts: WorkoutAssignmentSummary[], trends: Tre
     ...buildWorkoutConsistencySeries(workouts, range),
     streak: buildCheckInStreak(trends),
     avgLoad: average(loads),
-    loadDeltaPct: percentDeltaBetweenHalves(loads),
+    loadDeltaPct: halvesPercentDelta(loads),
     latestRpe: latestRpeValue(data),
   };
 }
@@ -4406,7 +4401,7 @@ function buildNutritionProgress(data: AthleteDashboardData): NutritionProgressMo
 
 function buildRecoveryProgress(data: AthleteDashboardData, trends: TrendPoint[]): RecoveryProgressModel {
   const readinessValues = finiteValues(trends.map((point) => point.readiness));
-  const currentScore = data.daily?.readinessScore ?? data.daily?.recovery?.score ?? latestNumber(readinessValues);
+  const currentScore = data.daily?.readinessScore ?? data.daily?.recovery?.score ?? latestValue(readinessValues);
   const avgReadiness = average(readinessValues);
   const sleepValues = finiteValues(trends.map((point) => point.sleepHours));
   const readinessSeries = sampleSeries(readinessValues, Math.min(7, Math.max(4, readinessValues.length))).map((value) => Math.round(value));
@@ -4416,10 +4411,11 @@ function buildRecoveryProgress(data: AthleteDashboardData, trends: TrendPoint[])
     currentTone: progressToneFromReadiness(currentScore),
     avgReadiness,
     avgReadinessTone: progressToneFromReadiness(avgReadiness),
-    readinessDelta: pointDelta(readinessValues),
+    readinessDelta: halvesDelta(readinessValues),
     readinessSeries,
     seriesLabels: buildTrendLabels(readinessSeries.length),
     lowDays: readinessValues.filter((value) => value < 60).length,
+    checkIns: readinessValues.length,
     avgSleep: average(sleepValues),
   };
 }
@@ -4437,7 +4433,9 @@ function buildBodyProgress(data: AthleteDashboardData): BodyProgressModel {
 
 function buildProgressSummary(training: TrainingProgressModel, nutrition: NutritionProgressModel, recovery: RecoveryProgressModel): ProgressSummaryModel {
   const hasData = training.total > 0 || nutrition.loggedDays > 0 || recovery.avgReadiness != null;
-  const recoveryProblem = recovery.currentTone === "danger" || recovery.lowDays >= 2;
+  // A few low days are normal over weeks; it's a problem when they're a real
+  // share of check-ins (or today is in the red), not a fixed count of 2.
+  const recoveryProblem = recovery.currentTone === "danger" || (recovery.lowDays >= 2 && recovery.lowDays / Math.max(1, recovery.checkIns) >= 0.3);
   const trainingStrong = training.consistency != null && training.consistency >= 0.8;
   const nutritionStrong = nutrition.loggedDayRate != null && nutrition.loggedDayRate >= 0.7;
   const readinessDown = recovery.readinessDelta != null && recovery.readinessDelta <= -8;
@@ -4463,7 +4461,9 @@ function buildProgressSummary(training: TrainingProgressModel, nutrition: Nutrit
       ? ""
       : training.consistency >= 0.8
         ? "Training is consistent."
-        : "Training consistency needs attention.";
+        : training.consistency >= 0.5
+          ? "Training is mostly on track."
+          : "Training consistency needs attention.";
   const recoveryInsight =
     recovery.currentTone === "danger" || recovery.currentTone === "warning"
       ? "Recovery needs attention."
@@ -4498,9 +4498,13 @@ function buildWorkoutConsistencySeries(workouts: WorkoutAssignmentSummary[], ran
     buckets[index].total += 1;
     if (isWorkoutCompleted(workout)) buckets[index].complete += 1;
   }
+  const labels = range === "7D" ? buckets.map((_, i) => weekdayShort(addDays(start, i))) : range === "3M" ? ["W1", "W3", "W5", "W7", "W9", "W12"] : ["W1", "W2", "W3", "W4"];
+  // A period with nothing scheduled (e.g. a rest day) has no consistency to
+  // plot; drawing it as 0% made rest days look like failures.
+  const kept = buckets.map((bucket, i) => ({ bucket, label: labels[i] })).filter(({ bucket }) => bucket.total > 0);
   return {
-    consistencySeries: buckets.map((bucket) => (bucket.total ? Math.round((bucket.complete / bucket.total) * 100) : 0)),
-    seriesLabels: range === "7D" ? ["D1", "D2", "D3", "D4", "D5", "D6", "D7"] : range === "3M" ? ["W1", "W3", "W5", "W7", "W9", "W12"] : ["W1", "W2", "W3", "W4"],
+    consistencySeries: kept.map(({ bucket }) => Math.round((bucket.complete / bucket.total) * 100)),
+    seriesLabels: kept.map(({ label }) => label),
   };
 }
 
@@ -4527,33 +4531,6 @@ function workoutDateKey(workout: WorkoutAssignmentSummary): string {
 
 function isWorkoutCompleted(workout: WorkoutAssignmentSummary): boolean {
   return workout.status.toLowerCase() === "completed";
-}
-
-function finiteValues(values: (number | null | undefined)[]): number[] {
-  return values.filter((value): value is number => Number.isFinite(Number(value)));
-}
-
-function average(values: number[]): number | null {
-  if (!values.length) return null;
-  return values.reduce((sum, value) => sum + value, 0) / values.length;
-}
-
-function latestNumber(values: number[]): number | null {
-  return values.length ? values[values.length - 1] : null;
-}
-
-function pointDelta(values: number[]): number | null {
-  if (values.length < 2) return null;
-  return Math.round(values[values.length - 1] - values[0]);
-}
-
-function percentDeltaBetweenHalves(values: number[]): number | null {
-  if (values.length < 2) return null;
-  const midpoint = Math.max(1, Math.floor(values.length / 2));
-  const previous = average(values.slice(0, midpoint));
-  const current = average(values.slice(midpoint));
-  if (!previous || current == null) return null;
-  return Math.round(((current - previous) / previous) * 100);
 }
 
 function latestRpeValue(data: AthleteDashboardData): number | null {
@@ -5156,26 +5133,26 @@ const styles = StyleSheet.create({
   progressSummaryMetricValue: { fontSize: 13.5, lineHeight: 17, fontWeight: "900" },
   progressInsightLine: { minHeight: 23, borderTopWidth: 1, borderTopColor: colors.line, flexDirection: "row", alignItems: "center", gap: 6, paddingTop: 5, position: "relative", zIndex: 2 },
   progressInsightLineText: { flex: 1, color: colors.inkMuted, fontSize: 12, lineHeight: 16, fontWeight: "600" },
-  progressWeekCard: { paddingHorizontal: 10, paddingVertical: 8 },
-  progressWeekGrid: { position: "relative", flexDirection: "row", flexWrap: "wrap", marginTop: 4, rowGap: 1 },
-  progressWeekVerticalDivider: { position: "absolute", top: 2, bottom: 2, left: "50%", width: 1, backgroundColor: colors.line },
-  progressWeekHorizontalDivider: { position: "absolute", left: 0, right: 0, top: "50%", height: 1, backgroundColor: colors.line },
-  progressWeekMetric: { width: "50%", minHeight: 38, flexDirection: "row", alignItems: "center", gap: 6, paddingVertical: 2, paddingRight: 7 },
-  progressWeekCopy: { flex: 1, minWidth: 0, gap: 1 },
+  progressWeekCard: { gap: 10 },
+  progressWeekGrid: { flexDirection: "row", gap: 12 },
+  progressWeekMetric: { flex: 1, minWidth: 0, gap: 4 },
+  progressWeekHead: { flexDirection: "row", alignItems: "center", gap: 5 },
   progressMetricTitle: { color: colors.ink, fontSize: 12, lineHeight: 16, fontWeight: "900" },
   progressMetricValue: { color: colors.ink, fontSize: 12, lineHeight: 16, fontWeight: "800" },
   progressTinyTrack: { height: 4, borderRadius: 2, backgroundColor: "#dfedeb", overflow: "hidden", marginTop: 1 },
   progressTinyFill: { height: "100%", borderRadius: 3 },
   progressDetailCard: { paddingHorizontal: 11, paddingVertical: 11, gap: 10 },
   progressDetailSubtitle: { color: colors.inkMuted, fontSize: 12, lineHeight: 15, fontWeight: "600", marginTop: 1 },
-  progressPrimaryChartRow: { minHeight: 102, borderRadius: 10, borderWidth: 1, borderColor: colors.line, backgroundColor: "#ffffff", paddingHorizontal: 9, paddingVertical: 8, flexDirection: "row", alignItems: "center", gap: 8 },
-  progressPrimaryMetric: { width: 98, alignItems: "flex-start", gap: 4 },
-  progressPrimaryLabel: { color: colors.ink, fontSize: 12, lineHeight: 16, fontWeight: "900" },
-  progressPrimaryValue: { fontSize: 22, lineHeight: 26, fontWeight: "900" },
-  progressDetailChartPane: { flex: 1, minWidth: 0 },
+  progressPrimaryChartRow: { borderRadius: 12, borderWidth: 1, borderColor: colors.line, backgroundColor: "#ffffff", padding: 12, gap: 10 },
+  progressPrimaryMetric: { flexDirection: "row", alignItems: "center", gap: 10 },
+  progressPrimaryLabel: { flex: 1, minWidth: 0, color: colors.ink, fontSize: 14, lineHeight: 18, fontWeight: "900" },
+  progressPrimaryValue: { fontSize: 24, lineHeight: 28, fontWeight: "900" },
+  progressDetailChartPane: { width: "100%" },
   progressDetailMetricGrid: { flexDirection: "row", flexWrap: "wrap", gap: 6 },
+  // An odd last tile spans the row instead of leaving an empty slot.
+  progressDetailMetricWide: { flexGrow: 1 },
   progressDetailMetric: {
-    width: "49%",
+    width: "47%",
     minHeight: 66,
     borderRadius: 9,
     borderWidth: 1,
