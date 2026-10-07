@@ -135,6 +135,8 @@ function Assignments({
   }, [data.cards]);
   const planningGaps = useMemo(() => data.routineStatus.filter((status) => !status.workoutName && !status.dataUnavailable), [data.routineStatus]);
 
+  // Clients with nothing assigned are already named in the planning-gaps hero.
+  const routinesWithPlans = data.routineStatus.filter((status) => status.workoutName || status.mealPlanName);
   return (
     <>
       {data.roster.length === 0 ? (
@@ -176,10 +178,11 @@ function Assignments({
       </View>
       <ActionButton label="New Plan" icon="add-outline" onPress={() => openMode("routine")} />
 
-      <SectionHeader title="Today" />
+      {groups.length ? (
+      <>
+      <SectionLabel title="Today" />
       <AppCard>
-        {groups.length ? (
-          groups.map((group, index) => {
+        {groups.map((group, index) => {
             const visual = planVisual(group.label);
             return (
               <View key={group.label}>
@@ -194,16 +197,16 @@ function Assignments({
                 {index < groups.length - 1 ? <Divider /> : null}
               </View>
             );
-          })
-        ) : (
-          <EmptyState title="No assignments today" body="Assigned workouts and tasks will show here after clients have plans." icon="clipboard-outline" />
-        )}
+        })}
       </AppCard>
+      </>
+      ) : null}
 
-      <SectionHeader title="Tomorrow" />
+      {data.tomorrowWorkouts.length ? (
+      <>
+      <SectionLabel title="Tomorrow" />
       <AppCard>
-        {data.tomorrowWorkouts.length ? (
-          data.tomorrowWorkouts.slice(0, 4).map((assignment, index) => {
+        {data.tomorrowWorkouts.slice(0, 4).map((assignment, index) => {
             const visual = workoutVisual(assignment.name);
             return (
               <View key={assignment.id}>
@@ -218,13 +221,12 @@ function Assignments({
                 {index < Math.min(data.tomorrowWorkouts.length, 4) - 1 ? <Divider /> : null}
               </View>
             );
-          })
-        ) : (
-          <EmptyState title="No assignments tomorrow" body="Assign routines to keep client plans complete." icon="calendar-outline" />
-        )}
+        })}
       </AppCard>
+      </>
+      ) : null}
 
-      <SectionHeader title="Templates" action={data.templates.length ? "View Templates" : undefined} onAction={showTemplates} />
+      <SectionLabel title="Templates" action={data.templates.length ? "View all" : undefined} onAction={showTemplates} />
       <AppCard>
         {data.templates.length ? (
           data.templates.slice(0, 3).map((template, index) => {
@@ -244,28 +246,27 @@ function Assignments({
           })
         ) : (
           <View style={styles.stack}>
-            <Text style={styles.muted}>No workout templates yet. Build one to start assigning.</Text>
             <ActionButton label="New workout template" icon="add-outline" onPress={() => nav.newTemplate("workout")} style={styles.fullButton} />
           </View>
         )}
       </AppCard>
 
-      <SectionHeader title="Upcoming Routines" />
+      {routinesWithPlans.length ? (
+      <>
+      <SectionLabel title="Client routines" />
       <AppCard>
-        {data.routineStatus.length ? (
-          data.routineStatus.slice(0, 2).map((status, index) => {
+        {routinesWithPlans.slice(0, 2).map((status, index) => {
             const visual = planVisual("routine");
             return (
               <View key={status.athleteId}>
                 <PlanRow icon={visual.icon} tone={visual.tone} title={status.athleteName} subtitle={routineStatusSubtitle(status)} />
-                {index < Math.min(data.routineStatus.length, 2) - 1 ? <Divider /> : null}
+                {index < Math.min(routinesWithPlans.length, 2) - 1 ? <Divider /> : null}
               </View>
             );
-          })
-        ) : (
-          <EmptyState title="No clients yet" body="Routines will show after clients are assigned." icon="repeat-outline" />
-        )}
+        })}
       </AppCard>
+      </>
+      ) : null}
     </>
   );
 }
@@ -492,9 +493,9 @@ function Routines({ data, openMode }: { data: CoachPlanData; openMode: (mode: Pl
 
 function routineStatusSubtitle(status: CoachPlanData["routineStatus"][number]): string {
   const parts: string[] = [];
-  parts.push(status.workoutName ? `Workout: ${status.workoutName} (${titleCase(status.workoutStatus ?? "")})` : "No workout assigned today");
-  parts.push(status.mealPlanName ? `Meal plan: ${status.mealPlanName}${status.mealPlanActive ? "" : " (inactive)"}` : "No meal plan assigned");
-  return parts.join(" - ");
+  parts.push(status.workoutName ? `${status.workoutName} (${titleCase(status.workoutStatus ?? "")})` : "No workout today");
+  parts.push(status.mealPlanName ? `${status.mealPlanName}${status.mealPlanActive ? "" : " (inactive)"}` : "No meal plan");
+  return parts.join(" · ");
 }
 
 function PlanComposer({
@@ -822,7 +823,6 @@ const styles = StyleSheet.create({
   choiceSub: { color: colors.inkMuted, fontSize: 12, lineHeight: 16 },
   submitButton: { minHeight: 42, borderRadius: 12, backgroundColor: colors.primary, alignItems: "center", justifyContent: "center" },
   submitText: { color: "#fff", fontSize: 14, fontWeight: "900" },
-  successText: { color: colors.ok, fontSize: 12, fontWeight: "800" },
   errorText: { color: colors.bad, fontSize: 12, fontWeight: "800" },
   disabled: { opacity: 0.55 },
   muted: { color: colors.inkMuted, fontSize: 15, lineHeight: 21 },

@@ -203,7 +203,7 @@ export default function CoachProfile() {
         <View style={styles.publishRow}>
           <View style={{ flex: 1 }}>
             <Text style={styles.cardTitle}>Marketplace Profile</Text>
-            <Text style={styles.muted}>{profile?.active ? "Visible to athletes browsing coaches." : "Hidden from marketplace discovery."}</Text>
+            <Text style={styles.muted}>{profile?.active ? "Visible to athletes." : "Hidden from athletes."}</Text>
           </View>
           {savingVisibility ? (
             <ActivityIndicator color={colors.primary} />
@@ -250,7 +250,7 @@ export default function CoachProfile() {
             </View>
           ))
         ) : (
-          <EmptyState title="No pricing plans" body="Create a pricing plan before publishing your profile." icon="ribbon-outline" />
+          <EmptyState title="No pricing plans" body="Needed before you publish." icon="ribbon-outline" />
         )}
       </AppCard>
 
@@ -279,7 +279,7 @@ export default function CoachProfile() {
               </View>
             ))
           ) : (
-            <Text style={styles.muted}>Reviews will appear after athletes leave feedback.</Text>
+            <Text style={styles.muted}>No reviews yet.</Text>
           )}
           {reviewsOpen && data.reviews.length < (profile?.reviewCount ?? 0) ? (
             <Pressable onPress={loadMoreReviews} disabled={loadingMoreReviews} style={styles.exceptionsToggle}>
@@ -406,7 +406,7 @@ function ProfileReadinessHero({
         icon="person-circle-outline"
         eyebrow={`Profile setup · ${progressLine}`}
         title={!hasBio ? "Add a short bio" : "Add your specializations"}
-        body="Athletes choose a coach by reading this first. Two or three sentences about how you coach is enough."
+        body="Athletes read this first. Two or three sentences is enough."
         actionLabel="Edit Profile"
         onAction={onEditProfile}
       />
@@ -418,7 +418,7 @@ function ProfileReadinessHero({
         icon="calendar-outline"
         eyebrow={`Profile setup · ${progressLine}`}
         title="Set your working hours"
-        body="Clients can only book video sessions inside the hours you set."
+        body="Clients can book only inside these hours."
         actionLabel="Set Availability"
         onAction={onSetAvailability}
       />
@@ -430,7 +430,7 @@ function ProfileReadinessHero({
         icon="storefront-outline"
         eyebrow={`Profile setup · ${progressLine}`}
         title="Ready to be found"
-        body="Your profile is complete. List it so athletes browsing coaches can see you."
+        body="Your profile is complete. List it so athletes can find you."
         actionLabel="List My Profile"
         onAction={onGoLive}
       />
@@ -442,7 +442,7 @@ function ProfileReadinessHero({
       icon="checkmark-done-outline"
       eyebrow="Profile complete"
       title="Athletes can find and book you"
-      body="Keep your availability up to date so bookings land when you're free."
+      body="Keep your hours current."
     />
   );
 }
@@ -808,7 +808,7 @@ function ToggleChip({ label, active, onPress }: { label: string; active: boolean
 
 function AvailabilityList({ rules }: { rules: CoachAvailabilityRule[] }) {
   if (!rules.length) {
-    return <Text style={styles.muted}>No recurring availability set.</Text>;
+    return <Text style={styles.muted}>No weekly hours set.</Text>;
   }
   const byDay = new Map<number, CoachAvailabilityRule[]>();
   for (const rule of rules) {

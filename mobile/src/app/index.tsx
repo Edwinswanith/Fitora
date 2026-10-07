@@ -45,25 +45,25 @@ const FEATURES: Feature[] = [
   {
     icon: "calendar-outline",
     title: "Daily coaching plan",
-    sub: "Workouts, meals, sessions, and coach tasks in one place.",
+    sub: "Workouts, meals and sessions in one place.",
     tone: "blue",
   },
   {
     icon: "shield-checkmark-outline",
     title: "Readiness and risk flags",
-    sub: "Clear signals for training, recovery, and attention.",
+    sub: "Know when to push and when to rest.",
     tone: "purple",
   },
   {
     icon: "restaurant-outline",
     title: "Nutrition support",
-    sub: "Track targets, planned meals, water, and coach changes.",
+    sub: "Calorie targets, meals and water.",
     tone: "green",
   },
   {
     icon: "trending-up-outline",
     title: "Progress views",
-    sub: "Review adherence, weight trends, readiness, and feedback.",
+    sub: "Trends and feedback from your coach.",
     tone: "gold",
   },
 ];
@@ -137,7 +137,7 @@ export default function Landing() {
             <Ionicons name="shield-checkmark-outline" size={17} color="#406e68" />
           </View>
           <Text style={styles.noticeText}>
-            Existing accounts keep their saved role.{"\n"}New Google users are created from the role you pick.
+            Your role is set when you first sign up.
           </Text>
         </View>
 

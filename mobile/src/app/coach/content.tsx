@@ -15,7 +15,7 @@ import {
   LoadingState,
   PrimaryAppBar,
   ScreenContainer,
-  SectionHeader,
+  SectionLabel,
   SegmentedControl,
   StatusChip,
   VideoThumb,
@@ -256,7 +256,7 @@ export default function CoachContent() {
               icon="videocam-outline"
               eyebrow="Content library"
               title="Upload your first video"
-              body="Record a form tip or a full workout once, then share it with every client who needs it."
+              body="Record once, share with every client who needs it."
               actionLabel="Upload Video"
               onAction={pickVideo}
             />
@@ -272,6 +272,8 @@ export default function CoachContent() {
             />
           )}
 
+          {data.videos.length ? (
+          <>
           <View style={styles.filterRow}>
             {CATEGORY_FILTERS.map((item) => (
               <Pressable
@@ -284,7 +286,7 @@ export default function CoachContent() {
             ))}
           </View>
 
-          {recent ? <SectionHeader title="Recently Added" /> : null}
+          {recent ? <SectionLabel title="Recently added" /> : null}
           {recent ? (
             <FeaturedVideo
               video={recent}
@@ -298,7 +300,7 @@ export default function CoachContent() {
             />
           ) : null}
 
-          <SectionHeader title="Video Library" action={category !== "all" ? "Clear filter" : undefined} onAction={() => setCategory("all")} />
+          <SectionLabel title="Library" action={category !== "all" ? "Clear filter" : undefined} onAction={() => setCategory("all")} />
           <AppCard>
             {filtered.length ? (
               filtered.map((video, index) => (
@@ -317,7 +319,7 @@ export default function CoachContent() {
                 </View>
               ))
             ) : (
-              <Text style={styles.muted}>No videos match this filter.</Text>
+              <Text style={styles.muted}>No videos in this category.</Text>
             )}
           </AppCard>
 
@@ -329,13 +331,13 @@ export default function CoachContent() {
             </View>
           </AppCard>
 
-          <SectionHeader title="Quick Actions" />
+          {/* Upload lives in the hero and header; these two act on existing videos. */}
           <View style={styles.actionRow}>
-            {/* Short labels: three buttons share one row on a 360-390dp phone. */}
-            <ActionButton label="Upload" icon="cloud-upload-outline" onPress={pickVideo} />
             <ActionButton label="Assign" icon="people-outline" onPress={() => setAction("assign")} />
-            <ActionButton label="To Workout" icon="barbell-outline" onPress={() => setAction("workout")} />
+            <ActionButton label="Add to workout" icon="barbell-outline" onPress={() => setAction("workout")} />
           </View>
+          </>
+          ) : null}
         </>
       ) : null}
 

@@ -147,7 +147,7 @@ function ClientDetailView({ data }: { data: CoachClientDetailData }) {
         <View style={styles.metricGrid}>
           <ClientMetric icon="speedometer-outline" label="Readiness" value={card?.readinessScore == null ? "--" : String(card.readinessScore)} />
           <ClientMetric icon="barbell-outline" label="Workout" value={workout ? `${workout.completedCount} / ${workout.exerciseCount}` : "--"} />
-          <ClientMetric icon="restaurant-outline" label="Nutrition" value={data.nutrition && data.nutrition.mealsLoggedCount > 0 ? `${data.nutrition.mealsLoggedCount} meal${data.nutrition.mealsLoggedCount === 1 ? "" : "s"}` : "Not logged"} />
+          <ClientMetric icon="restaurant-outline" label="Nutrition" value={data.nutrition && data.nutrition.mealsLoggedCount > 0 ? `${data.nutrition.mealsLoggedCount} meal${data.nutrition.mealsLoggedCount === 1 ? "" : "s"}` : "--"} />
           <ClientMetric icon="checkbox-outline" label="Tasks" value={completedSessions.length ? `${completedSessions.length} done` : "--"} />
         </View>
       </AppCard>
@@ -164,7 +164,7 @@ function ClientDetailView({ data }: { data: CoachClientDetailData }) {
           </>
         ) : (
           <>
-            <EmptyState title="No workout assigned today" body="Assign a workout from the Plan tab." icon="barbell-outline" />
+            <Text style={styles.muted}>No workout today.</Text>
             <ActionButton label="Assign Workout" icon="add-outline" variant="filled" onPress={goAssignWorkout} style={styles.assignEmptyButton} />
           </>
         )}
@@ -187,16 +187,15 @@ function ClientDetailView({ data }: { data: CoachClientDetailData }) {
           </>
         ) : (
           <>
-            <Text style={styles.muted}>This athlete has no active nutrition target yet.</Text>
-            <StatusChip label="No target set" tone="neutral" />
+            <Text style={styles.muted}>No nutrition target yet.</Text>
           </>
         )}
       </AppCard>
 
+      {activeSessions.length ? (
       <AppCard>
-        <Text style={styles.cardTitle}>{"Today's Sessions"}</Text>
-        {activeSessions.length ? (
-          activeSessions.slice(0, 2).map((session, index) => {
+        <Text style={styles.cardTitle}>{"Today's sessions"}</Text>
+        {activeSessions.slice(0, 2).map((session, index) => {
             const visual = planVisual(session.type, "session");
             return (
               <View key={`${session.type}-${index}`}>
@@ -204,14 +203,12 @@ function ClientDetailView({ data }: { data: CoachClientDetailData }) {
                 {index < Math.min(activeSessions.length, 2) - 1 ? <Divider /> : null}
               </View>
             );
-          })
-        ) : (
-          <Text style={styles.muted}>{"No session status is attached to today's card."}</Text>
-        )}
+        })}
       </AppCard>
+      ) : null}
 
       <AppCard>
-        <Text style={styles.cardTitle}>Next Booked Session</Text>
+        <Text style={styles.cardTitle}>Next session</Text>
         {nextSession ? (
           <RowLink
             icon="calendar-outline"
@@ -221,19 +218,21 @@ function ClientDetailView({ data }: { data: CoachClientDetailData }) {
             onPress={() => router.push("/coach/dashboard" as never)}
           />
         ) : (
-          <Text style={styles.muted}>No upcoming session booked with this client.</Text>
+          <Text style={styles.muted}>None booked.</Text>
         )}
       </AppCard>
 
+      {trendValues.some((value) => value != null) ? (
       <AppCard>
-        <Text style={styles.cardTitle}>Progress Preview</Text>
+        <Text style={styles.cardTitle}>Readiness trend</Text>
         <MiniLineChart values={trendValues} />
       </AppCard>
+      ) : null}
 
+      {data.activity.length ? (
       <AppCard>
-        <Text style={styles.cardTitle}>Recent Activity</Text>
-        {data.activity.length ? (
-          data.activity.slice(0, 5).map((item, index) => {
+        <Text style={styles.cardTitle}>Recent activity</Text>
+        {data.activity.slice(0, 5).map((item, index) => {
             const visual = activityVisual(item.kind, `${item.title} ${item.subtitle ?? ""} ${item.detail ?? ""}`);
             return (
               <View key={item.id}>
@@ -241,11 +240,9 @@ function ClientDetailView({ data }: { data: CoachClientDetailData }) {
                 {index < Math.min(data.activity.length, 5) - 1 ? <Divider /> : null}
               </View>
             );
-          })
-        ) : (
-          <EmptyState title="No activity yet" body="Client activity will appear here after they log workouts, meals or notes." icon="pulse-outline" />
-        )}
+        })}
       </AppCard>
+      ) : null}
 
       <AppCard>
         <View style={styles.actionRow}>

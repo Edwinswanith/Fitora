@@ -2282,8 +2282,8 @@ function NutritionSetupCardV2({ profile, onComplete }: { profile: AthleteDashboa
       title="Get your daily calorie target"
       body={
         missing.length
-          ? `Add your ${missing.slice(0, 4).map((item) => item.toLowerCase()).join(", ")} and we'll calculate calories and macros for you.`
-          : "Complete your profile and we'll calculate calories and macros for you."
+          ? `Add your ${missing.slice(0, 4).map((item) => item.toLowerCase()).join(", ")}.`
+          : "Finish your profile to get calories and macros."
       }
       actionLabel="Complete Profile"
       onAction={onComplete}
@@ -3357,7 +3357,7 @@ function coachProfessionalTitle(profile: AthleteDashboardData["coachProfile"]): 
 function coachRatingLabel(profile: AthleteDashboardData["coachProfile"]): string {
   const reviews = profile?.reviewCount ?? 0;
   const reviewText = `${reviews} review${reviews === 1 ? "" : "s"}`;
-  return profile?.avgRating ? `${profile.avgRating.toFixed(1)} rating - ${reviewText}` : `No rating yet - ${reviewText}`;
+  return profile?.avgRating ? `${profile.avgRating.toFixed(1)} rating · ${reviewText}` : "New coach";
 }
 
 function coachExperience(profile: AthleteDashboardData["coachProfile"]): string | null {
@@ -3607,6 +3607,24 @@ function ProgressView({ data, onNavigate }: { data: AthleteDashboardData; onNavi
   const body = buildBodyProgress(data);
   const summary = buildProgressSummary(training, nutrition, recovery);
   const rangeLabel = progressRangeLabel(range);
+
+  if (!summary.hasData) {
+    // Nothing logged yet: one starter card instead of a grid of dashes and zeros.
+    return (
+      <>
+        <ProgressHeader onCalendar={() => router.push("/athlete/trends" as never)} />
+        <HeroCard
+          calm
+          icon="trending-up-outline"
+          eyebrow="Progress"
+          title="Your trends start here"
+          body="Log a few days of check-ins, workouts or meals."
+          actionLabel="Check In"
+          onAction={() => router.push("/athlete/check-in" as never)}
+        />
+      </>
+    );
+  }
 
   return (
     <>
@@ -4205,6 +4223,7 @@ type BodyProgressModel = {
 
 type ProgressSummaryModel = {
   headline: string;
+  hasData: boolean;
   body: string;
   insight: string;
   badge: string | null;
@@ -4358,6 +4377,7 @@ function buildProgressSummary(training: TrainingProgressModel, nutrition: Nutrit
         : null;
   return {
     headline,
+    hasData,
     body,
     insight: [trainingInsight, recoveryInsight].filter(Boolean).join(" "),
     badge,
