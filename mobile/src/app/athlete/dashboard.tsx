@@ -29,6 +29,7 @@ import { useAuth } from "../../lib/auth";
 import { PAYMENTS_ENABLED } from "../../lib/features";
 import { celebrate, showError } from "../../lib/feedback";
 import { joinSessionCall } from "../../lib/videoCall";
+import { eligibleDays, judgeRate, localDayOf, windowStart } from "../../lib/progressWindow";
 import { exerciseVisual, mealVisual, workoutVisual, type FitoraIconAsset, type FitoraVisual } from "../../lib/fitoraIcons";
 import { colors, radius } from "../../lib/theme";
 import {
@@ -626,8 +627,8 @@ function DailyStatusCard({ data, onNavigate }: { data: AthleteDashboardData; onN
         <StatusMetric
           icon="nutrition-outline"
           label="Nutrition"
-          value={String(consumed)}
-          sub="kcal"
+          value={consumed > 0 ? String(consumed) : "--"}
+          sub={consumed > 0 ? "kcal" : "Log a meal"}
           tone="success"
           onPress={() => onNavigate("nutrition")}
         />
@@ -642,8 +643,8 @@ function DailyStatusCard({ data, onNavigate }: { data: AthleteDashboardData; onN
         <StatusMetric
           icon="barbell-outline"
           label="Training"
-          value={`${workoutsDone} / ${workoutsToday}`}
-          sub="complete"
+          value={workoutsToday ? `${workoutsDone} / ${workoutsToday}` : "Rest"}
+          sub={workoutsToday ? "complete" : "Nothing planned"}
           tone="purple"
           onPress={() => onNavigate("workouts")}
         />
@@ -3963,7 +3964,13 @@ function TrainingProgressCard({ training, rangeLabel, loading }: { training: Tra
       <View style={styles.progressDetailMetricGrid}>
         <ProgressDetailMetric icon="list-outline" tone="neutral" label="Workouts" value={String(training.total)} sub="scheduled" />
         {training.latestRpe != null ? <ProgressDetailMetric icon="speedometer-outline" tone="neutral" label="Latest RPE" value={training.latestRpe.toFixed(1)} sub="last logged" /> : null}
-        <ProgressDetailMetric icon="flame-outline" tone="warning" label="Streak" value={`${training.streak.current} days`} sub={`longest: ${training.streak.longest} days`} />
+        <ProgressDetailMetric
+            icon="flame-outline"
+            tone="warning"
+            label="Streak"
+            value={training.streak.current ? `${training.streak.current} day${training.streak.current === 1 ? "" : "s"}` : "Start today"}
+            sub={training.streak.longest ? `longest: ${training.streak.longest} day${training.streak.longest === 1 ? "" : "s"}` : "Check in to begin"}
+          />
         {training.loadDeltaPct != null ? (
           <ProgressDetailMetric icon="trending-up-outline" tone={training.loadDeltaPct >= 0 ? "success" : "warning"} label="Training Load" value={`${formatSigned(training.loadDeltaPct)}%`} sub="vs. earlier period" />
         ) : training.avgLoad != null ? (
@@ -4263,11 +4270,20 @@ type ProgressSummaryModel = {
   trendValues: number[];
 };
 
+function joinedDay(data: AthleteDashboardData): string | null {
+  return localDayOf(data.profile?.createdAt);
+}
+
 function buildWeeklyProgress(data: AthleteDashboardData): WeeklyProgressModel {
-  const weekStart = addDays(todayKey(), -6);
+  // Count only days the athlete has had an account: a first day is "1 / 1",
+  // not "1 / 7".
+  const today = todayKey();
+  const joined = joinedDay(data);
+  const weekStart = windowStart(today, joined, 7);
+  const days = eligibleDays(today, joined, 7);
   const workouts = dedupeWorkouts([...data.recentWorkouts, ...data.workouts]).filter((item) => workoutDateKey(item) >= weekStart);
   const workoutDone = workouts.filter(isWorkoutCompleted).length;
-  const nutritionDone = data.nutritionWeek.filter((day) => day.loggedMeals > 0).length;
+  const nutritionDone = data.nutritionWeek.filter((day) => day.date >= weekStart && day.loggedMeals > 0).length;
   const checkInDone = data.trends.filter((point) => point.date >= weekStart && point.readiness != null).length;
   const currentScore = data.daily?.readinessScore ?? data.daily?.recovery?.score ?? null;
   return {
@@ -4275,11 +4291,11 @@ function buildWeeklyProgress(data: AthleteDashboardData): WeeklyProgressModel {
     workoutTotal: workouts.length,
     workoutRate: workouts.length ? workoutDone / workouts.length : null,
     nutritionDone,
-    nutritionTotal: 7,
-    nutritionRate: nutritionDone / 7,
+    nutritionTotal: days,
+    nutritionRate: nutritionDone / days,
     checkInDone,
-    checkInTotal: 7,
-    checkInRate: checkInDone / 7,
+    checkInTotal: days,
+    checkInRate: checkInDone / days,
     recoveryLabel: readinessLabel(currentScore),
     recoveryTone: progressToneFromReadiness(currentScore),
   };
@@ -4294,7 +4310,7 @@ function buildTrainingProgress(workouts: WorkoutAssignmentSummary[], trends: Tre
     total,
     completed,
     consistency,
-    consistencyTone: consistency == null ? "neutral" : consistency >= 0.8 ? "success" : consistency >= 0.5 ? "warning" : "danger",
+    consistencyTone: judgeRate(consistency, total),
     ...buildWorkoutConsistencySeries(workouts, range),
     streak: buildCheckInStreak(trends),
     avgLoad: average(loads),
@@ -4304,8 +4320,10 @@ function buildTrainingProgress(workouts: WorkoutAssignmentSummary[], trends: Tre
 }
 
 function buildNutritionProgress(data: AthleteDashboardData): NutritionProgressModel {
-  const loggedDays = data.nutritionWeek.filter((day) => day.loggedMeals > 0).length;
-  const totalDays = Math.max(1, data.nutritionWeek.length || 7);
+  const start = windowStart(todayKey(), joinedDay(data), Math.max(1, data.nutritionWeek.length || 7));
+  const week = data.nutritionWeek.filter((day) => day.date >= start);
+  const loggedDays = week.filter((day) => day.loggedMeals > 0).length;
+  const totalDays = Math.max(1, week.length);
   const loggedDayRate = loggedDays / totalDays;
   const calories = data.nutritionWeek.map((day) => Math.round(day.calories ?? 0));
   const loggedCalories = calories.filter((value) => value > 0);
@@ -4313,7 +4331,7 @@ function buildNutritionProgress(data: AthleteDashboardData): NutritionProgressMo
     loggedDays,
     totalDays,
     loggedDayRate,
-    loggedDayTone: loggedDayRate >= 0.8 ? "success" : loggedDayRate >= 0.5 ? "warning" : "danger",
+    loggedDayTone: judgeRate(loggedDayRate, totalDays),
     calorieSeries: calories,
     dayLabels: data.nutritionWeek.map((day) => weekdayShort(day.date)),
     avgCalories: loggedCalories.length ? average(loggedCalories) : null,

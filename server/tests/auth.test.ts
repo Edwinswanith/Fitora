@@ -187,6 +187,8 @@ describe("POST /api/auth/register-athlete (self-signup)", () => {
       .set("Authorization", `Bearer ${res.body.accessToken}`);
     expect(me.status).toBe(200);
     expect(me.body.athlete).toMatchObject({ sport: "Athletics" });
+    // The app measures progress only from the join date.
+    expect(new Date(me.body.athlete.createdAt).toString()).not.toBe("Invalid Date");
   });
 
   test("duplicate email returns 409 and creates no orphan profile", async () => {
