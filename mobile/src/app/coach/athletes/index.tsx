@@ -11,13 +11,14 @@ import {
   HeroCard,
   IconTile,
   LoadingState,
+  MetricRing,
   ScreenContainer,
   SegmentedControl,
   StatusChip,
 } from "../../../components/fitora";
 import { Avatar } from "../../../components/Avatar";
 import { planVisual, workoutVisual, type FitoraIconName, type FitoraTone } from "../../../lib/fitoraIcons";
-import { colors } from "../../../lib/theme";
+import { colors, metricColors } from "../../../lib/theme";
 import {
   attentionRank,
   attentionReason,
@@ -234,12 +235,17 @@ function ClientRow({
         </View>
         <Text style={styles.goalText} numberOfLines={1}>{athlete.sport || "General Fitness"}</Text>
         <View style={styles.clientMetrics}>
-          <SmallMetric icon="speedometer-outline" label="Readiness" value={readiness == null ? "--" : `${readiness} /100`} tone={statusTone} />
-          <SmallMetric icon={workoutIcon.icon} label="Workout" value={planned ? `${completed} / ${planned}` : "No plan"} tone={workoutIcon.tone} />
+          <SmallMetric icon={workoutIcon.icon} label="Workout" value={planned ? `${completed} / ${planned}` : "No plan"} color={metricColors.training.ink} />
           <SmallMetric icon={sessionIcon.icon} label="Next session" value={lastSession?.type ? titleCase(lastSession.type) : "None"} tone={sessionIcon.tone} />
         </View>
       </View>
-      <Ionicons name="chevron-forward" size={22} color={colors.ink} />
+      <View style={styles.readinessCol} accessibilityLabel={readiness == null ? "Readiness not logged" : `Readiness ${readiness} out of 100`}>
+        <MetricRing metric="readiness" value={readiness == null ? 0 : readiness / 100} size={46} stroke={5}>
+          <Text style={styles.readinessValue}>{readiness == null ? "--" : readiness}</Text>
+        </MetricRing>
+        <Text style={styles.readinessLabel}>Ready</Text>
+      </View>
+      <Ionicons name="chevron-forward" size={20} color={colors.inkFaint} />
     </Pressable>
   );
 }
@@ -249,13 +255,15 @@ function SmallMetric({
   label,
   value,
   tone = "primary",
+  color: colorOverride,
 }: {
   icon: FitoraIconName;
   label: string;
   value: string;
   tone?: FitoraTone;
+  color?: string;
 }) {
-  const color = tone === "success" ? colors.ok : tone === "warning" ? colors.warn : tone === "danger" ? colors.bad : colors.primary;
+  const color = colorOverride ?? (tone === "success" ? colors.ok : tone === "warning" ? colors.warn : tone === "danger" ? colors.bad : colors.primary);
   return (
     <View style={styles.smallMetric}>
       <Ionicons name={icon} size={15} color={color} />
@@ -284,6 +292,9 @@ const styles = StyleSheet.create({
   goalText: { color: colors.inkMuted, fontSize: 12, lineHeight: 16 },
   clientMetrics: { flexDirection: "row", gap: 6 },
   smallMetric: { flex: 1, minWidth: 0, gap: 1 },
+  readinessCol: { alignItems: "center", gap: 2 },
+  readinessValue: { color: metricColors.readiness.ink, fontSize: 14, lineHeight: 17, fontWeight: "900" },
+  readinessLabel: { color: colors.inkMuted, fontSize: 12, lineHeight: 15, fontWeight: "700" },
   smallMetricLabel: { color: colors.inkMuted, fontSize: 12, lineHeight: 16 },
   smallMetricValue: { color: colors.ink, fontSize: 12, lineHeight: 16, fontWeight: "800" },
   divider: { height: 1, backgroundColor: colors.line },

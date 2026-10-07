@@ -1,4 +1,4 @@
-import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { Fragment, useCallback, useEffect, useId, useMemo, useRef, useState } from "react";
 import { Alert, Image, Pressable, StyleSheet, TextInput, View } from "react-native";
 import type { ImageSourcePropType } from "react-native";
 import { useFocusEffect, useLocalSearchParams, useRouter } from "expo-router";
@@ -9,6 +9,7 @@ import {
   ActionButton,
   AlertBanner,
   HeroCard,
+  MetricRing,
   MetricRow,
   MetricTileRing,
   SectionLabel,
@@ -35,7 +36,7 @@ import { celebrate, showError } from "../../lib/feedback";
 import { joinSessionCall } from "../../lib/videoCall";
 import { eligibleDays, judgeRate, localDayOf, windowStart } from "../../lib/progressWindow";
 import { exerciseVisual, mealVisual, workoutVisual, type FitoraIconAsset, type FitoraVisual } from "../../lib/fitoraIcons";
-import { colors, radius } from "../../lib/theme";
+import { colors, metricColors, radius, type MetricKey } from "../../lib/theme";
 import {
   addDays,
   dateKey,
@@ -1326,7 +1327,7 @@ function TrainingWorkoutHero({
       ) : null}
       {hasProgress ? (
         <View style={styles.trainingProgressRow}>
-          <ProgressBar value={progressPercent / 100} height={6} style={styles.trainingProgressBar} />
+          <ProgressBar value={progressPercent / 100} height={6} color={metricColors.training.to} style={styles.trainingProgressBar} />
           <Text style={styles.trainingProgressText}>{completedCount} / {exerciseCount}</Text>
         </View>
       ) : null}
@@ -2316,26 +2317,23 @@ function NutritionSummaryCardV2({
   return (
     <AppCard style={styles.nutritionSummaryCard}>
       <View style={styles.nutritionSummaryTop}>
+        <MetricRing metric="nutrition" value={calorieProgress} size={92} stroke={10}>
+          <Text style={styles.nutritionRingPercent}>{caloriePercent}%</Text>
+          <Text style={styles.nutritionRingLabel}>of goal</Text>
+        </MetricRing>
         <View style={styles.nutritionSummaryCopy}>
-          <Text style={styles.nutritionEyebrow}>{"TODAY'S NUTRITION"}</Text>
+          <Text style={styles.nutritionEyebrow}>{"TODAY'S CALORIES"}</Text>
           <View style={styles.nutritionCaloriesRow}>
             <Text style={styles.nutritionCaloriesValue}>{consumed.toLocaleString()}</Text>
-            <Text style={styles.nutritionCaloriesTarget}> / {target.calories.toLocaleString()} kcal</Text>
+            <Text style={styles.nutritionCaloriesTarget}> / {target.calories.toLocaleString()}</Text>
+          </View>
+          <Text style={styles.nutritionRemainingText}>{remainingLabel}</Text>
+          <View style={[styles.nutritionStatusPill, { backgroundColor: status.background }]}>
+            <View style={[styles.nutritionStatusDot, { backgroundColor: status.dot }]} />
+            <Text style={[styles.nutritionStatusText, { color: status.text }]}>{status.label}</Text>
           </View>
         </View>
-        <View style={[styles.nutritionStatusPill, { backgroundColor: status.background }]}>
-          <View style={[styles.nutritionStatusDot, { backgroundColor: status.dot }]} />
-          <Text style={[styles.nutritionStatusText, { color: status.text }]}>{status.label}</Text>
-        </View>
       </View>
-
-      <View style={styles.nutritionProgressRowV2}>
-        <View style={styles.nutritionProgressTrackV2}>
-          <ProgressBar value={calorieProgress} color={colors.primary} />
-        </View>
-        <Text style={styles.nutritionProgressPercent}>{caloriePercent}%</Text>
-      </View>
-      <Text style={styles.nutritionRemainingText}>{remainingLabel}</Text>
 
       <View style={styles.nutritionMacroGrid}>
         <MacroTileV2 icon="fitness-outline" label="Protein" value={data.mealTotals?.proteinG ?? 0} target={target.proteinG} color="#f56565" />
@@ -2491,16 +2489,15 @@ function HydrationCardV2({
   return (
     <AppCard style={styles.nutritionHydrationCard}>
       <View style={styles.nutritionHydrationTop}>
-        <View style={styles.nutritionHydrationIcon}>
-          <Ionicons name="water-outline" size={29} color={colors.primary} />
-        </View>
+        <MetricRing metric="water" value={waterProgress} size={56} stroke={7}>
+          <Ionicons name="water" size={22} color={metricColors.water.to} />
+        </MetricRing>
         <View style={styles.nutritionHydrationCopy}>
           <Text style={styles.nutritionCardTitle}>Hydration</Text>
           <View style={styles.nutritionHydrationValueRow}>
             <Text style={styles.nutritionHydrationValue}>{(totalMl / 1000).toFixed(1)} / {(goalMl / 1000).toFixed(1)} L</Text>
-            <Text style={styles.nutritionHydrationPercent}>{percent}%</Text>
+            <Text style={[styles.nutritionHydrationPercent, { color: metricColors.water.ink }]}>{percent}%</Text>
           </View>
-          <ProgressBar value={waterProgress} color={colors.primary} />
         </View>
       </View>
       <View style={styles.nutritionHydrationActions}>
@@ -3860,10 +3857,10 @@ function ProgressSummaryCard({
         ) : null}
       </View>
       <View style={styles.progressSummaryGrid}>
-        <ProgressSummaryMetric icon="barbell-outline" title="Consistency" value={formatPercent(training.consistency)} tone={training.consistencyTone} onPress={() => onSelectCategory("training")} />
-        <ProgressSummaryMetric icon="bar-chart-outline" title="Readiness" value={recovery.readinessDelta == null ? "No trend" : `${formatSigned(recovery.readinessDelta)} pts`} tone={recovery.readinessDelta == null ? "neutral" : recovery.readinessDelta >= 0 ? "success" : "warning"} onPress={() => onSelectCategory("recovery")} />
-        <ProgressSummaryMetric icon="nutrition-outline" title="Days Logged" value={formatPercent(nutrition.loggedDayRate)} tone={nutrition.loggedDayTone} onPress={() => onSelectCategory("nutrition")} />
-        <ProgressSummaryMetric icon="heart-outline" title="Recovery" value={recovery.currentLabel} tone={recovery.currentTone} onPress={() => onSelectCategory("recovery")} />
+        <ProgressSummaryMetric metric="training" icon="barbell-outline" title="Consistency" value={formatPercent(training.consistency)} tone={training.consistencyTone} onPress={() => onSelectCategory("training")} />
+        <ProgressSummaryMetric metric="readiness" icon="bar-chart-outline" title="Readiness" value={recovery.readinessDelta == null ? "No trend" : `${formatSigned(recovery.readinessDelta)} pts`} tone={recovery.readinessDelta == null ? "neutral" : recovery.readinessDelta >= 0 ? "success" : "warning"} onPress={() => onSelectCategory("recovery")} />
+        <ProgressSummaryMetric metric="nutrition" icon="nutrition-outline" title="Days Logged" value={formatPercent(nutrition.loggedDayRate)} tone={nutrition.loggedDayTone} onPress={() => onSelectCategory("nutrition")} />
+        <ProgressSummaryMetric metric="readiness" icon="heart-outline" title="Recovery" value={recovery.currentLabel} tone={recovery.currentTone} onPress={() => onSelectCategory("recovery")} />
       </View>
       <View style={styles.progressInsightLine}>
         <Ionicons name="bulb-outline" size={20} color={colors.primary} />
@@ -3873,10 +3870,12 @@ function ProgressSummaryCard({
   );
 }
 
-function ProgressSummaryMetric({ icon, title, value, tone, onPress }: { icon: keyof typeof Ionicons.glyphMap; title: string; value: string; tone: ProgressTone; onPress: () => void }) {
+function ProgressSummaryMetric({ metric, icon, title, value, tone, onPress }: { metric: MetricKey; icon: keyof typeof Ionicons.glyphMap; title: string; value: string; tone: ProgressTone; onPress: () => void }) {
   return (
     <Pressable onPress={onPress} style={({ pressed }) => [styles.progressSummaryMetric, pressed ? { opacity: 0.75 } : null]}>
-      <IconTile icon={icon} tone={tone} size={30} />
+      <View style={[styles.progressSummaryMetricIcon, { backgroundColor: metricColors[metric].soft }]}>
+        <Ionicons name={icon} size={16} color={metricColors[metric].ink} />
+      </View>
       <View style={styles.progressSummaryMetricCopy}>
         <Text style={styles.progressSummaryMetricTitle} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.72}>{title}</Text>
         <Text style={[styles.progressSummaryMetricValue, { color: toneColor(tone) }]} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.72}>{value}</Text>
@@ -3999,7 +3998,7 @@ function TrainingProgressCard({ training, rangeLabel, loading }: { training: Tra
           <Text style={[styles.progressPrimaryValue, { color: toneColor(training.consistencyTone) }]}>{formatPercent(training.consistency)}</Text>
         </View>
         <View style={styles.progressDetailChartPane}>
-          <ProgressLineChart values={training.consistencySeries} yLabels={[100, 50, 0]} xLabels={training.seriesLabels} min={0} max={100} height={92} compact emptyLabel="No workout trend yet" />
+          <ProgressLineChart metric="training" values={training.consistencySeries} yLabels={[100, 50, 0]} xLabels={training.seriesLabels} min={0} max={100} height={92} compact emptyLabel="No workout trend yet" />
         </View>
       </View>
       <View style={styles.progressDetailMetricGrid}>
@@ -4115,7 +4114,9 @@ function ProgressLineChart({
   compact,
   showEndpoint,
   emptyLabel,
+  metric = "readiness",
 }: {
+  metric?: MetricKey;
   values: number[];
   yLabels: number[];
   xLabels: string[];
@@ -4133,6 +4134,8 @@ function ProgressLineChart({
   const bottom = compact ? 20 : 24;
   const chartWidth = width - left - right;
   const chartHeight = height - top - bottom;
+  const fillId = `trendFill-${useId().replace(/:/g, "")}`;
+  const line = metricColors[metric].to;
   if (!values.length) {
     return (
       <View style={[styles.progressEmptyChart, { height }]}>
@@ -4151,9 +4154,9 @@ function ProgressLineChart({
   return (
     <Svg width="100%" height={height} viewBox={`0 0 ${width} ${height}`}>
       <Defs>
-        <SvgLinearGradient id={compact ? "readinessFill" : "weightFill"} x1="0" y1="0" x2="0" y2="1">
-          <Stop offset="0" stopColor={colors.primary} stopOpacity="0.14" />
-          <Stop offset="1" stopColor={colors.primary} stopOpacity="0.02" />
+        <SvgLinearGradient id={fillId} x1="0" y1="0" x2="0" y2="1">
+          <Stop offset="0" stopColor={line} stopOpacity="0.18" />
+          <Stop offset="1" stopColor={line} stopOpacity="0.02" />
         </SvgLinearGradient>
       </Defs>
       {yLabels.map((label) => {
@@ -4165,10 +4168,10 @@ function ProgressLineChart({
           </Fragment>
         );
       })}
-      <Path d={areaPath} fill={`url(#${compact ? "readinessFill" : "weightFill"})`} />
-      <Path d={linePath} stroke={colors.primary} strokeWidth={compact ? 2 : 2.2} fill="none" strokeLinecap="round" strokeLinejoin="round" />
+      <Path d={areaPath} fill={`url(#${fillId})`} />
+      <Path d={linePath} stroke={line} strokeWidth={compact ? 2 : 2.2} fill="none" strokeLinecap="round" strokeLinejoin="round" />
       {points.map((point, index) => (
-        <Circle key={`point-${index}`} cx={point.x} cy={point.y} r={showEndpoint && index === points.length - 1 ? 7 : 3.6} fill="#ffffff" stroke={colors.primary} strokeWidth={showEndpoint && index === points.length - 1 ? 3.3 : 2.3} />
+        <Circle key={`point-${index}`} cx={point.x} cy={point.y} r={showEndpoint && index === points.length - 1 ? 7 : 3.6} fill="#ffffff" stroke={line} strokeWidth={showEndpoint && index === points.length - 1 ? 3.3 : 2.3} />
       ))}
       <Line x1={left} y1={top + chartHeight} x2={left + chartWidth} y2={top + chartHeight} stroke="#cbe1de" strokeWidth="1" />
       {xLabels.map((label, index) => {
@@ -4746,9 +4749,9 @@ const styles = StyleSheet.create({
     justifyContent: "center",
   },
   trainingHeroCard: { minHeight: 208, paddingHorizontal: 13, paddingVertical: 12, overflow: "hidden", position: "relative" },
-  trainingHeroImageWash: { position: "absolute", right: -14, bottom: -8, width: 142, height: 126, borderTopLeftRadius: 88, backgroundColor: "#f2fbfa" },
+  trainingHeroImageWash: { position: "absolute", right: -14, bottom: -8, width: 142, height: 126, borderTopLeftRadius: 88, backgroundColor: metricColors.training.soft },
   trainingHeroTopLine: { minHeight: 28, flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: 10, marginBottom: 5 },
-  trainingHeroEyebrow: { color: colors.primary, fontSize: 12, lineHeight: 16, fontWeight: "900", letterSpacing: 1.1 },
+  trainingHeroEyebrow: { color: metricColors.training.ink, fontSize: 12, lineHeight: 16, fontWeight: "900", letterSpacing: 1.1 },
   trainingStatusBadge: { minHeight: 24, borderRadius: 12, borderWidth: 1, borderColor: colors.line, backgroundColor: colors.surfaceInset, paddingHorizontal: 9, flexDirection: "row", alignItems: "center", gap: 6 },
   trainingStatusDot: { width: 8, height: 8, borderRadius: 4 },
   trainingStatusText: { fontSize: 12, lineHeight: 15, fontWeight: "900" },
@@ -4765,7 +4768,7 @@ const styles = StyleSheet.create({
   trainingCoachNoteText: { flex: 1, minWidth: 0, color: colors.inkMuted, fontSize: 12.5, lineHeight: 17, fontWeight: "600" },
   trainingProgressRow: { flexDirection: "row", alignItems: "center", gap: 10, marginTop: 8, zIndex: 1 },
   trainingProgressBar: { flex: 1 },
-  trainingProgressText: { width: 44, color: colors.primary, fontSize: 12, lineHeight: 16, fontWeight: "900", textAlign: "right" },
+  trainingProgressText: { width: 44, color: metricColors.training.ink, fontSize: 12, lineHeight: 16, fontWeight: "900", textAlign: "right" },
   trainingHeroButton: { minHeight: 43, borderRadius: 10, marginTop: 9, zIndex: 1 },
   trainingHeroButtonText: { fontSize: 15, lineHeight: 19 },
   trainingPreviewCard: { paddingHorizontal: 13, paddingVertical: 12 },
@@ -4908,19 +4911,21 @@ const styles = StyleSheet.create({
   nutritionActionRowV2: { flexDirection: "row", gap: 10 },
   nutritionPrimaryAction: { flex: 1, minHeight: 50, borderRadius: 10 },
   nutritionSummaryCard: { paddingHorizontal: 13, paddingVertical: 13, gap: 12 },
-  nutritionSummaryTop: { flexDirection: "row", alignItems: "flex-start", justifyContent: "space-between", gap: 12 },
+  nutritionSummaryTop: { flexDirection: "row", alignItems: "center", gap: 16 },
+  nutritionRingPercent: { color: metricColors.nutrition.ink, fontSize: 20, lineHeight: 24, fontWeight: "900" },
+  nutritionRingLabel: { color: colors.inkMuted, fontSize: 12, lineHeight: 15, fontWeight: "700" },
   nutritionSummaryCopy: { flex: 1, minWidth: 0 },
   nutritionEyebrow: { color: colors.inkMuted, fontSize: 12, lineHeight: 16, fontWeight: "900", letterSpacing: 1.8 },
   nutritionCaloriesRow: { flexDirection: "row", alignItems: "baseline", flexWrap: "wrap", marginTop: 9 },
-  nutritionCaloriesValue: { color: colors.ink, fontSize: 33, lineHeight: 39, fontWeight: "900", letterSpacing: 0 },
-  nutritionCaloriesTarget: { color: colors.inkMuted, fontSize: 21, lineHeight: 28, fontWeight: "800" },
-  nutritionStatusPill: { minHeight: 30, borderRadius: 15, paddingHorizontal: 11, flexDirection: "row", alignItems: "center", gap: 8 },
+  nutritionCaloriesValue: { color: colors.ink, fontSize: 30, lineHeight: 36, fontWeight: "900", letterSpacing: 0 },
+  nutritionCaloriesTarget: { color: colors.inkMuted, fontSize: 17, lineHeight: 26, fontWeight: "800" },
+  nutritionStatusPill: { alignSelf: "flex-start", marginTop: 6, minHeight: 28, borderRadius: 15, paddingHorizontal: 11, flexDirection: "row", alignItems: "center", gap: 8 },
   nutritionStatusDot: { width: 8, height: 8, borderRadius: 4 },
   nutritionStatusText: { fontSize: 13, lineHeight: 17, fontWeight: "900" },
   nutritionProgressRowV2: { flexDirection: "row", alignItems: "center", gap: 12 },
   nutritionProgressTrackV2: { flex: 1 },
   nutritionProgressPercent: { width: 38, color: colors.inkMuted, fontSize: 12.5, lineHeight: 16, fontWeight: "800", textAlign: "right" },
-  nutritionRemainingText: { alignSelf: "flex-end", color: colors.ink, fontSize: 13, lineHeight: 17, fontWeight: "700", marginTop: -7 },
+  nutritionRemainingText: { color: colors.inkMuted, fontSize: 13, lineHeight: 17, fontWeight: "700" },
   nutritionMacroGrid: { flexDirection: "row", alignItems: "stretch", gap: 8 },
   nutritionMacroTile: { flex: 1, minWidth: 0, gap: 5 },
   nutritionMacroIcon: { width: 34, height: 34, borderRadius: 17, alignItems: "center", justifyContent: "center" },
@@ -5159,6 +5164,7 @@ const styles = StyleSheet.create({
     alignItems: "center",
     gap: 5,
   },
+  progressSummaryMetricIcon: { width: 30, height: 30, borderRadius: 15, alignItems: "center", justifyContent: "center" },
   progressSummaryMetricCopy: { flex: 1, minWidth: 0, gap: 1 },
   progressSummaryMetricTitle: { color: colors.inkMuted, fontSize: 12, lineHeight: 16, fontWeight: "800" },
   progressSummaryMetricValue: { fontSize: 13.5, lineHeight: 17, fontWeight: "900" },
@@ -5210,8 +5216,8 @@ const styles = StyleSheet.create({
   progressEmptyText: { color: colors.inkMuted, fontSize: 13, lineHeight: 18, fontWeight: "700", marginTop: 2 },
   progressBarTrend: { height: 84, flexDirection: "row", alignItems: "flex-end", justifyContent: "space-between", gap: 6 },
   progressBarTrendColumn: { flex: 1, minWidth: 0, height: "100%", alignItems: "center", justifyContent: "flex-end", gap: 5 },
-  progressBarTrendTrack: { width: "70%", flex: 1, borderRadius: 7, backgroundColor: colors.surfaceInset, justifyContent: "flex-end", overflow: "hidden" },
-  progressBarTrendFill: { width: "100%", borderRadius: 7, backgroundColor: colors.primary },
+  progressBarTrendTrack: { width: "70%", flex: 1, borderRadius: 7, backgroundColor: metricColors.nutrition.track, justifyContent: "flex-end", overflow: "hidden" },
+  progressBarTrendFill: { width: "100%", borderRadius: 7, backgroundColor: metricColors.nutrition.to },
   progressBarTrendLabel: { color: colors.inkMuted, fontSize: 12, lineHeight: 16, fontWeight: "800" },
   progressCardTitle: { color: colors.ink, fontSize: 15, lineHeight: 19, fontWeight: "900" },
   feedbackProgressCard: { minHeight: 86, paddingHorizontal: 12, paddingVertical: 12, flexDirection: "row", alignItems: "center", gap: 12 },
