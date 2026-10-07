@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { AppState, Linking, Pressable, StyleSheet, View, type AppStateStatus } from "react-native";
-import { useLocalSearchParams, useRouter } from "expo-router";
+import { useLocalSearchParams } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
 import { Text } from "../../../components/AppText";
 import { Avatar } from "../../../components/Avatar";
@@ -8,6 +8,7 @@ import {
   ActionButton,
   AlertBanner,
   AppCard,
+  BackHeader,
   EmptyState,
   ErrorState,
   LoadingState,
@@ -364,19 +365,6 @@ export default function CoachProfileScreen() {
   );
 }
 
-function BackHeader({ title }: { title: string }) {
-  const router = useRouter();
-  return (
-    <View style={styles.header}>
-      <Pressable onPress={() => router.back()} style={styles.backButton} hitSlop={10}>
-        <Ionicons name="arrow-back" size={24} color={colors.ink} />
-      </Pressable>
-      <Text style={styles.headerTitle} numberOfLines={1}>{title}</Text>
-      <View style={styles.backButton} />
-    </View>
-  );
-}
-
 function PlanCard({ plan, selected, onSelect }: { plan: PricingPlan; selected: boolean; onSelect?: () => void }) {
   return (
     <Pressable onPress={onSelect} disabled={!onSelect} style={({ pressed }) => [pressed ? styles.pressed : null]}>
@@ -432,9 +420,6 @@ function ReviewRow({ review }: { review: CoachReview }) {
 }
 
 const styles = StyleSheet.create({
-  header: { minHeight: 58, flexDirection: "row", alignItems: "center", justifyContent: "space-between" },
-  backButton: { height: 42, width: 42, borderRadius: 21, alignItems: "center", justifyContent: "center" },
-  headerTitle: { flex: 1, textAlign: "center", color: colors.ink, fontSize: 19, lineHeight: 24, fontWeight: "900" },
   identityRow: { flexDirection: "row", alignItems: "center", gap: 14 },
   nameRow: { flexDirection: "row", alignItems: "center", gap: 6 },
   name: { flex: 1, color: colors.ink, fontSize: 21, lineHeight: 27, fontWeight: "900" },

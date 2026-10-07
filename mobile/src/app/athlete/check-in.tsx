@@ -1,16 +1,20 @@
 import { useState } from "react";
 import { Pressable, StyleSheet, TextInput, View } from "react-native";
-import { useRouter } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
 import { Text } from "../../components/AppText";
-import { ActionButton, AppCard, ScreenContainer, SectionHeader } from "../../components/fitora";
+import {
+  ActionButton,
+  AppCard,
+  BackHeader,
+  ScreenContainer,
+  SectionHeader,
+} from "../../components/fitora";
 import { apiFetch } from "../../lib/api";
 import { celebrate, errorFeedback, selectionFeedback } from "../../lib/feedback";
 import { loadAthleteDashboardData, todayKey, updateCachedData, type AthleteDashboardData } from "../../lib/fitoraData";
 import { colors, radius } from "../../lib/theme";
 
 export default function CheckIn() {
-  const router = useRouter();
   const [sleepHours, setSleepHours] = useState(7.5);
   const [sleepQuality, setSleepQuality] = useState<number | null>(null);
   const [mood, setMood] = useState<number | null>(null);
@@ -98,13 +102,7 @@ export default function CheckIn() {
 
   return (
     <ScreenContainer>
-      <View style={styles.header}>
-        <Pressable onPress={() => router.back()} style={styles.backButton} hitSlop={10}>
-          <Ionicons name="chevron-back" size={26} color={colors.ink} />
-        </Pressable>
-        <Text style={styles.title}>Daily Check-in</Text>
-      </View>
-      <Text style={styles.tagline}>Takes under a minute — it drives your readiness.</Text>
+      <BackHeader title="Daily Check-in" subtitle="Takes under a minute. It drives your readiness." />
 
       <AppCard>
         <View style={styles.cardGap}>
@@ -258,7 +256,6 @@ function HourStepper({
 }
 
 const styles = StyleSheet.create({
-  header: { minHeight: 58, flexDirection: "row", alignItems: "center", gap: 10 },
   backButton: {
     height: 42,
     width: 42,
@@ -269,8 +266,6 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: colors.line,
   },
-  title: { flex: 1, color: colors.ink, fontSize: 26, lineHeight: 32, fontWeight: "900" },
-  tagline: { color: colors.inkMuted, fontSize: 14, lineHeight: 19, marginTop: -6, marginBottom: 4 },
   sectionSub: { color: colors.inkMuted, fontSize: 13, lineHeight: 18, marginTop: -4 },
   cardGap: { gap: 18 },
   hrRow: { flexDirection: "row", gap: 12 },

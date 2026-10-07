@@ -6,6 +6,7 @@ import { Text } from "../../components/AppText";
 import {
   ActionButton,
   AppCard,
+  BackHeader,
   EmptyState,
   ErrorState,
   IconTile,
@@ -112,18 +113,6 @@ export default function ActiveWorkoutScreen() {
       <BackHeader title={state.data.name} onBack={() => router.back()} />
       <WorkoutTask assignment={state.data} onProgressSaved={patchProgress} />
     </ScreenContainer>
-  );
-}
-
-function BackHeader({ title, onBack }: { title: string; onBack?: () => void }) {
-  const router = useRouter();
-  return (
-    <View style={styles.header}>
-      <Pressable onPress={onBack ?? (() => router.back())} style={styles.backButton}>
-        <Ionicons name="chevron-back" size={27} color={colors.ink} />
-      </Pressable>
-      <Text style={styles.headerTitle} numberOfLines={1}>{title}</Text>
-    </View>
   );
 }
 
@@ -509,9 +498,6 @@ const styles = StyleSheet.create({
   // stepper's "+" button, hugging the right edge) never sit under the
   // globally-mounted Ask Agent FAB (bottom-right on every screen).
   screenContent: { paddingBottom: 110 },
-  header: { minHeight: 60, flexDirection: "row", alignItems: "center", gap: 10 },
-  backButton: { height: 42, width: 42, borderRadius: 21, alignItems: "center", justifyContent: "center", backgroundColor: colors.surfaceRaised, borderWidth: 1, borderColor: colors.line },
-  headerTitle: { flex: 1, color: colors.ink, fontSize: 24, lineHeight: 30, fontWeight: "900" },
   eyebrow: { color: colors.primary, fontSize: 13, fontWeight: "900", textTransform: "uppercase" },
   workoutTitle: { color: colors.ink, fontSize: 25, lineHeight: 31, fontWeight: "900", marginTop: 6 },
   currentLabel: { color: colors.ink, fontSize: 19, fontWeight: "900", marginBottom: 8 },

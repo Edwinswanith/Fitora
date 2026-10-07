@@ -8,6 +8,7 @@ import { Text } from "../../components/AppText";
 import {
   ActionButton,
   AppCard,
+  BackHeader,
   EmptyState,
   IconTile,
   LoadingState,
@@ -226,12 +227,7 @@ export default function MealScanScreen() {
 
   return (
     <ScreenContainer>
-      <View style={styles.header}>
-        <Pressable onPress={() => router.back()} style={styles.backButton}>
-          <Ionicons name="chevron-back" size={27} color={colors.ink} />
-        </Pressable>
-        <Text style={styles.headerTitle}>Scan Meal</Text>
-      </View>
+      <BackHeader title="Scan Meal" subtitle="Snap your plate. You confirm before anything is saved." />
 
       {error ? (
         <AppCard style={styles.errorCard}>
@@ -394,9 +390,6 @@ function MiniField({
 }
 
 const styles = StyleSheet.create({
-  header: { minHeight: 60, flexDirection: "row", alignItems: "center", gap: 10 },
-  backButton: { height: 42, width: 42, borderRadius: 21, alignItems: "center", justifyContent: "center", backgroundColor: colors.surfaceRaised, borderWidth: 1, borderColor: colors.line },
-  headerTitle: { flex: 1, color: colors.ink, fontSize: 28, lineHeight: 35, fontWeight: "900" },
   pickCard: { alignItems: "center", gap: 12, paddingVertical: 28 },
   pickTitle: { color: colors.ink, fontSize: 22, fontWeight: "900" },
   pickBody: { color: colors.inkMuted, textAlign: "center", fontSize: 15, lineHeight: 21 },

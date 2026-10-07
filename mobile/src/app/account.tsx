@@ -9,6 +9,7 @@ import { todayLocalDate, yearsAgoLocalDate } from "../lib/dateTimeValues";
 import {
   ActionButton,
   AppCard,
+  BackHeader,
   ErrorState,
   IconTile,
   LoadingState,
@@ -153,18 +154,9 @@ function ProfileShell({
   onRefresh: () => void;
   onEditPress: () => void;
 }) {
-  const router = useRouter();
   return (
     <ScreenContainer refreshing={refreshing} onRefresh={onRefresh}>
-      <View style={styles.headerRow}>
-        <Pressable onPress={() => router.back()} hitSlop={10} style={styles.iconButton}>
-          <Ionicons name="arrow-back" size={24} color={colors.ink} />
-        </Pressable>
-        <Text style={styles.pageTitle}>Profile</Text>
-        <Pressable onPress={onEditPress} hitSlop={10}>
-          <Text style={styles.editText}>Edit</Text>
-        </Pressable>
-      </View>
+      <BackHeader title="Profile" actionLabel="Edit" onAction={onEditPress} />
       {children}
       <SupportCard />
       <SecurityCard />
@@ -742,9 +734,6 @@ function Divider() {
 }
 
 const styles = StyleSheet.create({
-  headerRow: { minHeight: 58, flexDirection: "row", alignItems: "center", justifyContent: "space-between" },
-  iconButton: { height: 42, width: 42, borderRadius: 21, alignItems: "center", justifyContent: "center" },
-  pageTitle: { color: colors.ink, fontSize: 28, lineHeight: 34, fontWeight: "900" },
   editText: { color: colors.primary, fontSize: 16, fontWeight: "800" },
   identityRow: { flexDirection: "row", alignItems: "center", gap: 15 },
   identityName: { color: colors.ink, fontSize: 22, lineHeight: 28, fontWeight: "900" },

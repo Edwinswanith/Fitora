@@ -1,6 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { ActivityIndicator, Pressable, StyleSheet, TextInput, View } from "react-native";
-import { useRouter } from "expo-router";
 import { Text } from "../../components/AppText";
 import { Ionicons } from "@expo/vector-icons";
 import Svg, { Circle, Defs, Line, LinearGradient, Path, Stop } from "react-native-svg";
@@ -10,7 +9,11 @@ import { apiFetch, apiJson } from "../../lib/api";
 import { celebrate, errorFeedback } from "../../lib/feedback";
 import { todayKey, updateCachedData, type AthleteDashboardData } from "../../lib/fitoraData";
 import { colors, radius } from "../../lib/theme";
-import { AppCard, ScreenContainer } from "../../components/fitora";
+import {
+  AppCard,
+  BackHeader,
+  ScreenContainer,
+} from "../../components/fitora";
 
 // The web hydration card renders a blue water ring — mirror that here rather
 // than the athlete gold accent, so both platforms read as the same feature.
@@ -128,7 +131,6 @@ function HydrationBars({ series, goalMl }: { series: WaterPoint[]; goalMl: numbe
 }
 
 export default function Water() {
-  const router = useRouter();
   const [day, setDay] = useState<WaterDay | null>(null);
   const [historyDays, setHistoryDays] = useState<7 | 30>(7);
   const [history, setHistory] = useState<WaterSeries | null>(null);
@@ -324,13 +326,7 @@ export default function Water() {
 
   return (
     <ScreenContainer>
-      <View style={styles.header}>
-        <Pressable onPress={() => router.back()} style={styles.backButton} hitSlop={10}>
-          <Ionicons name="chevron-back" size={26} color={colors.ink} />
-        </Pressable>
-        <Text style={styles.title}>Water</Text>
-      </View>
-      <Text style={styles.tagline}>Stay on top of hydration.</Text>
+      <BackHeader title="Water" subtitle="Stay on top of hydration." />
 
       {loading && !day ? (
         <ActivityIndicator color={colors.primary} style={{ marginTop: 40 }} />
@@ -511,7 +507,6 @@ export default function Water() {
 }
 
 const styles = StyleSheet.create({
-  header: { minHeight: 58, flexDirection: "row", alignItems: "center", gap: 10 },
   backButton: {
     height: 42,
     width: 42,
@@ -522,8 +517,6 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: colors.line,
   },
-  title: { flex: 1, color: colors.ink, fontSize: 26, lineHeight: 32, fontWeight: "900" },
-  tagline: { color: colors.inkMuted, fontSize: 14, lineHeight: 19, marginTop: -6, marginBottom: 4 },
   cardTitle: { fontSize: 15, fontWeight: "800", color: colors.ink },
   cardTitleRow: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", marginBottom: 8 },
   mutedSmall: { fontSize: 12, color: colors.inkMuted },

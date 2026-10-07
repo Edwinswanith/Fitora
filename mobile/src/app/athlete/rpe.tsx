@@ -1,9 +1,14 @@
 import { useEffect, useState } from "react";
 import { Pressable, StyleSheet, TextInput, View } from "react-native";
-import { useLocalSearchParams, useRouter } from "expo-router";
+import { useLocalSearchParams } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
 import { Text } from "../../components/AppText";
-import { ActionButton, AppCard, ScreenContainer } from "../../components/fitora";
+import {
+  ActionButton,
+  AppCard,
+  BackHeader,
+  ScreenContainer,
+} from "../../components/fitora";
 import { apiFetch, apiJson } from "../../lib/api";
 import { celebrate, errorFeedback, selectionFeedback } from "../../lib/feedback";
 import { colors, radius } from "../../lib/theme";
@@ -41,7 +46,6 @@ function titleCase(value: string): string {
 }
 
 export default function Rpe() {
-  const router = useRouter();
   const params = useLocalSearchParams<{ sessionType?: string; rpe?: string }>();
   const initialSession = SESSIONS.includes(params.sessionType as (typeof SESSIONS)[number])
     ? (params.sessionType as (typeof SESSIONS)[number])
@@ -127,13 +131,7 @@ export default function Rpe() {
 
   return (
     <ScreenContainer>
-      <View style={styles.header}>
-        <Pressable onPress={() => router.back()} style={styles.backButton} hitSlop={10}>
-          <Ionicons name="chevron-back" size={26} color={colors.ink} />
-        </Pressable>
-        <Text style={styles.title}>Post-Session Response</Text>
-      </View>
-      <Text style={styles.tagline}>A couple of quick taps — this drives your training load and risk flags.</Text>
+      <BackHeader title="How did it feel?" subtitle="A couple of quick taps. This drives your training load and risk flags." />
 
       <AppCard>
         <View style={styles.cardGap}>
@@ -317,7 +315,6 @@ function NumberStepper({
 }
 
 const styles = StyleSheet.create({
-  header: { minHeight: 58, flexDirection: "row", alignItems: "center", gap: 10 },
   backButton: {
     height: 42,
     width: 42,
@@ -328,8 +325,6 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: colors.line,
   },
-  title: { flex: 1, color: colors.ink, fontSize: 24, lineHeight: 30, fontWeight: "900" },
-  tagline: { color: colors.inkMuted, fontSize: 14, lineHeight: 19, marginTop: -6, marginBottom: 4 },
   cardGap: { gap: 18 },
   fieldLabel: { color: colors.inkMuted, fontSize: 12, fontWeight: "900", textTransform: "uppercase", letterSpacing: 0.4 },
   successText: { color: colors.ok, fontSize: 13, fontWeight: "800" },

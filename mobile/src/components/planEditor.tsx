@@ -3,7 +3,7 @@ import { KeyboardAvoidingView, Platform, Pressable, ScrollView, StyleSheet, Text
 import { SafeAreaView } from "react-native-safe-area-context";
 import { Ionicons } from "@expo/vector-icons";
 import { Text } from "./AppText";
-import type { IconName } from "./fitora";
+import { BackHeader, type IconName } from "./fitora";
 import { colors, radius } from "../lib/theme";
 
 /**
@@ -28,17 +28,8 @@ export function EditorScreen({ children }: { children: ReactNode }) {
   );
 }
 
-export function EditorHeader({ title, subtitle, onBack, backLabel = "Plan" }: { title: string; subtitle?: string; onBack: () => void; backLabel?: string }) {
-  return (
-    <View style={styles.header}>
-      <Pressable onPress={onBack} hitSlop={10} style={styles.back} accessibilityRole="button" accessibilityLabel={`Back to ${backLabel}`}>
-        <Ionicons name="chevron-back" size={20} color={colors.primary} />
-        <Text style={styles.backText}>{backLabel}</Text>
-      </Pressable>
-      <Text style={styles.title} numberOfLines={2}>{title}</Text>
-      {subtitle ? <Text style={styles.subtitle}>{subtitle}</Text> : null}
-    </View>
-  );
+export function EditorHeader({ title, subtitle, onBack }: { title: string; subtitle?: string; onBack: () => void; backLabel?: string }) {
+  return <BackHeader title={title} subtitle={subtitle} onBack={onBack} />;
 }
 
 export function FieldLabel({ children }: { children: ReactNode }) {
@@ -172,11 +163,6 @@ export const editorStyles = StyleSheet.create({
 const styles = StyleSheet.create({
   safe: { flex: 1, backgroundColor: colors.surface },
   content: { paddingHorizontal: 15, paddingTop: 6, paddingBottom: 140, gap: 10 },
-  header: { gap: 4, marginBottom: 4 },
-  back: { flexDirection: "row", alignItems: "center", gap: 2, alignSelf: "flex-start", minHeight: 32 },
-  backText: { color: colors.primary, fontSize: 14, fontWeight: "800" },
-  title: { color: colors.ink, fontSize: 24, lineHeight: 30, fontWeight: "900" },
-  subtitle: { color: colors.inkMuted, fontSize: 13, lineHeight: 18 },
   label: { color: colors.inkMuted, fontSize: 12, lineHeight: 16, fontWeight: "900", textTransform: "uppercase" },
   field: { gap: 4 },
   input: {

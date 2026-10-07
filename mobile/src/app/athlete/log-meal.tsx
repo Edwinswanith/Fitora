@@ -3,7 +3,13 @@ import { KeyboardAvoidingView, Platform, Pressable, ScrollView, StyleSheet, Text
 import { useRouter } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
 import { Text } from "../../components/AppText";
-import { ActionButton, AppCard, EmptyState, ScreenContainer } from "../../components/fitora";
+import {
+  ActionButton,
+  AppCard,
+  BackHeader,
+  EmptyState,
+  ScreenContainer,
+} from "../../components/fitora";
 import { apiFetch, apiJson } from "../../lib/api";
 import { celebrate, errorFeedback } from "../../lib/feedback";
 import { addDays, todayKey, titleCase, updateCachedData, mealCalories, type AthleteDashboardData, type Meal } from "../../lib/fitoraData";
@@ -162,12 +168,7 @@ export default function LogMealScreen() {
     <ScreenContainer>
       <KeyboardAvoidingView behavior={Platform.OS === "ios" ? "padding" : undefined} style={{ flex: 1 }}>
         <ScrollView contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
-          <View style={styles.header}>
-            <Pressable onPress={() => router.back()} style={styles.backButton} hitSlop={10}>
-              <Ionicons name="chevron-back" size={26} color={colors.ink} />
-            </Pressable>
-            <Text style={styles.title}>Log Meal</Text>
-          </View>
+          <BackHeader title="Log Meal" />
 
           <AppCard>
             <Text style={styles.cardTitle}>Meal Type</Text>
@@ -270,7 +271,6 @@ function Field({
 
 const styles = StyleSheet.create({
   content: { gap: 12, paddingBottom: 36 },
-  header: { minHeight: 60, flexDirection: "row", alignItems: "center", gap: 10 },
   backButton: {
     height: 42,
     width: 42,
@@ -281,7 +281,6 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: colors.line,
   },
-  title: { flex: 1, color: colors.ink, fontSize: 28, lineHeight: 35, fontWeight: "900" },
   cardTitle: { color: colors.ink, fontSize: 18, fontWeight: "900" },
   chipRow: { flexDirection: "row", flexWrap: "wrap", gap: 8, marginTop: 12 },
   chip: {

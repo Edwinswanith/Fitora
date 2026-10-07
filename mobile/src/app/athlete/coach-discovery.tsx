@@ -7,6 +7,7 @@ import { Avatar } from "../../components/Avatar";
 import {
   AlertBanner,
   AppCard,
+  BackHeader,
   EmptyState,
   ErrorState,
   LoadingState,
@@ -98,14 +99,7 @@ export default function CoachDiscovery() {
 
   return (
     <ScreenContainer refreshing={state.refreshing} onRefresh={state.reload}>
-      <View style={styles.headerRow}>
-        <Pressable onPress={() => router.back()} style={styles.backButton} hitSlop={10}>
-          <Ionicons name="arrow-back" size={24} color={colors.ink} />
-        </Pressable>
-        <Text style={styles.title}>Find a Coach</Text>
-        <View style={styles.backButton} />
-      </View>
-      <Text style={styles.tagline}>{"Match your goal to a coach's plan, price, and availability."}</Text>
+      <BackHeader title="Find a Coach" subtitle="Match your goal to a coach's plan, price and availability." />
 
       {state.data?.currentCoachName ? (
         <AlertBanner
@@ -240,10 +234,6 @@ function CoachCard({ coach, onPress }: { coach: MarketplaceCoach; onPress: () =>
 }
 
 const styles = StyleSheet.create({
-  headerRow: { minHeight: 58, flexDirection: "row", alignItems: "center", justifyContent: "space-between" },
-  backButton: { height: 42, width: 42, borderRadius: 21, alignItems: "center", justifyContent: "center" },
-  title: { color: colors.ink, fontSize: 26, lineHeight: 32, fontWeight: "900" },
-  tagline: { color: colors.inkMuted, fontSize: 14, lineHeight: 19, marginTop: -6 },
   searchBox: {
     minHeight: 52,
     borderRadius: radius.lg,

@@ -1,9 +1,13 @@
 import { useCallback, useEffect, useState } from "react";
-import { Pressable, StyleSheet, View } from "react-native";
-import { useRouter } from "expo-router";
-import { Ionicons } from "@expo/vector-icons";
+import { StyleSheet, View } from "react-native";
 import { Text } from "../../components/AppText";
-import { AppCard, EmptyState, LoadingState, ScreenContainer } from "../../components/fitora";
+import {
+  AppCard,
+  BackHeader,
+  EmptyState,
+  LoadingState,
+  ScreenContainer,
+} from "../../components/fitora";
 import { apiJson } from "../../lib/api";
 import { colors } from "../../lib/theme";
 
@@ -24,7 +28,6 @@ function bandColor(score: number | null) {
 }
 
 export default function Trends() {
-  const router = useRouter();
   const [series, setSeries] = useState<Point[] | null>(null);
   const [loading, setLoading] = useState(true);
 
@@ -51,13 +54,7 @@ export default function Trends() {
 
   return (
     <ScreenContainer>
-      <View style={styles.header}>
-        <Pressable onPress={() => router.back()} style={styles.backButton} hitSlop={10}>
-          <Ionicons name="chevron-back" size={26} color={colors.ink} />
-        </Pressable>
-        <Text style={styles.title}>Trends</Text>
-      </View>
-      <Text style={styles.tagline}>Last 14 days</Text>
+      <BackHeader title="Trends" subtitle="Last 14 days" />
 
       {loading && !series ? (
         <LoadingState label="Loading trends..." />
@@ -117,7 +114,6 @@ function Stat({ label, value }: { label: string; value: string }) {
 }
 
 const styles = StyleSheet.create({
-  header: { minHeight: 58, flexDirection: "row", alignItems: "center", gap: 10 },
   backButton: {
     height: 42,
     width: 42,
@@ -128,8 +124,6 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: colors.line,
   },
-  title: { flex: 1, color: colors.ink, fontSize: 26, lineHeight: 32, fontWeight: "900" },
-  tagline: { color: colors.inkMuted, fontSize: 14, lineHeight: 19, marginTop: -6, marginBottom: 4 },
   statRow: { flexDirection: "row", gap: 10 },
   stat: { flex: 1, padding: 12 },
   statLabel: { fontSize: 12, color: colors.inkMuted, fontWeight: "700" },

@@ -610,12 +610,15 @@ export function BackHeader({
   subtitle,
   onBack,
   actionLabel,
+  actionIcon,
   onAction,
 }: {
   title: string;
   subtitle?: string;
   onBack?: () => void;
   actionLabel?: string;
+  /** Icon-only action (e.g. message). actionLabel doubles as its accessibility label. */
+  actionIcon?: keyof typeof Ionicons.glyphMap;
   onAction?: () => void;
 }) {
   const router = useRouter();
@@ -629,7 +632,11 @@ export function BackHeader({
         <Text style={styles.backHeaderTitle} numberOfLines={1} accessibilityRole="header">{title}</Text>
         {subtitle ? <Text style={styles.backHeaderSubtitle} numberOfLines={2}>{subtitle}</Text> : null}
       </View>
-      {actionLabel && onAction ? (
+      {actionIcon && onAction ? (
+        <Pressable onPress={onAction} hitSlop={10} accessibilityRole="button" accessibilityLabel={actionLabel} style={({ pressed }) => [styles.backButton, pressed ? styles.pressed : null]}>
+          <Ionicons name={actionIcon} size={21} color={colors.ink} />
+        </Pressable>
+      ) : actionLabel && onAction ? (
         <Pressable onPress={onAction} hitSlop={10} accessibilityRole="button">
           <Text style={styles.backHeaderAction}>{actionLabel}</Text>
         </Pressable>

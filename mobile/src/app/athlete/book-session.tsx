@@ -3,7 +3,15 @@ import { ActivityIndicator, Pressable, ScrollView, StyleSheet, View } from "reac
 import { useLocalSearchParams, useRouter } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
 import { Text } from "../../components/AppText";
-import { ActionButton, AlertBanner, AppCard, EmptyState, ScreenContainer, SectionHeader } from "../../components/fitora";
+import {
+  ActionButton,
+  AlertBanner,
+  AppCard,
+  BackHeader,
+  EmptyState,
+  ScreenContainer,
+  SectionHeader,
+} from "../../components/fitora";
 import { apiFetch, apiJson } from "../../lib/api";
 import { celebrate, errorFeedback, selectionFeedback } from "../../lib/feedback";
 import { colors, radius } from "../../lib/theme";
@@ -121,7 +129,7 @@ export default function BookSessionScreen() {
   if (!coachId) {
     return (
       <ScreenContainer>
-        <Header title="Book a Session" />
+        <BackHeader title="Book a Session" />
         <EmptyState title="No coach selected" body="Open booking from your Coach tab." icon="calendar-outline" />
       </ScreenContainer>
     );
@@ -130,7 +138,7 @@ export default function BookSessionScreen() {
   if (booked) {
     return (
       <ScreenContainer>
-        <Header title="Session Requested" />
+        <BackHeader title="Session Requested" />
         <AppCard style={styles.doneCard}>
           <View style={styles.doneIcon}>
             <Ionicons name="checkmark-circle" size={44} color={colors.ok} />
@@ -150,7 +158,7 @@ export default function BookSessionScreen() {
 
   return (
     <ScreenContainer>
-      <Header title="Book a Session" />
+      <BackHeader title="Book a Session" />
       <Text style={styles.subtitle}>with {coachName}</Text>
 
       <AppCard>
@@ -238,23 +246,7 @@ export default function BookSessionScreen() {
   );
 }
 
-function Header({ title }: { title: string }) {
-  const router = useRouter();
-  return (
-    <View style={styles.header}>
-      <Pressable onPress={() => router.back()} style={styles.backButton} hitSlop={10} accessibilityLabel="Back">
-        <Ionicons name="arrow-back" size={24} color={colors.ink} />
-      </Pressable>
-      <Text style={styles.headerTitle} numberOfLines={1}>{title}</Text>
-      <View style={styles.backButton} />
-    </View>
-  );
-}
-
 const styles = StyleSheet.create({
-  header: { minHeight: 58, flexDirection: "row", alignItems: "center", justifyContent: "space-between" },
-  backButton: { height: 42, width: 42, borderRadius: 21, alignItems: "center", justifyContent: "center" },
-  headerTitle: { flex: 1, textAlign: "center", color: colors.ink, fontSize: 19, lineHeight: 24, fontWeight: "900" },
   subtitle: { color: colors.inkMuted, fontSize: 14, textAlign: "center", marginTop: -8, marginBottom: 4 },
   pressed: { opacity: 0.8 },
   typeWrap: { flexDirection: "row", flexWrap: "wrap", gap: 8 },
