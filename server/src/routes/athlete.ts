@@ -282,6 +282,9 @@ function serializeSelfProfile(
     academyId: profile.academyId
       ? (profile.academyId as Types.ObjectId).toString()
       : null,
+    // When the athlete joined: the app measures "days logged" etc. only from
+    // here, so a brand-new user isn't scored against days before they existed.
+    createdAt: profile.createdAt instanceof Date ? profile.createdAt.toISOString() : null,
   };
 }
 

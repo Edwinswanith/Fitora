@@ -1,21 +1,32 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { ActivityIndicator, Pressable, StyleSheet, TextInput, View } from "react-native";
-import { useRouter } from "expo-router";
 import { Text } from "../../components/AppText";
 import { Ionicons } from "@expo/vector-icons";
 import Svg, { Circle, Defs, Line, LinearGradient, Path, Stop } from "react-native-svg";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import * as Notifications from "expo-notifications";
 import { apiFetch, apiJson } from "../../lib/api";
+import { celebrate, errorFeedback } from "../../lib/feedback";
+import { todayKey, updateCachedData, type AthleteDashboardData } from "../../lib/fitoraData";
 import { colors, radius } from "../../lib/theme";
-import { AppCard, ScreenContainer } from "../../components/fitora";
+import {
+  AppCard,
+  BackHeader,
+  ScreenContainer,
+} from "../../components/fitora";
 
 // The web hydration card renders a blue water ring — mirror that here rather
 // than the athlete gold accent, so both platforms read as the same feature.
+// Water keeps its own blue for the ring, chart and drop icons (blue reads as
+// water everywhere). Buttons and selections use the app's teal like every
+// other screen; WATER_INK is the text-safe (>= 4.5:1) water shade.
 const WATER = "#2f7df6";
+const WATER_INK = "#1f5fc8";
 const OK = colors.ok;
 
-const today = () => new Date().toISOString().slice(0, 10);
+// Local calendar day, same as the rest of the app (toISOString() is UTC, which
+// filed early-morning logs under yesterday for users east of UTC, e.g. India).
+const today = () => todayKey();
 const QUICK = [250, 500, 750];
 const GOAL_PRESETS = [2000, 2500, 3000, 3500];
 const REMINDER_KEY = "scp.hydration.reminders";
@@ -52,7 +63,7 @@ function WaterRing({ pct, reached }: { pct: number; reached: boolean }) {
         />
       </Svg>
       <Text style={styles.ringPct}>{Math.round(pct)}%</Text>
-      <Text style={[styles.ringLabel, { color: reached ? OK : WATER }]}>{reached ? "Goal met" : "Complete"}</Text>
+      <Text style={[styles.ringLabel, { color: reached ? OK : WATER_INK }]}>{reached ? "Goal met" : "Complete"}</Text>
     </View>
   );
 }
@@ -120,7 +131,6 @@ function HydrationBars({ series, goalMl }: { series: WaterPoint[]; goalMl: numbe
 }
 
 export default function Water() {
-  const router = useRouter();
   const [day, setDay] = useState<WaterDay | null>(null);
   const [historyDays, setHistoryDays] = useState<7 | 30>(7);
   const [history, setHistory] = useState<WaterSeries | null>(null);
@@ -177,22 +187,45 @@ export default function Water() {
     })();
   }, []);
 
-  async function mutate(run: () => Promise<Response>) {
-    if (busy) return;
+  /** Runs a water change; returns the server's updated day, or null (with the error shown) if it failed. */
+  async function mutate(run: () => Promise<Response>, failure: string): Promise<WaterDay | null> {
+    if (busy) return null;
     setBusy(true);
+    setAmountError(null);
     try {
       const res = await run();
-      if (res.ok) {
-        setDay(await res.json());
-        await loadHistory();
-      }
+      if (!res.ok) throw new Error();
+      const next = (await res.json()) as WaterDay;
+      setDay(next);
+      // Keep the dashboard's water card in step without a full reload.
+      updateCachedData<AthleteDashboardData>("athlete-dashboard", (prev) =>
+        prev && prev.date === next.date ? { ...prev, water: next } : prev
+      );
+      void loadHistory();
+      return next;
+    } catch {
+      errorFeedback();
+      setAmountError(failure);
+      return null;
     } finally {
       setBusy(false);
     }
   }
 
-  const add = (amountMl: number) =>
-    mutate(() => apiFetch("/api/athlete/water", { method: "POST", body: JSON.stringify({ amountMl, date: today() }) }));
+  async function add(amountMl: number): Promise<boolean> {
+    const before = day?.totalMl ?? 0;
+    const next = await mutate(
+      () => apiFetch("/api/athlete/water", { method: "POST", body: JSON.stringify({ amountMl, date: today() }) }),
+      "Couldn't log that water. Check your connection and try again."
+    );
+    if (!next) return false;
+    if (before < next.goalMl && next.totalMl >= next.goalMl) {
+      celebrate({ title: "Water goal reached!", body: `${litres(next.totalMl)} L today. Nice work.`, big: true });
+    } else {
+      celebrate({ title: `+${amountMl} ml logged`, body: `${litres(next.totalMl)} of ${litres(next.goalMl)} L today` });
+    }
+    return true;
+  }
 
   async function addCustom() {
     const amountMl = Number(amountDraft);
@@ -201,11 +234,12 @@ export default function Water() {
       return;
     }
     setAmountError(null);
-    await add(Math.round(amountMl));
-    setAmountDraft("");
+    // Keep what they typed if the save fails, so they can retry.
+    if (await add(Math.round(amountMl))) setAmountDraft("");
   }
 
-  const remove = (id: string) => mutate(() => apiFetch(`/api/athlete/water/${id}`, { method: "DELETE" }));
+  const remove = (id: string) =>
+    mutate(() => apiFetch(`/api/athlete/water/${id}`, { method: "DELETE" }), "Couldn't remove that entry. Try again.");
 
   async function saveGoal(next?: number) {
     const goalMl = next ?? Number(goalDraft);
@@ -228,6 +262,7 @@ export default function Water() {
       // re-fetching both from the network right after.
       setDay((d) => (d ? { ...d, goalMl: rounded } : d));
       setHistory((h) => (h ? { ...h, goalMl: rounded } : h));
+      celebrate({ title: "Water goal updated", body: `${litres(rounded)} L a day` });
     } finally {
       setBusy(false);
     }
@@ -291,16 +326,10 @@ export default function Water() {
 
   return (
     <ScreenContainer>
-      <View style={styles.header}>
-        <Pressable onPress={() => router.back()} style={styles.backButton} hitSlop={10}>
-          <Ionicons name="chevron-back" size={26} color={colors.ink} />
-        </Pressable>
-        <Text style={styles.title}>Water</Text>
-      </View>
-      <Text style={styles.tagline}>Stay on top of hydration.</Text>
+      <BackHeader title="Water" subtitle="Stay on top of hydration." />
 
       {loading && !day ? (
-        <ActivityIndicator color={WATER} style={{ marginTop: 40 }} />
+        <ActivityIndicator color={colors.primary} style={{ marginTop: 40 }} />
       ) : (
         <View style={{ gap: 12 }}>
           {/* Water goal — ring + Drunk / Remaining / Goal + status */}
@@ -348,7 +377,7 @@ export default function Water() {
                 placeholderTextColor={colors.inkFaint}
                 style={styles.input}
               />
-              <Pressable disabled={busy} onPress={() => saveGoal()} style={[styles.primaryBtn, { backgroundColor: WATER }]}>
+              <Pressable disabled={busy} onPress={() => saveGoal()} style={[styles.primaryBtn, { backgroundColor: colors.primary }]}>
                 <Text style={styles.primaryBtnText}>Save</Text>
               </Pressable>
             </View>
@@ -375,7 +404,7 @@ export default function Water() {
                 placeholderTextColor={colors.inkFaint}
                 style={styles.input}
               />
-              <Pressable disabled={busy || !amountDraft.trim()} onPress={addCustom} style={[styles.primaryBtn, { backgroundColor: WATER, opacity: !amountDraft.trim() ? 0.5 : 1 }]}>
+              <Pressable disabled={busy || !amountDraft.trim()} onPress={addCustom} style={[styles.primaryBtn, { backgroundColor: colors.primary, opacity: !amountDraft.trim() ? 0.5 : 1 }]}>
                 <Text style={styles.primaryBtnText}>Add</Text>
               </Pressable>
             </View>
@@ -392,7 +421,7 @@ export default function Water() {
                   {remindersEnabled ? `Every ${reminderMinutes} minutes.` : "Off"}
                 </Text>
               </View>
-              <Pressable onPress={toggleReminders} style={[styles.toggle, remindersEnabled ? { backgroundColor: WATER, borderColor: WATER } : null]}>
+              <Pressable onPress={toggleReminders} style={[styles.toggle, remindersEnabled ? { backgroundColor: colors.primary, borderColor: colors.primary } : null]}>
                 <Text style={[styles.toggleText, remindersEnabled ? { color: "#fff" } : null]}>
                   {remindersEnabled ? "On" : "Enable"}
                 </Text>
@@ -478,7 +507,6 @@ export default function Water() {
 }
 
 const styles = StyleSheet.create({
-  header: { minHeight: 58, flexDirection: "row", alignItems: "center", gap: 10 },
   backButton: {
     height: 42,
     width: 42,
@@ -489,8 +517,6 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: colors.line,
   },
-  title: { flex: 1, color: colors.ink, fontSize: 26, lineHeight: 32, fontWeight: "900" },
-  tagline: { color: colors.inkMuted, fontSize: 14, lineHeight: 19, marginTop: -6, marginBottom: 4 },
   cardTitle: { fontSize: 15, fontWeight: "800", color: colors.ink },
   cardTitleRow: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", marginBottom: 8 },
   mutedSmall: { fontSize: 12, color: colors.inkMuted },
@@ -500,25 +526,25 @@ const styles = StyleSheet.create({
   // Tiles
   tileRow: { flexDirection: "row", gap: 8, width: "100%" },
   tile: { flex: 1, borderRadius: radius.sm, borderWidth: 1, borderColor: colors.line, backgroundColor: colors.surfaceInset, paddingHorizontal: 10, paddingVertical: 10 },
-  tileLabel: { fontSize: 10, fontWeight: "800", color: colors.inkFaint, textTransform: "uppercase", letterSpacing: 1 },
+  tileLabel: { fontSize: 12, fontWeight: "800", color: colors.inkFaint, textTransform: "uppercase", letterSpacing: 1 },
   tileValue: { marginTop: 3, fontSize: 18, fontWeight: "800", color: colors.ink },
   // Status
   statusBox: { width: "100%", borderRadius: radius.sm, borderWidth: 1, borderColor: colors.line, backgroundColor: colors.surfaceInset, paddingHorizontal: 12, paddingVertical: 10 },
   statusBoxOk: { borderColor: `${OK}55`, backgroundColor: `${OK}14` },
   statusText: { fontSize: 14, fontWeight: "800", color: colors.ink },
-  statusSub: { marginTop: 2, fontSize: 11, color: colors.inkMuted },
+  statusSub: { marginTop: 2, fontSize: 12, color: colors.inkMuted },
   // Presets
   presetRow: { flexDirection: "row", gap: 8, marginTop: 10 },
   preset: { flex: 1, height: 40, borderRadius: radius.sm, borderWidth: 1, borderColor: colors.line, backgroundColor: colors.surfaceInset, alignItems: "center", justifyContent: "center" },
-  presetOn: { borderColor: WATER, backgroundColor: `${WATER}18` },
+  presetOn: { borderColor: colors.primary, backgroundColor: colors.primarySoft },
   presetText: { fontSize: 12, fontWeight: "800", color: colors.inkMuted },
-  presetTextOn: { color: WATER },
+  presetTextOn: { color: colors.primary },
   // Inline input + button
   inlineRow: { flexDirection: "row", gap: 8, marginTop: 12 },
   input: { flex: 1, height: 46, borderRadius: radius.sm, borderWidth: 1, borderColor: colors.line, backgroundColor: colors.surfaceInset, paddingHorizontal: 12, color: colors.ink, fontSize: 14 },
   primaryBtn: { height: 46, borderRadius: radius.sm, paddingHorizontal: 18, alignItems: "center", justifyContent: "center" },
   primaryBtnText: { color: "#fff", fontSize: 14, fontWeight: "800" },
-  errText: { marginTop: 8, fontSize: 11, fontWeight: "700", color: colors.bad },
+  errText: { marginTop: 8, fontSize: 12, fontWeight: "700", color: colors.bad },
   // Quick add
   quickRow: { flexDirection: "row", gap: 8, marginTop: 10 },
   quick: { flex: 1, flexDirection: "row", gap: 6, alignItems: "center", justifyContent: "center", height: 48, borderRadius: radius.sm, borderWidth: 1, borderColor: colors.line, backgroundColor: colors.surfaceRaised },
@@ -526,25 +552,25 @@ const styles = StyleSheet.create({
   // Reminders
   reminderHead: { flexDirection: "row", alignItems: "center", gap: 10, marginTop: 8 },
   reminderTitle: { fontSize: 14, fontWeight: "800", color: colors.ink },
-  reminderSub: { marginTop: 2, fontSize: 11, color: colors.inkMuted },
+  reminderSub: { marginTop: 2, fontSize: 12, color: colors.inkMuted },
   toggle: { height: 36, borderRadius: 999, borderWidth: 1, borderColor: colors.line, backgroundColor: colors.surfaceInset, paddingHorizontal: 14, alignItems: "center", justifyContent: "center" },
   toggleText: { fontSize: 12, fontWeight: "800", color: colors.inkMuted },
   // Chart
   seg: { flexDirection: "row", gap: 4, backgroundColor: colors.surfaceInset, borderRadius: radius.sm, padding: 3 },
   segBtn: { paddingHorizontal: 12, paddingVertical: 6, borderRadius: radius.sm - 2 },
-  segBtnOn: { backgroundColor: WATER },
-  segText: { fontSize: 11, fontWeight: "800", color: colors.inkMuted },
+  segBtnOn: { backgroundColor: colors.primary },
+  segText: { fontSize: 12, fontWeight: "800", color: colors.inkMuted },
   segTextOn: { color: "#fff" },
   chartAxis: { flexDirection: "row", justifyContent: "space-between", marginTop: 8 },
-  axisText: { fontSize: 10, color: colors.inkFaint, fontWeight: "600" },
+  axisText: { fontSize: 12, color: colors.inkFaint, fontWeight: "600" },
   // History
   histRow: { flexDirection: "row", alignItems: "center", gap: 10, paddingVertical: 10 },
   histDivider: { borderTopWidth: 1, borderTopColor: colors.line },
   histDate: { fontSize: 14, fontWeight: "700", color: colors.ink },
-  histSub: { marginTop: 1, fontSize: 11, color: colors.inkMuted },
+  histSub: { marginTop: 1, fontSize: 12, color: colors.inkMuted },
   histValue: { fontSize: 16, fontWeight: "800", color: colors.ink },
   // Entries
   entryWrap: { flexDirection: "row", flexWrap: "wrap", gap: 6, marginTop: 8 },
   entryChip: { flexDirection: "row", alignItems: "center", gap: 5, borderRadius: 999, borderWidth: 1, borderColor: colors.line, backgroundColor: colors.surfaceInset, paddingHorizontal: 10, paddingVertical: 6 },
-  entryChipText: { fontSize: 11, fontWeight: "700", color: colors.inkMuted },
+  entryChipText: { fontSize: 12, fontWeight: "700", color: colors.inkMuted },
 });

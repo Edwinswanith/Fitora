@@ -93,7 +93,13 @@ async function clearStorage(): Promise<void> {
   await deleteStoredItem(USER_KEY).catch(() => undefined);
 }
 
-export async function loadSession(): Promise<StoredUser | null> {
+/**
+ * Reads the signed-in user saved on this device, without touching the
+ * network, so the app can open instantly. Always follow with
+ * validateSession(): the server stays the authority on whether the session is
+ * still good.
+ */
+export async function loadStoredSession(): Promise<StoredUser | null> {
   [accessToken, refreshToken] = await Promise.all([
     getStoredItem(TOKEN_KEY),
     getStoredItem(REFRESH_KEY),
@@ -104,42 +110,48 @@ export async function loadSession(): Promise<StoredUser | null> {
     return null;
   }
   try {
-    const cached = JSON.parse(raw) as StoredUser;
-    const current = await loadCurrentUser();
-    return current ?? cached;
+    return JSON.parse(raw) as StoredUser;
   } catch {
     await clearStorage();
     return null;
   }
 }
 
-async function loadCurrentUser(): Promise<StoredUser | null> {
-  if (!accessToken) return null;
+export type SessionCheck =
+  | { status: "valid"; user: StoredUser }
+  /** The server rejected the session (expired, revoked, account disabled). */
+  | { status: "invalid" }
+  /** Offline or server error: keep the stored session and try again later. */
+  | { status: "unreachable" };
 
+/** Confirms the stored session with the server (refreshing the access token if needed). */
+export async function validateSession(): Promise<SessionCheck> {
+  if (!accessToken) return { status: "invalid" };
   const requestMe = () =>
     fetchWithTimeout(`${API_BASE}/api/auth/me`, {
       method: "GET",
-      headers: {
-        "X-Client-Type": "native",
-        Authorization: `Bearer ${accessToken}`,
-      },
+      headers: { "X-Client-Type": "native", Authorization: `Bearer ${accessToken}` },
     });
-
   try {
     let res = await requestMe();
     if (res.status === 401) {
       const refreshed = await tryRefresh();
-      if (!refreshed) return null;
+      // tryRefresh clears stored tokens only when the server rejected the
+      // refresh token; a network failure leaves them in place.
+      if (!refreshed) return accessToken === null ? { status: "invalid" } : { status: "unreachable" };
       res = await requestMe();
+      if (res.status === 401) {
+        await clearStorage();
+        return { status: "invalid" };
+      }
     }
-    if (!res.ok) return null;
-
+    if (!res.ok) return { status: "unreachable" };
     const payload = (await res.json().catch(() => ({}))) as MePayload;
-    if (!payload.user) return null;
+    if (!payload.user) return { status: "unreachable" };
     await persistUser(payload.user);
-    return payload.user;
+    return { status: "valid", user: payload.user };
   } catch {
-    return null;
+    return { status: "unreachable" };
   }
 }
 

@@ -21,7 +21,7 @@ import { ROLE_THEMES, colors, radius } from "../../lib/theme";
 import { Card, Muted } from "../../components/ui";
 import { ChatMediaBubble, type ChatMedia, type WorkoutTableRow } from "../../components/ChatMediaBubble";
 import type { MessageView } from "../../components/MessageCenter";
-import { ScreenHeader } from "../../components/ScreenHeader";
+import { BackHeader } from "../../components/fitora";
 import { Avatar as PhotoAvatar, type AvatarInfo } from "../../components/Avatar";
 import { useTourHighlight, useTourScrollView } from "../../lib/tour/MobileTourProvider";
 import { SpotlightTarget } from "../../lib/tour/SpotlightTarget";
@@ -39,7 +39,7 @@ type Athlete = {
 
 const AVATAR_PALETTE = [
   { bg: "#e3f5ea", fg: "#188a4e" },
-  { bg: "#e7f0ff", fg: "#2f6fe0" },
+  { bg: "#ecfaf8", fg: "#0f766e" },
   { bg: "#fdf3e3", fg: "#b2790a" },
   { bg: "#f2eafb", fg: "#7c4fd6" },
   { bg: "#fdecec", fg: "#c2382f" },
@@ -562,12 +562,7 @@ export default function CoachMessages() {
         contentContainerStyle={styles.content}
         refreshControl={<RefreshControl refreshing={loading} onRefresh={load} tintColor={accent} />}
       >
-        <ScreenHeader
-          title="Messages"
-          accent={accent}
-          roleLabel="Coach"
-          subtitle="Direct chats with your athletes"
-        />
+        <BackHeader title="Messages" subtitle="Direct chats with your clients" />
 
         {loading && parties.length === 0 ? (
           <ActivityIndicator color={accent} style={{ marginTop: 40 }} />
@@ -889,11 +884,11 @@ const styles = StyleSheet.create({
   homeFilterChipActive: { backgroundColor: theme.accentSoft, borderColor: theme.accent + "55" },
   homeFilterText: { color: colors.inkMuted, fontSize: 12, fontWeight: "700" },
   homeFilterBadge: { minWidth: 18, height: 18, borderRadius: 9, backgroundColor: theme.accent, alignItems: "center", justifyContent: "center", paddingHorizontal: 4 },
-  homeFilterBadgeText: { color: "#fff", fontSize: 10, fontWeight: "900" },
+  homeFilterBadgeText: { color: "#fff", fontSize: 12, fontWeight: "900" },
   sectionHeaderRow: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", marginBottom: 8 },
-  sectionHeaderLabel: { color: colors.inkMuted, fontSize: 11, fontWeight: "900", letterSpacing: 1.6, textTransform: "uppercase" },
+  sectionHeaderLabel: { color: colors.inkMuted, fontSize: 12, fontWeight: "900", letterSpacing: 1.6, textTransform: "uppercase" },
   sectionHeaderRight: { flexDirection: "row", alignItems: "center", gap: 4 },
-  sectionHeaderCount: { color: colors.inkFaint, fontSize: 11, fontWeight: "900" },
+  sectionHeaderCount: { color: colors.inkFaint, fontSize: 12, fontWeight: "900" },
   emptyCard: { minHeight: 142, alignItems: "center", justifyContent: "center", gap: 6 },
   emptyTitle: { color: colors.inkMuted, fontSize: 17, fontWeight: "600" },
   emptySub: { color: colors.inkFaint, fontSize: 13 },
@@ -911,10 +906,10 @@ const styles = StyleSheet.create({
   },
   threadTop: { flexDirection: "row", alignItems: "center", gap: 8 },
   threadName: { flex: 1, minWidth: 0, color: colors.ink, fontSize: 14, fontWeight: "800" },
-  threadTime: { color: colors.inkFaint, fontSize: 10, fontWeight: "700" },
+  threadTime: { color: colors.inkFaint, fontSize: 12, fontWeight: "700" },
   threadPreview: { marginTop: 2, color: colors.inkMuted, fontSize: 12 },
   unreadBadge: { minWidth: 22, height: 22, borderRadius: 11, backgroundColor: theme.accent, alignItems: "center", justifyContent: "center", paddingHorizontal: 6 },
-  unreadText: { color: "#fff", fontSize: 10, fontWeight: "900" },
+  unreadText: { color: "#fff", fontSize: 12, fontWeight: "900" },
   starterRow: { gap: 10, paddingRight: 2 },
   starterCard: {
     width: 108,
@@ -927,7 +922,7 @@ const styles = StyleSheet.create({
     gap: 6,
   },
   starterName: { color: colors.ink, fontSize: 12, fontWeight: "800" },
-  starterMeta: { color: colors.inkFaint, fontSize: 10, marginTop: -4 },
+  starterMeta: { color: colors.inkFaint, fontSize: 12, marginTop: -4 },
   starterChatButton: {
     height: 26,
     width: 26,
@@ -953,15 +948,15 @@ const styles = StyleSheet.create({
   chatAvatar: { height: 38, width: 38, borderRadius: 19, backgroundColor: theme.accentSoft, alignItems: "center", justifyContent: "center" },
   chatAvatarText: { color: theme.accentStrong, fontSize: 15, fontWeight: "900" },
   chatName: { color: colors.ink, fontSize: 15, fontWeight: "800" },
-  chatSubtitle: { color: colors.inkFaint, fontSize: 11, marginTop: 1 },
+  chatSubtitle: { color: colors.inkFaint, fontSize: 12, marginTop: 1 },
   chatBody: { padding: 14, gap: 8, flexGrow: 1 },
   loadOlderButton: { alignSelf: "center", minHeight: 32, paddingHorizontal: 14, justifyContent: "center", marginBottom: 6 },
   loadOlderText: { color: theme.accentStrong, fontSize: 12, fontWeight: "800" },
   retryText: { color: theme.accentStrong, fontSize: 13, fontWeight: "800" },
   chatEmpty: { flex: 1, alignItems: "center", justifyContent: "center", gap: 4, paddingVertical: 60 },
   chatEmptyTitle: { color: colors.inkMuted, fontSize: 14, fontWeight: "700" },
-  chatEmptySub: { color: colors.inkFaint, fontSize: 11 },
-  dayDivider: { alignSelf: "center", color: colors.inkFaint, fontSize: 10, fontWeight: "800", textTransform: "uppercase", letterSpacing: 0.6, marginVertical: 8 },
+  chatEmptySub: { color: colors.inkFaint, fontSize: 12 },
+  dayDivider: { alignSelf: "center", color: colors.inkFaint, fontSize: 12, fontWeight: "800", textTransform: "uppercase", letterSpacing: 0.6, marginVertical: 8 },
   messageRow: { flexDirection: "row", justifyContent: "flex-start" },
   messageRowMine: { justifyContent: "flex-end" },
   bubble: {
@@ -977,32 +972,32 @@ const styles = StyleSheet.create({
   mediaCaption: { paddingHorizontal: 4, paddingTop: 5 },
   mediaImage: { width: 230, borderRadius: radius.md },
   bubbleText: { color: colors.ink, fontSize: 14, lineHeight: 19 },
-  bubbleTime: { alignSelf: "flex-end", marginTop: 4, color: colors.inkFaint, fontSize: 10, fontWeight: "700" },
+  bubbleTime: { alignSelf: "flex-end", marginTop: 4, color: colors.inkFaint, fontSize: 12, fontWeight: "700" },
 
   pendingCard: { marginHorizontal: 12, marginBottom: 8, borderRadius: radius.md, borderWidth: 1, borderColor: colors.line, backgroundColor: colors.surfaceInset, padding: 10 },
   pendingRow: { flexDirection: "row", gap: 10 },
   pendingThumb: { width: 72, height: 72, borderRadius: radius.sm },
   pendingName: { color: colors.ink, fontSize: 12, fontWeight: "800" },
-  pendingSub: { color: colors.inkFaint, fontSize: 11, marginTop: 2 },
+  pendingSub: { color: colors.inkFaint, fontSize: 12, marginTop: 2 },
   pendingActions: { flexDirection: "row", flexWrap: "wrap", gap: 6, marginTop: 6 },
   pendingButton: { borderRadius: radius.sm, borderWidth: 1, borderColor: colors.line, paddingHorizontal: 8, paddingVertical: 5 },
-  pendingButtonText: { color: colors.inkMuted, fontSize: 11, fontWeight: "700" },
+  pendingButtonText: { color: colors.inkMuted, fontSize: 12, fontWeight: "700" },
   pendingBadge: { borderRadius: radius.sm, backgroundColor: `${colors.ok}26`, paddingHorizontal: 8, paddingVertical: 5 },
-  pendingBadgeText: { color: colors.ok, fontSize: 11, fontWeight: "700" },
+  pendingBadgeText: { color: colors.ok, fontSize: 12, fontWeight: "700" },
 
   tableCard: { marginTop: 10, borderRadius: radius.md, borderWidth: 1, borderColor: colors.line, backgroundColor: colors.surfaceRaised, overflow: "hidden" },
-  tableHeader: { paddingHorizontal: 8, paddingVertical: 6, fontSize: 9, fontWeight: "800", textTransform: "uppercase", letterSpacing: 0.5, color: colors.inkFaint, backgroundColor: colors.surfaceInset, borderBottomWidth: 1, borderBottomColor: colors.line },
+  tableHeader: { paddingHorizontal: 8, paddingVertical: 6, fontSize: 12, fontWeight: "800", textTransform: "uppercase", letterSpacing: 0.5, color: colors.inkFaint, backgroundColor: colors.surfaceInset, borderBottomWidth: 1, borderBottomColor: colors.line },
   tableRow: { flexDirection: "row", alignItems: "center", paddingHorizontal: 6, paddingVertical: 4, gap: 4 },
   tableHeadRow: { backgroundColor: colors.surfaceRaised },
   tableRowAlt: { backgroundColor: colors.surfaceInset },
-  tableCellHead: { fontSize: 9, fontWeight: "800", color: colors.inkFaint, textTransform: "uppercase" },
-  tableInput: { fontSize: 11, color: colors.ink, borderWidth: 1, borderColor: colors.line, borderRadius: 6, paddingHorizontal: 6, paddingVertical: 4, backgroundColor: colors.surface },
+  tableCellHead: { fontSize: 12, fontWeight: "800", color: colors.inkFaint, textTransform: "uppercase" },
+  tableInput: { fontSize: 12, color: colors.ink, borderWidth: 1, borderColor: colors.line, borderRadius: 6, paddingHorizontal: 6, paddingVertical: 4, backgroundColor: colors.surface },
   colName: { width: 120 },
   colSmall: { width: 48 },
   colMed: { width: 72 },
   colRemove: { width: 24, alignItems: "center" },
   addRowButton: { paddingHorizontal: 8, paddingVertical: 7, borderTopWidth: 1, borderTopColor: colors.line },
-  addRowText: { color: theme.accentStrong, fontSize: 11, fontWeight: "700" },
+  addRowText: { color: theme.accentStrong, fontSize: 12, fontWeight: "700" },
 
   composer: { flexDirection: "row", alignItems: "flex-end", gap: 8, paddingHorizontal: 12, paddingVertical: 10, borderTopWidth: 1, borderTopColor: colors.line, backgroundColor: colors.surface },
   attachButton: { height: 44, width: 44, borderRadius: 22, borderWidth: 1, borderColor: colors.line, alignItems: "center", justifyContent: "center" },

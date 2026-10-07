@@ -2,9 +2,10 @@ import { useEffect, useRef, useState } from "react";
 import { Pressable, ScrollView, StyleSheet, View } from "react-native";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { Ionicons } from "@expo/vector-icons";
-import { useRouter } from "expo-router";
+import { usePathname, useRouter } from "expo-router";
 import { Text } from "./AppText";
 import { AskAgentControl } from "./AskAgentControl";
+import { isAskAgentHiddenOn } from "../lib/askAgentVisibility";
 import { AthleteAskAgentOverlayV2 } from "./voiceAssistant/AthleteAskAgentOverlayV2";
 import { apiFetch, apiJson } from "../lib/api";
 import { ROLE_THEMES, colors } from "../lib/theme";
@@ -290,6 +291,7 @@ function AgentChatLog({ entries, onClose }: { entries: AgentChatEntry[]; onClose
 
 export function CoachAskAgentOverlay() {
   const router = useRouter();
+  const pathname = usePathname();
   const accent = ROLE_THEMES.coach.accent;
   const [result, setResult] = useState<AgentResult | null>(null);
   const [inputOpen, setInputOpen] = useState(false);
@@ -729,6 +731,7 @@ export function CoachAskAgentOverlay() {
       <AskAgentControl
         accent={accent}
         accentInk="#fff"
+        hidden={isAskAgentHiddenOn(pathname)}
         onCommand={handleCommand}
         onInputOpenChange={setInputOpen}
         tourTargetId="mobile-coach-agent"
@@ -762,7 +765,7 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: colors.line,
     padding: 12,
-    shadowColor: "#0f172a",
+    shadowColor: "#10201e",
     shadowOpacity: 0.16,
     shadowRadius: 18,
     shadowOffset: { width: 0, height: 8 },
@@ -794,8 +797,8 @@ const styles = StyleSheet.create({
   },
   summaryText: { flex: 1, color: colors.ink, fontSize: 13, fontWeight: "800", lineHeight: 18 },
   tableHead: { marginTop: 10, flexDirection: "row", justifyContent: "space-between", paddingHorizontal: 4 },
-  headText: { color: colors.inkMuted, fontSize: 10, fontWeight: "900", letterSpacing: 1.4, textTransform: "uppercase" },
-  headStatus: { color: colors.inkMuted, fontSize: 10, fontWeight: "900", letterSpacing: 1.4, textTransform: "uppercase" },
+  headText: { color: colors.inkMuted, fontSize: 12, fontWeight: "900", letterSpacing: 1.4, textTransform: "uppercase" },
+  headStatus: { color: colors.inkMuted, fontSize: 12, fontWeight: "900", letterSpacing: 1.4, textTransform: "uppercase" },
   rowsScroll: { marginTop: 6 },
   rows: { gap: 7, paddingBottom: 4 },
   row: {
@@ -813,7 +816,7 @@ const styles = StyleSheet.create({
   iconBox: { width: 34, height: 34, borderRadius: 12, borderWidth: 1, alignItems: "center", justifyContent: "center" },
   mainCell: { flex: 1, minWidth: 0 },
   rowLabel: { color: colors.ink, fontSize: 13, fontWeight: "900" },
-  rowDetail: { marginTop: 2, color: colors.inkMuted, fontSize: 11, lineHeight: 15 },
+  rowDetail: { marginTop: 2, color: colors.inkMuted, fontSize: 12, lineHeight: 16 },
   statusPill: {
     minWidth: 66,
     height: 30,
@@ -841,13 +844,13 @@ const styles = StyleSheet.create({
     borderColor: colors.line,
     backgroundColor: colors.surfaceRaised,
     padding: 10,
-    shadowColor: "#0f172a",
+    shadowColor: "#10201e",
     shadowOpacity: 0.14,
     shadowRadius: 16,
     shadowOffset: { width: 0, height: 8 },
   },
   chatHeader: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", marginBottom: 6 },
-  chatTitle: { color: colors.inkFaint, fontSize: 10, fontWeight: "900", letterSpacing: 1.1, textTransform: "uppercase" },
+  chatTitle: { color: colors.inkFaint, fontSize: 12, fontWeight: "900", letterSpacing: 1.1, textTransform: "uppercase" },
   chatClose: {
     width: 24,
     height: 24,

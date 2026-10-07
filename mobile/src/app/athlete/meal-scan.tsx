@@ -8,6 +8,7 @@ import { Text } from "../../components/AppText";
 import {
   ActionButton,
   AppCard,
+  BackHeader,
   EmptyState,
   IconTile,
   LoadingState,
@@ -16,6 +17,7 @@ import {
   StatusChip,
 } from "../../components/fitora";
 import { apiFetch } from "../../lib/api";
+import { celebrate, errorFeedback } from "../../lib/feedback";
 import { colors, radius } from "../../lib/theme";
 import { todayKey, titleCase, updateCachedData, type AthleteDashboardData, type Meal } from "../../lib/fitoraData";
 
@@ -213,8 +215,10 @@ export default function MealScanScreen() {
           };
         });
       }
+      celebrate({ title: "Meal logged", body: createdMeal ? `${Math.round(createdMeal.foods.reduce((sum, f) => sum + (Number(f.calories) || 0), 0))} kcal added to today.` : undefined });
       router.back();
     } catch {
+      errorFeedback();
       setError("Network failed while saving this meal.");
     } finally {
       setBusy(null);
@@ -223,12 +227,7 @@ export default function MealScanScreen() {
 
   return (
     <ScreenContainer>
-      <View style={styles.header}>
-        <Pressable onPress={() => router.back()} style={styles.backButton}>
-          <Ionicons name="chevron-back" size={27} color={colors.ink} />
-        </Pressable>
-        <Text style={styles.headerTitle}>Scan Meal</Text>
-      </View>
+      <BackHeader title="Scan Meal" subtitle="Snap your plate. You confirm before anything is saved." />
 
       {error ? (
         <AppCard style={styles.errorCard}>
@@ -236,7 +235,7 @@ export default function MealScanScreen() {
         </AppCard>
       ) : null}
 
-      {!scan && busy === "upload" ? <LoadingState label="Analyzing meal..." /> : null}
+      {!scan && busy === "upload" ? <LoadingState label="Analyzing meal..." variant="inline" /> : null}
 
       {!scan && busy !== "upload" ? (
         <AppCard style={styles.pickCard}>
@@ -391,9 +390,6 @@ function MiniField({
 }
 
 const styles = StyleSheet.create({
-  header: { minHeight: 60, flexDirection: "row", alignItems: "center", gap: 10 },
-  backButton: { height: 42, width: 42, borderRadius: 21, alignItems: "center", justifyContent: "center", backgroundColor: colors.surfaceRaised, borderWidth: 1, borderColor: colors.line },
-  headerTitle: { flex: 1, color: colors.ink, fontSize: 28, lineHeight: 35, fontWeight: "900" },
   pickCard: { alignItems: "center", gap: 12, paddingVertical: 28 },
   pickTitle: { color: colors.ink, fontSize: 22, fontWeight: "900" },
   pickBody: { color: colors.inkMuted, textAlign: "center", fontSize: 15, lineHeight: 21 },
@@ -428,7 +424,7 @@ const styles = StyleSheet.create({
   },
   removeButton: { height: 36, width: 36, borderRadius: 18, alignItems: "center", justifyContent: "center", backgroundColor: colors.badSoft },
   editFieldsRow: { flexDirection: "row", flexWrap: "wrap", gap: 8 },
-  miniFieldLabel: { color: colors.inkMuted, fontSize: 10, fontWeight: "800", textTransform: "uppercase", marginBottom: 4 },
+  miniFieldLabel: { color: colors.inkMuted, fontSize: 12, fontWeight: "800", textTransform: "uppercase", marginBottom: 4 },
   miniFieldInput: {
     minHeight: 38,
     borderRadius: 8,

@@ -1,12 +1,12 @@
 import { useMemo, useState } from "react";
-import { Pressable, StyleSheet, TextInput, View } from "react-native";
+import { StyleSheet, TextInput, View } from "react-native";
 import { useLocalSearchParams, useRouter } from "expo-router";
-import { Ionicons } from "@expo/vector-icons";
 import { Text } from "../../../components/AppText";
 import {
   ActionButton,
   AlertBanner,
   AppCard,
+  BackHeader as SharedBackHeader,
   EmptyState,
   ErrorState,
   IconTile,
@@ -88,17 +88,7 @@ function BackHeader({ title, athleteId }: { title: string; athleteId?: string })
     if (!athleteId) return;
     router.push({ pathname: "/coach/messages", params: { athleteId } } as never);
   };
-  return (
-    <View style={styles.header}>
-      <Pressable onPress={() => router.back()} style={styles.backButton}>
-        <Ionicons name="chevron-back" size={27} color={colors.ink} />
-      </Pressable>
-      <Text style={styles.headerTitle} numberOfLines={1}>{title}</Text>
-      <Pressable onPress={openMessages} disabled={!athleteId} style={[styles.backButton, !athleteId ? styles.disabledButton : null]}>
-        <Ionicons name="chatbubble-outline" size={23} color={colors.ink} />
-      </Pressable>
-    </View>
-  );
+  return <SharedBackHeader title={title} actionIcon="chatbubble-outline" actionLabel="Message" onAction={athleteId ? openMessages : undefined} />;
 }
 
 function ClientDetailView({ data }: { data: CoachClientDetailData }) {
@@ -311,10 +301,6 @@ function Divider() {
 }
 
 const styles = StyleSheet.create({
-  header: { minHeight: 60, flexDirection: "row", alignItems: "center", gap: 10 },
-  backButton: { height: 42, width: 42, borderRadius: 21, alignItems: "center", justifyContent: "center", backgroundColor: colors.surfaceRaised, borderWidth: 1, borderColor: colors.line },
-  disabledButton: { opacity: 0.5 },
-  headerTitle: { flex: 1, color: colors.ink, fontSize: 25, lineHeight: 31, fontWeight: "900" },
   cardTitle: { color: colors.ink, fontSize: 20, lineHeight: 25, fontWeight: "900", marginBottom: 10 },
   muted: { color: colors.inkMuted, fontSize: 15, lineHeight: 21, marginBottom: 12 },
   metricGrid: { flexDirection: "row", gap: 8 },

@@ -5,8 +5,7 @@ import { SafeAreaView } from "react-native-safe-area-context";
 import { Ionicons } from "@expo/vector-icons";
 import { apiFetch, apiJson, isAuthFailure, ApiError } from "../../lib/api";
 import { ROLE_THEMES, colors, radius } from "../../lib/theme";
-import { ActionButton, AppCard, EmptyState, ErrorState, LoadingState, StatusChip } from "../../components/fitora";
-import { ScreenHeader } from "../../components/ScreenHeader";
+import { ActionButton, AppCard, BackHeader, EmptyState, ErrorState, LoadingState, StatusChip } from "../../components/fitora";
 import { useTourHighlight, useTourScrollView } from "../../lib/tour/MobileTourProvider";
 import { useSpotlightRef } from "../../lib/tour/SpotlightTarget";
 
@@ -93,14 +92,8 @@ export default function Coaches() {
           keyboardShouldPersistTaps="handled"
           refreshControl={<RefreshControl refreshing={loading} onRefresh={load} tintColor={accent} />}
         >
-          <ScreenHeader
-            title="Coaches"
-            accent={accent}
-            roleLabel="Coach"
-            subtitle="Academy owner"
-            inlineActions
-            headerActions={
-              !forbidden ? (
+          <BackHeader title="Coaches" subtitle="Coaches in your academy" />
+          {!forbidden ? (
                 <Pressable
                   ref={coachesSpotlightRef}
                   onLayout={coachesSpotlightOnLayout}
@@ -112,9 +105,7 @@ export default function Coaches() {
                   <Ionicons name={adding ? "close" : "add"} size={20} color="#fff" />
                   <Text style={styles.addBtnLabel}>{adding ? "Cancel" : "Add coach"}</Text>
                 </Pressable>
-              ) : undefined
-            }
-          />
+          ) : null}
 
           {created ? (
             <AppCard style={[styles.created, { gap: 10 }]}>
@@ -157,7 +148,7 @@ export default function Coaches() {
           ) : null}
 
           {loading && !coaches && !forbidden ? (
-            <LoadingState label="Loading coaches..." />
+            <LoadingState label="Loading coaches..." variant="inline" />
           ) : forbidden ? (
             <EmptyState icon="lock-closed-outline" title="Owner only" body="Only the academy owner can manage coaches." />
           ) : error ? (
@@ -198,13 +189,13 @@ function Secret({ label, value }: { label: string; value: string }) {
 const styles = StyleSheet.create({
   safe: { flex: 1, backgroundColor: colors.surface },
   content: { padding: 20, paddingTop: 12, paddingBottom: 32 },
-  addBtn: { flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 6, height: 40, paddingHorizontal: 14, borderRadius: 12 },
+  addBtn: { alignSelf: "flex-start", flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 6, height: 40, paddingHorizontal: 14, borderRadius: 12 },
   addBtnLabel: { color: "#fff", fontWeight: "800", fontSize: 13 },
   row: { flexDirection: "row", alignItems: "center", gap: 14 },
   avatar: { height: 40, width: 40, borderRadius: 20, alignItems: "center", justifyContent: "center" },
   name: { fontSize: 16, fontWeight: "700", color: colors.ink },
   meta: { fontSize: 13, color: colors.inkMuted, marginTop: 2 },
-  fieldLabel: { color: colors.inkMuted, fontSize: 11, fontWeight: "900", textTransform: "uppercase", letterSpacing: 0.4 },
+  fieldLabel: { color: colors.inkMuted, fontSize: 12, fontWeight: "900", textTransform: "uppercase", letterSpacing: 0.4 },
   input: {
     minHeight: 48,
     borderRadius: radius.md,
@@ -220,7 +211,7 @@ const styles = StyleSheet.create({
   created: { borderColor: colors.ok + "55", marginBottom: 16 },
   createdTitle: { fontSize: 15, fontWeight: "800", color: colors.ink },
   secret: { backgroundColor: colors.surfaceInset, borderRadius: radius.md, padding: 12 },
-  secretLabel: { fontSize: 11, fontWeight: "700", color: colors.inkMuted, textTransform: "uppercase", letterSpacing: 1 },
+  secretLabel: { fontSize: 12, fontWeight: "700", color: colors.inkMuted, textTransform: "uppercase", letterSpacing: 1 },
   secretValue: { fontSize: 17, fontWeight: "700", color: colors.ink, marginTop: 4, fontFamily: Platform.OS === "ios" ? "Menlo" : "monospace" },
-  once: { fontSize: 11, color: colors.inkFaint },
+  once: { fontSize: 12, color: colors.inkFaint },
 });

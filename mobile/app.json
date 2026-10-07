@@ -24,8 +24,10 @@
     },
     "android": {
       "adaptiveIcon": {
-        "backgroundColor": "#eaf1ff",
-        "foregroundImage": "./assets/images/adaptive-icon.png"
+        "backgroundColor": "#0b5f58",
+        "foregroundImage": "./assets/images/adaptive-icon.png",
+        "backgroundImage": "./assets/images/adaptive-background.png",
+        "monochromeImage": "./assets/images/adaptive-monochrome.png"
       },
       "package": "app.fitora.coaching",
       "versionCode": 29,

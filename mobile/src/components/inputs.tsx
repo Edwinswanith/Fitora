@@ -102,7 +102,7 @@ const styles = StyleSheet.create({
   },
   pillText: { fontSize: 16, fontWeight: "700" },
   hintRow: { flexDirection: "row", justifyContent: "space-between" },
-  hint: { fontSize: 11, color: colors.inkFaint },
+  hint: { fontSize: 12, color: colors.inkFaint },
   stepperRow: { flexDirection: "row", alignItems: "center", justifyContent: "space-between" },
   stepBtn: {
     height: 48,

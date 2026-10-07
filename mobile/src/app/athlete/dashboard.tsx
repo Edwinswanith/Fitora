@@ -1,6 +1,5 @@
-import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Alert, Image, Pressable, StyleSheet, TextInput, View } from "react-native";
-import type { ImageSourcePropType } from "react-native";
+import { Fragment, useCallback, useEffect, useId, useMemo, useRef, useState } from "react";
+import { Alert, Pressable, StyleSheet, TextInput, View } from "react-native";
 import { useFocusEffect, useLocalSearchParams, useRouter } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
 import Svg, { Circle, Defs, Line, LinearGradient as SvgLinearGradient, Path, Stop, Text as SvgText } from "react-native-svg";
@@ -8,6 +7,12 @@ import { Text } from "../../components/AppText";
 import {
   ActionButton,
   AlertBanner,
+  HeroCard,
+  MetricRing,
+  MetricRow,
+  MetricTileRing,
+  SectionLabel,
+  StaleDataNotice,
   AppCard,
   BottomNavigation,
   EmptyState,
@@ -24,12 +29,20 @@ import {
 import { Avatar } from "../../components/Avatar";
 import type { MessageView } from "../../components/MessageCenter";
 import { apiFetch, apiJson } from "../../lib/api";
-import { exerciseVisual, mealVisual, workoutVisual, type FitoraIconAsset, type FitoraVisual } from "../../lib/fitoraIcons";
-import { colors, radius } from "../../lib/theme";
+import { useAuth } from "../../lib/auth";
+import { PAYMENTS_ENABLED } from "../../lib/features";
+import { celebrate, showError } from "../../lib/feedback";
+import { joinSessionCall } from "../../lib/videoCall";
+import { eligibleDays, judgeRate, localDayOf, windowStart } from "../../lib/progressWindow";
+import { exerciseVisual, mealVisual, workoutVisual, type FitoraVisual } from "../../lib/fitoraIcons";
+import { colors, metricColors, radius, type MetricKey } from "../../lib/theme";
 import {
   addDays,
   dateKey,
+  deriveNextAction,
   firstName,
+  headerDate,
+  timeOfDayGreeting,
   formatCurrency,
   formatDuration,
   loadAthleteDashboardData,
@@ -64,17 +77,6 @@ const NAV_ITEMS = [
   { key: "progress", label: "Progress", icon: "bar-chart-outline" as const },
 ];
 
-const WORKOUT_IMAGE_ASSETS: Record<FitoraIconAsset, ImageSourcePropType> = {
-  torso: require("../../../assets/fitora/workout-torso.png"),
-  bench: require("../../../assets/fitora/workout-icon-bench.png"),
-  pulldown: require("../../../assets/fitora/workout-icon-pulldown.png"),
-  shoulder: require("../../../assets/fitora/workout-icon-shoulder.png"),
-};
-
-function workoutImageSource(asset?: FitoraIconAsset) {
-  return asset ? WORKOUT_IMAGE_ASSETS[asset] : undefined;
-}
-
 function normalizeTab(value?: string | string[]): AthleteTab {
   const raw = Array.isArray(value) ? value[0] : value;
   if (raw === "workouts" || raw === "log") return "workouts";
@@ -89,13 +91,6 @@ function readinessLabel(score: number | null | undefined): string {
   if (score >= 75) return "Good";
   if (score >= 60) return "Moderate";
   return "Low";
-}
-
-function readinessTone(score: number | null | undefined): "success" | "warning" | "danger" | "neutral" {
-  if (score == null) return "neutral";
-  if (score >= 75) return "success";
-  if (score >= 60) return "warning";
-  return "danger";
 }
 
 function daysUntil(dateString?: string | null): number | null {
@@ -221,13 +216,23 @@ export default function AthleteDashboard() {
         method: "POST",
         body: JSON.stringify({ amountMl, date: todayKey() }),
       });
-      if (res.ok) {
-        // The response is the athlete's whole updated water day — apply it
-        // directly instead of re-running the full ~15-request dashboard
-        // loader just to reflect one water log.
-        const water = await res.json().catch(() => null);
-        if (water) state.setData((prev) => (prev ? { ...prev, water } : prev));
+      if (!res.ok) throw new Error();
+      // The response is the athlete's whole updated water day — apply it
+      // directly instead of re-running the full ~15-request dashboard
+      // loader just to reflect one water log.
+      const water = (await res.json().catch(() => null)) as AthleteDashboardData["water"];
+      if (water) {
+        const before = data?.water?.totalMl ?? 0;
+        state.setData((prev) => (prev ? { ...prev, water } : prev));
+        const liters = (ml: number) => (ml / 1000).toFixed(1);
+        if (before < water.goalMl && water.totalMl >= water.goalMl) {
+          celebrate({ title: "Water goal reached!", body: `${liters(water.totalMl)} L today. Nice work.`, big: true });
+        } else {
+          celebrate({ title: `+${amountMl} ml logged`, body: `${liters(water.totalMl)} of ${liters(water.goalMl)} L today` });
+        }
       }
+    } catch {
+      showError("Couldn't log water", "Check your connection and try again.");
     } finally {
       setLoggingWater(false);
     }
@@ -259,6 +264,7 @@ export default function AthleteDashboard() {
                   : undefined
       }
     >
+      {state.stale ? <StaleDataNotice onRetry={state.reload} /> : null}
       {activeTab === "today" ? <TodayView data={data} onNavigate={setActiveTab} /> : null}
       {activeTab === "workouts" ? <WorkoutsView data={data} /> : null}
       {activeTab === "nutrition" ? <NutritionViewV2 data={data} onLogWater={logWater} loggingWater={loggingWater} onUpdateData={state.setData} /> : null}
@@ -292,11 +298,6 @@ function TodayView({
 
   function goToWorkout(target = workout) {
     if (target) router.push({ pathname: "/athlete/active-workout", params: { assignmentId: target.id } } as never);
-  }
-
-  function handleReadinessPress() {
-    if (data.daily?.readinessScore == null) router.push("/athlete/check-in" as never);
-    else router.push("/athlete/trends" as never);
   }
 
   function handleWorkoutReview() {
@@ -336,10 +337,32 @@ function TodayView({
 
       {alert}
 
-      <ReadinessStrip score={data.daily?.readinessScore ?? null} onPress={handleReadinessPress} />
+      <TodayHero
+        data={data}
+        hasCoach={athleteHasCoach(data)}
+        onCheckIn={() => router.push("/athlete/check-in" as never)}
+        onWorkout={() => goToWorkout()}
+        onReview={handleWorkoutReview}
+        onSession={() => setSessionExpanded(true)}
+        onMeals={() => onNavigate("nutrition")}
+        onWater={() => router.push("/athlete/water" as never)}
+        onProgress={() => onNavigate("progress")}
+        onFindCoach={() => onNavigate("coach")}
+      />
 
-      <NextWorkoutCard data={data} workout={workout} onWorkoutPress={() => goToWorkout()} onReviewPress={handleWorkoutReview} />
+      <TodayMetrics
+        data={data}
+        onReadiness={() => (data.daily?.readinessScore == null ? router.push("/athlete/check-in" as never) : router.push("/athlete/trends" as never))}
+        onNutrition={() => onNavigate("nutrition")}
+        onWater={() => router.push("/athlete/water" as never)}
+        onProgress={() => onNavigate("progress")}
+      />
 
+      {!workout && !athleteHasCoach(data) ? (
+        <NextWorkoutCard data={data} workout={workout} onWorkoutPress={() => goToWorkout()} onReviewPress={handleWorkoutReview} onFindCoach={() => onNavigate("coach")} />
+      ) : null}
+
+      <SectionLabel title="Today" />
       <TodayScheduleCard
         data={data}
         workout={workout}
@@ -352,10 +375,142 @@ function TodayView({
         <SessionCard session={todaySession} coachName={activeCoach} expanded={sessionExpanded} onExpandedChange={setSessionExpanded} />
       ) : null}
 
-      <DailyStatusCard data={data} onNavigate={onNavigate} />
-
       <CoachUpdateCard data={data} coachName={activeCoach} tomorrow={tomorrow} onReply={() => onNavigate("coach")} onTomorrowPress={handleTomorrowPress} />
     </>
+  );
+}
+
+/** Today's three rings (readiness, calories, water) and the check-in streak, as in the Glow design. */
+function TodayMetrics({
+  data,
+  onReadiness,
+  onNutrition,
+  onWater,
+  onProgress,
+}: {
+  data: AthleteDashboardData;
+  onReadiness: () => void;
+  onNutrition: () => void;
+  onWater: () => void;
+  onProgress: () => void;
+}) {
+  const readiness = data.daily?.readinessScore ?? null;
+  const consumed = consumedCalories(data);
+  const targetCalories = data.target?.calories ?? null;
+  const waterTotal = data.water?.totalMl ?? 0;
+  const waterGoal = data.water?.goalMl ?? 0;
+  const streak = buildCheckInStreak(data.trends).current;
+  return (
+    <>
+      <MetricRow>
+        <MetricTileRing
+          metric="readiness"
+          label="Readiness"
+          value={readiness != null ? String(Math.round(readiness)) : "--"}
+          sub={readiness != null ? readinessLabel(readiness) : "Check in"}
+          progress={readiness != null ? readiness / 100 : null}
+          onPress={onReadiness}
+        />
+        <MetricTileRing
+          metric="nutrition"
+          label="Calories"
+          value={consumed > 0 ? consumed.toLocaleString() : "--"}
+          sub={targetCalories ? `of ${targetCalories.toLocaleString()}` : consumed > 0 ? "kcal" : "Log a meal"}
+          progress={targetCalories ? consumed / targetCalories : null}
+          onPress={onNutrition}
+        />
+        <MetricTileRing
+          metric="water"
+          label="Water"
+          value={`${formatLiters(waterTotal)} L`}
+          sub={waterGoal ? `of ${formatLiters(waterGoal)} L` : undefined}
+          progress={waterGoal ? waterTotal / waterGoal : null}
+          onPress={onWater}
+        />
+      </MetricRow>
+      <Pressable onPress={onProgress} accessibilityRole="button" style={({ pressed }) => [styles.streakRow, pressed ? { opacity: 0.8 } : null]}>
+        <View style={styles.streakCopy}>
+          <Text style={styles.streakTitle}>Check-in streak</Text>
+          <Text style={styles.streakSub}>{streak ? "Keep it going with today's check-in." : "Check in today to start a streak."}</Text>
+        </View>
+        <View style={styles.streakChip}>
+          <Ionicons name="flame" size={15} color={colors.energy} />
+          <Text style={styles.streakChipText}>{streak ? `${streak} day${streak === 1 ? "" : "s"}` : "Start"}</Text>
+        </View>
+      </Pressable>
+    </>
+  );
+}
+
+const NEXT_ACTION_ICONS: Record<string, keyof typeof Ionicons.glyphMap> = {
+  checkin: "clipboard-outline",
+  workout_active: "barbell-outline",
+  workout_upcoming: "barbell-outline",
+  rpe: "speedometer-outline",
+  session: "videocam-outline",
+  meal: "restaurant-outline",
+  hydration: "water-outline",
+  complete: "checkmark-done-outline",
+};
+
+/** Today's one "do this now" card, driven by deriveNextAction (lib/fitoraData.ts). */
+function TodayHero({
+  data,
+  hasCoach,
+  onCheckIn,
+  onWorkout,
+  onReview,
+  onSession,
+  onMeals,
+  onWater,
+  onProgress,
+  onFindCoach,
+}: {
+  data: AthleteDashboardData;
+  hasCoach: boolean;
+  onCheckIn: () => void;
+  onWorkout: () => void;
+  onReview: () => void;
+  onSession: () => void;
+  onMeals: () => void;
+  onWater: () => void;
+  onProgress: () => void;
+  onFindCoach: () => void;
+}) {
+  const next = deriveNextAction(data);
+  // Payment prompts only exist while in-app payments are on.
+  const action = next.kind === "payment" && !PAYMENTS_ENABLED ? { ...next, kind: "complete" as const } : next;
+  const handlers: Record<string, (() => void) | undefined> = {
+    checkin: onCheckIn,
+    workout_active: onWorkout,
+    workout_upcoming: onWorkout,
+    rpe: onReview,
+    session: onSession,
+    meal: onMeals,
+    hydration: onWater,
+  };
+  if (action.kind === "complete") {
+    return (
+      <HeroCard
+        calm
+        icon="checkmark-done-outline"
+        eyebrow="All set"
+        title="You're caught up for today"
+        body={hasCoach ? "Nice work. Check your progress or rest up for tomorrow." : "Nice work. Want a plan? A coach can set your workouts and meals."}
+        actionLabel={hasCoach ? "See Progress" : "Find a Coach"}
+        onAction={hasCoach ? onProgress : onFindCoach}
+      />
+    );
+  }
+  return (
+    <HeroCard
+      icon={NEXT_ACTION_ICONS[action.kind] ?? "arrow-forward-outline"}
+      eyebrow={action.eyebrow}
+      title={action.title}
+      body={action.body}
+      actionLabel={action.ctaLabel}
+      onAction={handlers[action.kind]}
+    />
   );
 }
 
@@ -363,32 +518,9 @@ function TodayHeader({ name, date }: { name: string; date: string }) {
   return (
     <PrimaryAppBar
       variant="today"
-      greeting={`Good morning, ${firstName(name, "there")}`}
-      title={longDate(date)}
+      greeting={`${timeOfDayGreeting()}, ${firstName(name, "there")}`}
+      title={headerDate(date)}
     />
-  );
-}
-
-function ReadinessStrip({ score, onPress }: { score: number | null; onPress: () => void }) {
-  const tone = readinessTone(score);
-  const palette = readinessPalette(tone);
-  const label = readinessLabel(score);
-  const value = score == null ? "Check-in needed" : `${Math.round(score)} · ${label}`;
-
-  return (
-    <Pressable onPress={onPress} style={({ pressed }) => [styles.readinessStrip, pressed ? { opacity: 0.75 } : null]}>
-      <View style={[styles.readinessIcon, { backgroundColor: palette.soft }]}>
-        <Ionicons name="stats-chart" size={23} color={palette.strong} />
-      </View>
-      <View style={styles.readinessCopy}>
-        <View style={styles.readinessTitleLine}>
-          <Text style={styles.readinessTitle}>Readiness</Text>
-          <Text style={[styles.readinessValue, { color: palette.strong }]} numberOfLines={1}>{value}</Text>
-        </View>
-        <Text style={styles.readinessBody} numberOfLines={2}>{readinessDetail(score)}</Text>
-      </View>
-      <Ionicons name="chevron-forward" size={22} color={colors.inkFaint} />
-    </Pressable>
   );
 }
 
@@ -397,19 +529,19 @@ function NextWorkoutCard({
   workout,
   onWorkoutPress,
   onReviewPress,
+  onFindCoach,
 }: {
   data: AthleteDashboardData;
   workout: WorkoutAssignmentSummary | null;
   onWorkoutPress: () => void;
   onReviewPress: () => void;
+  onFindCoach: () => void;
 }) {
   const exerciseCount = workoutExerciseCount(workout, data.workoutDetail);
   const completed = workout?.status === "completed";
   const skipped = workout?.status === "skipped";
   const inProgress = Boolean(workout && (workout.status === "in_progress" || (workout.completedCount > 0 && workout.completedCount < exerciseCount)));
   const rpeLogged = workout?.slot ? data.daily?.rpeEntries?.[workout.slot] : data.daily?.rpe;
-  const visual = workout ? workoutVisual(workout.name) : null;
-  const imageSource = workoutImageSource(visual?.asset);
   const ctaLabel = completed
     ? rpeLogged ? "Completed" : "Log RPE"
     : skipped ? "Skipped"
@@ -424,6 +556,7 @@ function NextWorkoutCard({
   const ctaAction = completed && !rpeLogged ? onReviewPress : onWorkoutPress;
 
   if (!workout) {
+    const hasCoach = athleteHasCoach(data);
     return (
       <AppCard style={styles.nextWorkoutCard}>
         <View style={styles.nextWorkoutTop}>
@@ -432,10 +565,15 @@ function NextWorkoutCard({
           </View>
           <View style={styles.nextWorkoutCopy}>
             <Text style={styles.nextWorkoutEyebrow}>NEXT UP</Text>
-            <Text style={styles.nextWorkoutTitle}>No training scheduled today</Text>
-            <Text style={styles.nextWorkoutMeta}>Your coach has not assigned a workout for today.</Text>
+            <Text style={styles.nextWorkoutTitle}>{hasCoach ? "No training scheduled today" : "Get a training plan"}</Text>
+            <Text style={styles.nextWorkoutMeta}>
+              {hasCoach
+                ? "Your coach has not assigned a workout for today."
+                : "Workouts appear here once you're connected with a coach. Until then, start with your check-in, meals and water."}
+            </Text>
           </View>
         </View>
+        {hasCoach ? null : <ActionButton label="Find a Coach" icon="search-outline" onPress={onFindCoach} />}
       </AppCard>
     );
   }
@@ -458,11 +596,7 @@ function NextWorkoutCard({
           </View>
         </View>
         <View style={styles.nextWorkoutArt}>
-          {imageSource ? (
-            <Image source={imageSource} style={styles.nextWorkoutImage} resizeMode="contain" />
-          ) : (
-            <Ionicons name="barbell-outline" size={44} color={colors.primary} />
-          )}
+          <Ionicons name="barbell-outline" size={44} color={metricColors.training.to} />
         </View>
       </View>
       <ActionButton
@@ -570,92 +704,6 @@ function ScheduleRow({
   );
 }
 
-function DailyStatusCard({ data, onNavigate }: { data: AthleteDashboardData; onNavigate: (tab: AthleteTab) => void }) {
-  const router = useRouter();
-  const readiness = data.daily?.readinessScore ?? null;
-  const consumed = consumedCalories(data);
-  const workoutsToday = data.workouts.length;
-  const workoutsDone = data.workouts.filter((w) => w.status === "completed").length;
-  const waterTotal = formatLiters(data.water?.totalMl ?? 0);
-  const waterGoal = formatLiters(data.water?.goalMl ?? 0);
-
-  return (
-    <AppCard style={styles.dailyStatusCard}>
-      <View style={styles.todaySectionHeader}>
-        <Text style={styles.todaySectionTitle}>Daily Status</Text>
-        <Pressable onPress={() => onNavigate("progress")} hitSlop={8} style={styles.todaySectionAction}>
-          <Text style={styles.todaySectionActionText}>View Details</Text>
-          <Ionicons name="chevron-forward" size={17} color={colors.primary} />
-        </Pressable>
-      </View>
-      <View style={styles.statusGrid}>
-        <StatusMetric
-          icon="stats-chart"
-          label="Readiness"
-          value={readiness != null ? String(Math.round(readiness)) : "--"}
-          sub={readinessLabel(readiness)}
-          tone={readinessTone(readiness)}
-          onPress={() => router.push("/athlete/trends" as never)}
-        />
-        <StatusMetric
-          icon="nutrition-outline"
-          label="Nutrition"
-          value={String(consumed)}
-          sub="kcal"
-          tone="success"
-          onPress={() => onNavigate("nutrition")}
-        />
-        <StatusMetric
-          icon="water-outline"
-          label="Water"
-          value={waterTotal}
-          sub={`/ ${waterGoal} L`}
-          tone="primary"
-          onPress={() => router.push("/athlete/water" as never)}
-        />
-        <StatusMetric
-          icon="barbell-outline"
-          label="Training"
-          value={`${workoutsDone} / ${workoutsToday}`}
-          sub="complete"
-          tone="purple"
-          onPress={() => onNavigate("workouts")}
-        />
-      </View>
-    </AppCard>
-  );
-}
-
-function StatusMetric({
-  icon,
-  label,
-  value,
-  sub,
-  tone,
-  onPress,
-}: {
-  icon: keyof typeof Ionicons.glyphMap;
-  label: string;
-  value: string;
-  sub: string;
-  tone: "success" | "warning" | "danger" | "neutral" | "primary" | "purple";
-  onPress?: () => void;
-}) {
-  const palette = metricPalette(tone);
-  return (
-    <Pressable onPress={onPress} disabled={!onPress} style={({ pressed }) => [styles.statusMetric, pressed ? { opacity: 0.72 } : null]}>
-      <View style={[styles.statusMetricIcon, { backgroundColor: palette.soft }]}>
-        <Ionicons name={icon} size={20} color={palette.strong} />
-      </View>
-      <View style={styles.statusMetricCopy}>
-        <Text style={styles.statusLabel} numberOfLines={1}>{label}</Text>
-        <Text style={[styles.statusValue, { color: palette.strong }]} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.78}>{value}</Text>
-        <Text style={styles.statusSub} numberOfLines={1}>{sub}</Text>
-      </View>
-    </Pressable>
-  );
-}
-
 type TomorrowPreview =
   | { kind: "workout"; title: string; meta: string; workout: WorkoutAssignmentSummary }
   | { kind: "session"; title: string; meta: string; session: CoachSession };
@@ -720,25 +768,6 @@ function CoachUpdateCard({
       ) : null}
     </AppCard>
   );
-}
-
-function readinessPalette(tone: "success" | "warning" | "danger" | "neutral" | "primary") {
-  if (tone === "success") return { strong: colors.ok, soft: colors.okSoft };
-  if (tone === "warning") return { strong: colors.warn, soft: colors.warnSoft };
-  if (tone === "danger") return { strong: colors.bad, soft: colors.badSoft };
-  return { strong: colors.primary, soft: colors.primarySoft };
-}
-
-function metricPalette(tone: "success" | "warning" | "danger" | "neutral" | "primary" | "purple") {
-  if (tone === "purple") return { strong: "#6d28d9", soft: "#f0e7ff" };
-  return readinessPalette(tone);
-}
-
-function readinessDetail(score: number | null | undefined): string {
-  if (score == null) return "Complete your check-in to unlock today's readiness.";
-  if (score >= 75) return "Good recovery today · You are cleared to push.";
-  if (score >= 60) return "Moderate recovery today · Keep effort controlled.";
-  return "Low recovery today · Take it slightly lighter.";
 }
 
 function workoutExerciseCount(workout: WorkoutAssignmentSummary | null, detail?: WorkoutAssignmentDetail | null): number {
@@ -912,6 +941,7 @@ function buildTodayAlert(
   coachName: string,
   actions: { membership: () => void }
 ) {
+  if (!PAYMENTS_ENABLED) return null;
   const sub = data.subscription;
   const renewalDays = daysUntil(sub?.currentPeriodEnd);
   if (sub?.status === "payment_failed") {
@@ -965,20 +995,8 @@ function SessionCard({
     setJoining(true);
     setSessionMessage(null);
     try {
-      const res = await apiFetch(`/api/athlete/sessions/${session.id}/join-token`, { method: "POST" });
-      const body = (await res.json().catch(() => ({}))) as { error?: string; video?: { roomRef?: string } };
-      if (!res.ok) {
-        const reason = body.error === "outside_join_window"
-          ? "This session can be joined 10 minutes before it starts."
-          : body.error === "session_not_joinable"
-            ? "This session is not joinable in its current status."
-            : "Could not open the video session.";
-        setSessionMessage(reason);
-        return;
-      }
-      setSessionMessage(body.video?.roomRef ? "Video room is ready." : "Session token created.");
-    } catch {
-      setSessionMessage("Could not reach the session service.");
+      const result = await joinSessionCall("athlete", session.id, { withName: coachName, title: `Session with ${coachName}` });
+      if (!result.ok) setSessionMessage(result.message);
     } finally {
       setJoining(false);
     }
@@ -1128,9 +1146,15 @@ function WorkoutsView({ data }: { data: AthleteDashboardData }) {
               todayKeyValue={data.date}
             />
           ) : (
-            <TrainingNoWorkoutCard dateStr={selectedDate} todayKeyValue={data.date} />
+            <TrainingNoWorkoutCard dateStr={selectedDate} todayKeyValue={data.date} hasCoach={athleteHasCoach(data)} />
           )}
-          {selectedDetail && selectedDetail.exercises.length ? <TrainingExercisePreview detail={selectedDetail} /> : null}
+          {selectedDetail && selectedDetail.exercises.length ? (
+            <>
+              <SectionLabel title="Exercises" />
+              <TrainingExercisePreview detail={selectedDetail} />
+            </>
+          ) : null}
+          <SectionLabel title="Coming up" />
           <TrainingUpNextCard workout={upNextWorkout} onViewCalendar={() => setSegment("upcoming")} />
         </>
       ) : null}
@@ -1241,7 +1265,6 @@ function TrainingWorkoutHero({
   const isToday = dateStr === todayKeyValue;
   const source = detail?.assignedByRole ?? workout.assignedByRole;
   const visual = workoutVisual(workout.name);
-  const heroImage = workoutImageSource(visual.asset);
   const note = workoutCoachNote(detail);
   const hasProgress = progressPercent > 0 || workout.status === "in_progress";
   const buttonLabel =
@@ -1274,7 +1297,7 @@ function TrainingWorkoutHero({
           </View>
         </View>
         <View style={styles.trainingHeroVisual}>
-          {heroImage ? <Image source={heroImage} style={styles.trainingHeroImage} resizeMode="contain" /> : <Ionicons name={visual.icon} size={56} color={visual.color} />}
+          <Ionicons name={visual.icon} size={56} color={metricColors.training.to} />
         </View>
       </View>
       {note ? (
@@ -1285,7 +1308,7 @@ function TrainingWorkoutHero({
       ) : null}
       {hasProgress ? (
         <View style={styles.trainingProgressRow}>
-          <ProgressBar value={progressPercent / 100} height={6} style={styles.trainingProgressBar} />
+          <ProgressBar value={progressPercent / 100} height={6} color={metricColors.training.to} style={styles.trainingProgressBar} />
           <Text style={styles.trainingProgressText}>{completedCount} / {exerciseCount}</Text>
         </View>
       ) : null}
@@ -1359,7 +1382,6 @@ function TrainingExercisePreviewRow({
   showVideo?: boolean;
   onPress?: () => void;
 }) {
-  const imageSource = workoutImageSource(visual.asset);
   const completed = status === "completed";
   const inProgress = status === "in_progress";
   const skipped = status === "skipped";
@@ -1370,8 +1392,8 @@ function TrainingExercisePreviewRow({
       disabled={!onPress}
       style={({ pressed }) => [styles.trainingExerciseRow, pressed ? { opacity: 0.76 } : null]}
     >
-      <View style={[styles.trainingExerciseIcon, imageSource ? styles.trainingExerciseImageShell : null]}>
-        {imageSource ? <Image source={imageSource} style={styles.trainingExerciseImage} resizeMode="contain" /> : <Ionicons name={visual.icon} size={25} color={visual.color} />}
+      <View style={styles.trainingExerciseIcon}>
+        <Ionicons name={visual.icon} size={25} color={visual.color} />
       </View>
       <View style={styles.trainingExerciseCopy}>
         <Text style={styles.trainingExerciseTitle} numberOfLines={2}>{title}</Text>
@@ -1441,9 +1463,28 @@ function TrainingUpNextCard({
   );
 }
 
-function TrainingNoWorkoutCard({ dateStr, todayKeyValue }: { dateStr: string; todayKeyValue: string }) {
-  const title = dateStr === todayKeyValue ? "No training scheduled for today" : "No training scheduled";
-  const body = dateStr < todayKeyValue ? "No workout was assigned for this day." : "Future assignments will show here when your coach schedules them.";
+function TrainingNoWorkoutCard({ dateStr, todayKeyValue, hasCoach }: { dateStr: string; todayKeyValue: string; hasCoach: boolean }) {
+  if (dateStr === todayKeyValue) {
+    return (
+      <HeroCard
+        calm
+        icon="bed-outline"
+        eyebrow={hasCoach ? "Rest day" : "No plan yet"}
+        title={hasCoach ? "Recover today" : "Get a training plan"}
+        body={
+          hasCoach
+            ? "Nothing scheduled. Sleep, hydrate and log your check-in so your coach sees how you're recovering."
+            : "Workouts are planned by your coach. Connect with one from the Coach tab to get a schedule here."
+        }
+      />
+    );
+  }
+  const title = "No training scheduled";
+  const body = !hasCoach
+    ? "Workouts are planned by your coach. Connect with one from the Coach tab to get a schedule here."
+    : dateStr < todayKeyValue
+      ? "No workout was assigned for this day."
+      : "Future assignments will show here when your coach schedules them.";
   return (
     <AppCard style={styles.trainingNoWorkoutCard}>
       <IconTile icon="bed-outline" tone="primary" size={52} />
@@ -1487,7 +1528,6 @@ function WorkoutHero({
   const completedCount = detail ? detail.progress.filter((item) => item.status === "completed").length : workout.completedCount ?? 0;
   const progressPercent = exerciseCount > 0 ? Math.round((completedCount / exerciseCount) * 100) : 0;
   const visual = workoutVisual(workout.name);
-  const heroImage = workoutImageSource(visual.asset);
   const isToday = dateStr === todayKeyValue;
   const state = workoutState(workout, todayKeyValue);
   const source = detail?.assignedByRole ?? workout.assignedByRole;
@@ -1511,11 +1551,7 @@ function WorkoutHero({
           <Text style={styles.workoutHeroCoach}>Coach {firstName(coachName, "Alex")}</Text>
         </View>
         <View style={styles.workoutBodyIcon}>
-          {heroImage ? (
-            <Image source={heroImage} style={styles.workoutTorsoImage} resizeMode="contain" />
-          ) : (
-            <Ionicons name={visual.icon} size={62} color={visual.color} />
-          )}
+          <Ionicons name={visual.icon} size={62} color={metricColors.training.to} />
         </View>
       </View>
       <View style={styles.progressLineRow}>
@@ -1596,19 +1632,14 @@ function WorkoutExerciseRow({
 }) {
   const completed = status === "completed";
   const notStarted = status === "not_started";
-  const imageSource = workoutImageSource(visual.asset);
   return (
     <Pressable
       onPress={onPress}
       disabled={!onPress}
       style={({ pressed }) => [styles.workoutExerciseRow, pressed ? { opacity: 0.78 } : null]}
     >
-      <View style={[styles.workoutExerciseIcon, imageSource ? styles.workoutExerciseImageShell : null]}>
-        {imageSource ? (
-          <Image source={imageSource} style={styles.workoutExerciseIconImage} resizeMode="contain" />
-        ) : (
-          <Ionicons name={visual.icon} size={26} color={visual.color} />
-        )}
+      <View style={styles.workoutExerciseIcon}>
+        <Ionicons name={visual.icon} size={26} color={visual.color} />
       </View>
       <View style={styles.workoutExerciseCopy}>
         <Text style={styles.workoutExerciseTitle} numberOfLines={1}>{title}</Text>
@@ -1753,7 +1784,7 @@ function NutritionView({
   const target = data.target;
   const consumed = consumedCalories(data);
   const remaining = target ? Math.max(0, target.calories - consumed) : null;
-  const coachName = data.coaches[0]?.name ?? data.coachProfile?.name ?? "Arjun";
+  const coachName = data.coaches[0]?.name ?? data.coachProfile?.name ?? "your coach";
   const coachId = data.coaches[0]?.coachId ?? data.subscription?.coachId ?? data.coachProfile?.coachId ?? null;
   const plannedCalories = data.plannedMeals.reduce((sum, meal) => sum + mealCalories(meal), 0);
   const plannedMealRows = orderedMealPlanRows(data.plannedMeals);
@@ -1785,10 +1816,12 @@ function NutritionView({
       });
       const body = (await res.json().catch(() => ({}))) as { error?: string; meal?: Meal };
       if (!res.ok) {
-        setNutritionMessage(body.error ?? "Could not log this planned meal.");
+        showError("Couldn't log this meal", "Check your connection and try again.");
+        setNutritionMessage("Could not log this planned meal.");
         return;
       }
       setNutritionMessage(`${titleCase(meal.mealType)} logged.`);
+      celebrate({ title: `${titleCase(meal.mealType)} logged`, body: "From your coach's plan." });
       // Append the newly-created Meal and roll its macros into the running
       // totals locally — avoids re-running the whole dashboard loader (which
       // includes a 7-day sequential nutrition-history fetch) just to reflect
@@ -2093,7 +2126,7 @@ function NutritionViewV2({
   const [savingPlannedMealId, setSavingPlannedMealId] = useState<string | null>(null);
   const target = data.target;
   const consumed = consumedCalories(data);
-  const coachName = data.coaches[0]?.name ?? data.coachProfile?.name ?? "Arjun";
+  const coachName = data.coaches[0]?.name ?? data.coachProfile?.name ?? "your coach";
   const coachId = data.coaches[0]?.coachId ?? data.subscription?.coachId ?? data.coachProfile?.coachId ?? null;
   const plannedMealRows = orderedMealPlanRows(data.plannedMeals);
   const plannedCalories = data.plannedMeals.reduce((sum, meal) => sum + mealCalories(meal), 0);
@@ -2125,10 +2158,12 @@ function NutritionViewV2({
       });
       const body = (await res.json().catch(() => ({}))) as { error?: string; meal?: Meal };
       if (!res.ok) {
-        setNutritionMessage(body.error ?? "Could not log this planned meal.");
+        showError("Couldn't log this meal", "Check your connection and try again.");
+        setNutritionMessage("Could not log this planned meal.");
         return;
       }
       setNutritionMessage(`${titleCase(meal.mealType)} logged.`);
+      celebrate({ title: `${titleCase(meal.mealType)} logged`, body: "From your coach's plan." });
       const createdMeal = body.meal;
       if (createdMeal) {
         const addedCalories = mealCalories(createdMeal);
@@ -2252,26 +2287,23 @@ function NutritionSummaryCardV2({
   return (
     <AppCard style={styles.nutritionSummaryCard}>
       <View style={styles.nutritionSummaryTop}>
+        <MetricRing metric="nutrition" value={calorieProgress} size={92} stroke={10}>
+          <Text style={styles.nutritionRingPercent}>{caloriePercent}%</Text>
+          <Text style={styles.nutritionRingLabel}>of goal</Text>
+        </MetricRing>
         <View style={styles.nutritionSummaryCopy}>
-          <Text style={styles.nutritionEyebrow}>{"TODAY'S NUTRITION"}</Text>
+          <Text style={styles.nutritionEyebrow}>{"TODAY'S CALORIES"}</Text>
           <View style={styles.nutritionCaloriesRow}>
             <Text style={styles.nutritionCaloriesValue}>{consumed.toLocaleString()}</Text>
-            <Text style={styles.nutritionCaloriesTarget}> / {target.calories.toLocaleString()} kcal</Text>
+            <Text style={styles.nutritionCaloriesTarget}> / {target.calories.toLocaleString()}</Text>
+          </View>
+          <Text style={styles.nutritionRemainingText}>{remainingLabel}</Text>
+          <View style={[styles.nutritionStatusPill, { backgroundColor: status.background }]}>
+            <View style={[styles.nutritionStatusDot, { backgroundColor: status.dot }]} />
+            <Text style={[styles.nutritionStatusText, { color: status.text }]}>{status.label}</Text>
           </View>
         </View>
-        <View style={[styles.nutritionStatusPill, { backgroundColor: status.background }]}>
-          <View style={[styles.nutritionStatusDot, { backgroundColor: status.dot }]} />
-          <Text style={[styles.nutritionStatusText, { color: status.text }]}>{status.label}</Text>
-        </View>
       </View>
-
-      <View style={styles.nutritionProgressRowV2}>
-        <View style={styles.nutritionProgressTrackV2}>
-          <ProgressBar value={calorieProgress} color={colors.primary} />
-        </View>
-        <Text style={styles.nutritionProgressPercent}>{caloriePercent}%</Text>
-      </View>
-      <Text style={styles.nutritionRemainingText}>{remainingLabel}</Text>
 
       <View style={styles.nutritionMacroGrid}>
         <MacroTileV2 icon="fitness-outline" label="Protein" value={data.mealTotals?.proteinG ?? 0} target={target.proteinG} color="#f56565" />
@@ -2285,23 +2317,18 @@ function NutritionSummaryCardV2({
 function NutritionSetupCardV2({ profile, onComplete }: { profile: AthleteDashboardData["profile"]; onComplete: () => void }) {
   const missing = missingNutritionInputsV2(profile);
   return (
-    <AppCard style={styles.nutritionSetupCard}>
-      <View style={styles.nutritionSetupTop}>
-        <IconTile icon="calculator-outline" size={30} tone="primary" />
-        <View style={styles.nutritionSetupCopy}>
-          <Text style={styles.nutritionCardTitle}>Set your nutrition target</Text>
-          <Text style={styles.nutritionMealMuted}>Complete your profile to calculate calories and macros.</Text>
-        </View>
-      </View>
-      <View style={styles.nutritionMissingGrid}>
-        {missing.slice(0, 4).map((item) => (
-          <View key={item} style={styles.nutritionMissingChip}>
-            <Text style={styles.nutritionMissingText}>{item}</Text>
-          </View>
-        ))}
-      </View>
-      <ActionButton label="Complete Profile" icon="person-outline" variant="filled" onPress={onComplete} />
-    </AppCard>
+    <HeroCard
+      icon="calculator-outline"
+      eyebrow="Set up nutrition"
+      title="Get your daily calorie target"
+      body={
+        missing.length
+          ? `Add your ${missing.slice(0, 4).map((item) => item.toLowerCase()).join(", ")} and we'll calculate calories and macros for you.`
+          : "Complete your profile and we'll calculate calories and macros for you."
+      }
+      actionLabel="Complete Profile"
+      onAction={onComplete}
+    />
   );
 }
 
@@ -2432,16 +2459,15 @@ function HydrationCardV2({
   return (
     <AppCard style={styles.nutritionHydrationCard}>
       <View style={styles.nutritionHydrationTop}>
-        <View style={styles.nutritionHydrationIcon}>
-          <Ionicons name="water-outline" size={29} color={colors.primary} />
-        </View>
+        <MetricRing metric="water" value={waterProgress} size={56} stroke={7}>
+          <Ionicons name="water" size={22} color={metricColors.water.to} />
+        </MetricRing>
         <View style={styles.nutritionHydrationCopy}>
           <Text style={styles.nutritionCardTitle}>Hydration</Text>
           <View style={styles.nutritionHydrationValueRow}>
             <Text style={styles.nutritionHydrationValue}>{(totalMl / 1000).toFixed(1)} / {(goalMl / 1000).toFixed(1)} L</Text>
-            <Text style={styles.nutritionHydrationPercent}>{percent}%</Text>
+            <Text style={[styles.nutritionHydrationPercent, { color: metricColors.water.ink }]}>{percent}%</Text>
           </View>
-          <ProgressBar value={waterProgress} color={colors.primary} />
         </View>
       </View>
       <View style={styles.nutritionHydrationActions}>
@@ -2613,9 +2639,9 @@ function nutritionMealRowsV2(meals: Meal[], plannedMeals: PlannedMeal[]): Nutrit
 
 function nutritionMealVisualV2(type: string): Pick<NutritionMealRowV2, "icon" | "color" | "background"> {
   if (type === "breakfast") return { icon: "sunny-outline", color: "#f5a300", background: "#fff4d9" };
-  if (type === "lunch") return { icon: "restaurant-outline", color: colors.primary, background: "#eaf3ff" };
+  if (type === "lunch") return { icon: "restaurant-outline", color: colors.primary, background: "#effaf9" };
   if (type === "snack") return { icon: "nutrition-outline", color: "#7c3aed", background: "#f1e9ff" };
-  if (type === "dinner") return { icon: "moon-outline", color: "#5277d8", background: "#eaf0ff" };
+  if (type === "dinner") return { icon: "moon-outline", color: "#0d9488", background: "#effaf9" };
   const visual = mealVisual(type);
   return { icon: visual.icon, color: visual.color, background: `${visual.color}16` };
 }
@@ -2738,7 +2764,7 @@ function CoachView({
   function confirmLeaveCoach() {
     Alert.alert(
       `Leave ${coachName}?`,
-      "You'll lose access to their workouts, meal plans, and sessions. Any active membership will be cancelled immediately.",
+      PAYMENTS_ENABLED ? "You'll lose access to their workouts, meal plans, and sessions. Any active membership will be cancelled immediately." : "You'll lose access to their workouts, meal plans, and sessions.",
       [
         { text: "Cancel", style: "cancel" },
         { text: "Leave Coach", style: "destructive", onPress: leaveCoach },
@@ -2834,14 +2860,21 @@ function CoachView({
             />
           ) : null}
 
+          <SectionLabel title="Sessions" />
           <NextCoachSessionCard
             session={nextSession}
             sessionCount={data.sessions.length}
             onViewAll={() => setPanel((current) => (current === "sessions" ? null : "sessions"))}
+            onBook={
+              coachId
+                ? () => router.push({ pathname: "/athlete/book-session", params: { coachId, coachName } } as never)
+                : undefined
+            }
           />
 
           {panel === "sessions" ? <CoachSessionsPanel sessions={data.sessions} /> : null}
 
+          <SectionLabel title="Messages" />
           <LatestCoachMessageCard
             coachName={coachName}
             coachAvatar={data.coachProfile?.avatar}
@@ -2850,6 +2883,7 @@ function CoachView({
             onReply={openConversation}
           />
 
+          <SectionLabel title="Your program" />
           <AthleteProgramCard
             data={data}
             onTraining={() => onNavigate("workouts")}
@@ -2859,6 +2893,7 @@ function CoachView({
 
           {panel === "videos" ? <CoachVideosPanel videos={data.videos} onPlay={setPlayingVideo} /> : null}
 
+          {PAYMENTS_ENABLED ? (
           <CoachMembershipCard
             subscription={subscription}
             onPress={() => {
@@ -2870,9 +2905,12 @@ function CoachView({
             }}
           />
 
-          {panel === "membership" ? <CoachMembershipDetails subscription={subscription} onFindCoach={() => router.push("/athlete/coach-discovery" as never)} /> : null}
+          ) : null}
 
-          <CoachRelationshipCard leaving={leaving} onSwitch={confirmSwitchCoach} onLeave={leaving ? undefined : confirmLeaveCoach} />
+          {PAYMENTS_ENABLED && panel === "membership" ? <CoachMembershipDetails subscription={subscription} onFindCoach={() => router.push("/athlete/coach-discovery" as never)} /> : null}
+
+          <SectionLabel title="Coaching" />
+          <CoachRelationshipCard leaving={leaving} onSwitch={PAYMENTS_ENABLED ? confirmSwitchCoach : undefined} onLeave={leaving ? undefined : confirmLeaveCoach} />
 
           {coachActionMessage ? <Text style={coachActionMessage.includes("sent") ? styles.successText : styles.errorText}>{coachActionMessage}</Text> : null}
         </>
@@ -2909,7 +2947,7 @@ function CoachHeroCard({
   return (
     <AppCard style={styles.coachHeroCard}>
       <View style={styles.coachHeroWash} />
-      <Ionicons name="barbell-outline" size={37} color="#8aa4d4" style={styles.coachHeroMark} />
+      <Ionicons name="barbell-outline" size={37} color="#8ad4ca" style={styles.coachHeroMark} />
       <Text style={styles.coachHeroScribble}>Stronger{"\n"}Every Day</Text>
       <View style={styles.coachHeroIdentity}>
         <Avatar
@@ -3004,10 +3042,12 @@ function NextCoachSessionCard({
   session,
   sessionCount,
   onViewAll,
+  onBook,
 }: {
   session: CoachSession | null;
   sessionCount: number;
   onViewAll: () => void;
+  onBook?: () => void;
 }) {
   const [expanded, setExpanded] = useState(false);
   const [joining, setJoining] = useState(false);
@@ -3019,21 +3059,9 @@ function NextCoachSessionCard({
     setJoining(true);
     setSessionMessage(null);
     try {
-      const res = await apiFetch(`/api/athlete/sessions/${session.id}/join-token`, { method: "POST" });
-      const body = (await res.json().catch(() => ({}))) as { error?: string; video?: { roomRef?: string } };
-      if (!res.ok) {
-        setSessionMessage(
-          body.error === "outside_join_window"
-            ? "This session can be joined 10 minutes before it starts."
-            : body.error === "session_not_joinable"
-              ? "This session is not joinable in its current status."
-              : "Could not open the video session."
-        );
-        return;
-      }
-      setSessionMessage(body.video?.roomRef ? "Video room is ready." : "Session token created.");
-    } catch {
-      setSessionMessage("Could not reach the session service.");
+      const coachLabel = session.coachName || "your coach";
+      const result = await joinSessionCall("athlete", session.id, { withName: coachLabel, title: `Session with ${coachLabel}` });
+      if (!result.ok) setSessionMessage(result.message);
     } finally {
       setJoining(false);
     }
@@ -3065,10 +3093,11 @@ function NextCoachSessionCard({
           <IconTile icon="calendar-outline" size={48} />
           <View style={styles.nextCoachSessionCopy}>
             <Text style={styles.nextCoachSessionTitle}>No upcoming sessions</Text>
-            <Text style={styles.nextCoachSessionMeta}>New bookings will appear here when confirmed.</Text>
+            <Text style={styles.nextCoachSessionMeta}>Book a video session with your coach.</Text>
           </View>
         </View>
       )}
+      {onBook ? <ActionButton label="Book a Session" icon="calendar-outline" onPress={onBook} /> : null}
       {expanded && session ? (
         <View style={styles.coachSessionDetailBox}>
           <CoachDetailRow label="Status" value={titleCase(session.status)} />
@@ -3219,12 +3248,16 @@ function CoachMembershipDetails({ subscription, onFindCoach }: { subscription: A
   );
 }
 
-function CoachRelationshipCard({ leaving, onSwitch, onLeave }: { leaving: boolean; onSwitch: () => void; onLeave?: () => void }) {
+function CoachRelationshipCard({ leaving, onSwitch, onLeave }: { leaving: boolean; onSwitch?: () => void; onLeave?: () => void }) {
   return (
     <AppCard style={styles.coachRelationshipCard}>
       <Text style={styles.coachCardTitle}>Coach Relationship</Text>
-      <CoachRelationshipRow icon="swap-horizontal-outline" label="Switch Coach" onPress={onSwitch} />
-      <Divider />
+      {onSwitch ? (
+        <>
+          <CoachRelationshipRow icon="swap-horizontal-outline" label="Switch Coach" onPress={onSwitch} />
+          <Divider />
+        </>
+      ) : null}
       <CoachRelationshipRow icon="person-remove-outline" label="Leave Coach" value={leaving ? "Leaving..." : undefined} onPress={onLeave} danger />
     </AppCard>
   );
@@ -3283,18 +3316,27 @@ function CoachVideosPanel({ videos, onPlay }: { videos: CoachVideo[]; onPlay: (v
   );
 }
 
+function athleteHasCoach(data: AthleteDashboardData): boolean {
+  return Boolean(data.coachProfile || data.coaches.length);
+}
+
 function NoCoachState({ onFindCoach }: { onFindCoach: () => void }) {
+  const { user } = useAuth();
   return (
     <AppCard style={styles.noCoachCard}>
       <IconTile icon="people-outline" size={58} />
       <Text style={styles.noCoachTitle}>You don&apos;t have a coach yet</Text>
-      <Text style={styles.noCoachBody}>Connect with a coach to unlock personalized training, nutrition planning, video sessions, and direct feedback.</Text>
+      <Text style={styles.noCoachBody}>Connect with a coach to unlock personalized training, nutrition planning, and direct feedback.</Text>
       <View style={styles.noCoachBenefits}>
         <CoachBenefit icon="barbell-outline" label="Personalized training" />
         <CoachBenefit icon="nutrition-outline" label="Nutrition plan" />
-        <CoachBenefit icon="videocam-outline" label="Video sessions" />
         <CoachBenefit icon="chatbubble-outline" label="Direct feedback" />
       </View>
+      {PAYMENTS_ENABLED ? null : (
+        <Text style={styles.noCoachBody}>
+          {`Already have a coach? Share your account email${user?.email ? ` (${user.email})` : ""} with them so they can add you.`}
+        </Text>
+      )}
       <ActionButton label="Find a Coach" icon="search-outline" variant="filled" style={styles.noCoachButton} onPress={onFindCoach} />
     </AppCard>
   );
@@ -3568,7 +3610,7 @@ function PostLeaveReview({ relationshipId, coachName, onDone }: { relationshipId
 
 type ProgressCategory = "training" | "body" | "nutrition" | "recovery";
 type ProgressRange = "7D" | "4W" | "3M";
-type ProgressTone = "primary" | "success" | "warning" | "danger" | "neutral";
+type ProgressTone = "primary" | "success" | "warning" | "danger" | "neutral" | "energy";
 
 function ProgressView({ data, onNavigate }: { data: AthleteDashboardData; onNavigate: (tab: AthleteTab) => void }) {
   const router = useRouter();
@@ -3641,6 +3683,7 @@ function ProgressView({ data, onNavigate }: { data: AthleteDashboardData; onNavi
 
       <ProgressWeeklyCard weekly={weekly} />
 
+      <SectionLabel title="Details" />
       <ProgressCategoryTabs value={category} onChange={setCategory} />
 
       <ProgressDetailCard
@@ -3653,6 +3696,7 @@ function ProgressView({ data, onNavigate }: { data: AthleteDashboardData; onNavi
         recovery={recovery}
       />
 
+      <SectionLabel title="From your coach" />
       <ProgressFeedbackCard
         comments={data.coachComments}
         onOpen={data.coachComments.length ? () => onNavigate("coach") : undefined}
@@ -3783,10 +3827,10 @@ function ProgressSummaryCard({
         ) : null}
       </View>
       <View style={styles.progressSummaryGrid}>
-        <ProgressSummaryMetric icon="barbell-outline" title="Training Consistency" value={formatPercent(training.consistency)} tone={training.consistencyTone} onPress={() => onSelectCategory("training")} />
-        <ProgressSummaryMetric icon="bar-chart-outline" title="Readiness" value={recovery.readinessDelta == null ? "No trend" : `${formatSigned(recovery.readinessDelta)} pts`} tone={recovery.readinessDelta == null ? "neutral" : recovery.readinessDelta >= 0 ? "success" : "warning"} onPress={() => onSelectCategory("recovery")} />
-        <ProgressSummaryMetric icon="nutrition-outline" title="Nutrition Adherence" value={formatPercent(nutrition.loggedDayRate)} tone={nutrition.loggedDayTone} onPress={() => onSelectCategory("nutrition")} />
-        <ProgressSummaryMetric icon="heart-outline" title="Recovery" value={recovery.currentLabel} tone={recovery.currentTone} onPress={() => onSelectCategory("recovery")} />
+        <ProgressSummaryMetric metric="training" icon="barbell-outline" title="Consistency" value={formatPercent(training.consistency)} tone={training.consistencyTone} onPress={() => onSelectCategory("training")} />
+        <ProgressSummaryMetric metric="readiness" icon="bar-chart-outline" title="Readiness" value={recovery.readinessDelta == null ? "No trend" : `${formatSigned(recovery.readinessDelta)} pts`} tone={recovery.readinessDelta == null ? "neutral" : recovery.readinessDelta >= 0 ? "success" : "warning"} onPress={() => onSelectCategory("recovery")} />
+        <ProgressSummaryMetric metric="nutrition" icon="nutrition-outline" title="Days Logged" value={formatPercent(nutrition.loggedDayRate)} tone={nutrition.loggedDayTone} onPress={() => onSelectCategory("nutrition")} />
+        <ProgressSummaryMetric metric="readiness" icon="heart-outline" title="Recovery" value={recovery.currentLabel} tone={recovery.currentTone} onPress={() => onSelectCategory("recovery")} />
       </View>
       <View style={styles.progressInsightLine}>
         <Ionicons name="bulb-outline" size={20} color={colors.primary} />
@@ -3796,10 +3840,12 @@ function ProgressSummaryCard({
   );
 }
 
-function ProgressSummaryMetric({ icon, title, value, tone, onPress }: { icon: keyof typeof Ionicons.glyphMap; title: string; value: string; tone: ProgressTone; onPress: () => void }) {
+function ProgressSummaryMetric({ metric, icon, title, value, tone, onPress }: { metric: MetricKey; icon: keyof typeof Ionicons.glyphMap; title: string; value: string; tone: ProgressTone; onPress: () => void }) {
   return (
     <Pressable onPress={onPress} style={({ pressed }) => [styles.progressSummaryMetric, pressed ? { opacity: 0.75 } : null]}>
-      <IconTile icon={icon} tone={tone} size={30} />
+      <View style={[styles.progressSummaryMetricIcon, { backgroundColor: metricColors[metric].soft }]}>
+        <Ionicons name={icon} size={16} color={metricColors[metric].ink} />
+      </View>
       <View style={styles.progressSummaryMetricCopy}>
         <Text style={styles.progressSummaryMetricTitle} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.72}>{title}</Text>
         <Text style={[styles.progressSummaryMetricValue, { color: toneColor(tone) }]} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.72}>{value}</Text>
@@ -3816,12 +3862,12 @@ function ProgressHeroTrend({ values, tone }: { values: number[]; tone: ProgressT
   const linePath = points.length ? points.map((point, index) => `${index === 0 ? "M" : "L"} ${point.x} ${point.y}`).join(" ") : "";
   return (
     <Svg width={142} height={84} viewBox="0 0 142 84">
-      <Path d="M2 78 C34 44 50 42 67 51 C84 60 91 16 140 8 L140 84 L2 84 Z" fill="#eaf3ff" />
+      <Path d="M2 78 C34 44 50 42 67 51 C84 60 91 16 140 8 L140 84 L2 84 Z" fill="#effaf9" />
       {points.map((point, index) => (
         <Path
           key={`bar-${index}`}
           d={`M${point.x - 6} 76 L${point.x - 6} ${Math.min(72, point.y + 12)} Q${point.x - 6} ${point.y + 5} ${point.x + 1} ${point.y + 5} Q${point.x + 8} ${point.y + 5} ${point.x + 8} ${Math.min(72, point.y + 12)} L${point.x + 8} 76 Z`}
-          fill="#9bc5ff"
+          fill="#aaf0e7"
           opacity={index === points.length - 1 ? 1 : 0.72}
         />
       ))}
@@ -3922,13 +3968,19 @@ function TrainingProgressCard({ training, rangeLabel, loading }: { training: Tra
           <Text style={[styles.progressPrimaryValue, { color: toneColor(training.consistencyTone) }]}>{formatPercent(training.consistency)}</Text>
         </View>
         <View style={styles.progressDetailChartPane}>
-          <ProgressLineChart values={training.consistencySeries} yLabels={[100, 50, 0]} xLabels={training.seriesLabels} min={0} max={100} height={92} compact emptyLabel="No workout trend yet" />
+          <ProgressLineChart metric="training" values={training.consistencySeries} yLabels={[100, 50, 0]} xLabels={training.seriesLabels} min={0} max={100} height={92} compact emptyLabel="No workout trend yet" />
         </View>
       </View>
       <View style={styles.progressDetailMetricGrid}>
         <ProgressDetailMetric icon="list-outline" tone="neutral" label="Workouts" value={String(training.total)} sub="scheduled" />
         {training.latestRpe != null ? <ProgressDetailMetric icon="speedometer-outline" tone="neutral" label="Latest RPE" value={training.latestRpe.toFixed(1)} sub="last logged" /> : null}
-        <ProgressDetailMetric icon="flame-outline" tone="warning" label="Streak" value={`${training.streak.current} days`} sub={`longest: ${training.streak.longest} days`} />
+        <ProgressDetailMetric
+            icon="flame-outline"
+            tone="energy"
+            label="Streak"
+            value={training.streak.current ? `${training.streak.current} day${training.streak.current === 1 ? "" : "s"}` : "Start today"}
+            sub={training.streak.longest ? `longest: ${training.streak.longest} day${training.streak.longest === 1 ? "" : "s"}` : "Check in to begin"}
+          />
         {training.loadDeltaPct != null ? (
           <ProgressDetailMetric icon="trending-up-outline" tone={training.loadDeltaPct >= 0 ? "success" : "warning"} label="Training Load" value={`${formatSigned(training.loadDeltaPct)}%`} sub="vs. earlier period" />
         ) : training.avgLoad != null ? (
@@ -4032,7 +4084,9 @@ function ProgressLineChart({
   compact,
   showEndpoint,
   emptyLabel,
+  metric = "readiness",
 }: {
+  metric?: MetricKey;
   values: number[];
   yLabels: number[];
   xLabels: string[];
@@ -4050,6 +4104,8 @@ function ProgressLineChart({
   const bottom = compact ? 20 : 24;
   const chartWidth = width - left - right;
   const chartHeight = height - top - bottom;
+  const fillId = `trendFill-${useId().replace(/:/g, "")}`;
+  const line = metricColors[metric].to;
   if (!values.length) {
     return (
       <View style={[styles.progressEmptyChart, { height }]}>
@@ -4068,9 +4124,9 @@ function ProgressLineChart({
   return (
     <Svg width="100%" height={height} viewBox={`0 0 ${width} ${height}`}>
       <Defs>
-        <SvgLinearGradient id={compact ? "readinessFill" : "weightFill"} x1="0" y1="0" x2="0" y2="1">
-          <Stop offset="0" stopColor={colors.primary} stopOpacity="0.14" />
-          <Stop offset="1" stopColor={colors.primary} stopOpacity="0.02" />
+        <SvgLinearGradient id={fillId} x1="0" y1="0" x2="0" y2="1">
+          <Stop offset="0" stopColor={line} stopOpacity="0.18" />
+          <Stop offset="1" stopColor={line} stopOpacity="0.02" />
         </SvgLinearGradient>
       </Defs>
       {yLabels.map((label) => {
@@ -4082,12 +4138,12 @@ function ProgressLineChart({
           </Fragment>
         );
       })}
-      <Path d={areaPath} fill={`url(#${compact ? "readinessFill" : "weightFill"})`} />
-      <Path d={linePath} stroke={colors.primary} strokeWidth={compact ? 2 : 2.2} fill="none" strokeLinecap="round" strokeLinejoin="round" />
+      <Path d={areaPath} fill={`url(#${fillId})`} />
+      <Path d={linePath} stroke={line} strokeWidth={compact ? 2 : 2.2} fill="none" strokeLinecap="round" strokeLinejoin="round" />
       {points.map((point, index) => (
-        <Circle key={`point-${index}`} cx={point.x} cy={point.y} r={showEndpoint && index === points.length - 1 ? 7 : 3.6} fill="#ffffff" stroke={colors.primary} strokeWidth={showEndpoint && index === points.length - 1 ? 3.3 : 2.3} />
+        <Circle key={`point-${index}`} cx={point.x} cy={point.y} r={showEndpoint && index === points.length - 1 ? 7 : 3.6} fill="#ffffff" stroke={line} strokeWidth={showEndpoint && index === points.length - 1 ? 3.3 : 2.3} />
       ))}
-      <Line x1={left} y1={top + chartHeight} x2={left + chartWidth} y2={top + chartHeight} stroke="#cbd5e1" strokeWidth="1" />
+      <Line x1={left} y1={top + chartHeight} x2={left + chartWidth} y2={top + chartHeight} stroke="#cbe1de" strokeWidth="1" />
       {xLabels.map((label, index) => {
         const x = left + (index / Math.max(1, xLabels.length - 1)) * chartWidth;
         return (
@@ -4228,11 +4284,20 @@ type ProgressSummaryModel = {
   trendValues: number[];
 };
 
+function joinedDay(data: AthleteDashboardData): string | null {
+  return localDayOf(data.profile?.createdAt);
+}
+
 function buildWeeklyProgress(data: AthleteDashboardData): WeeklyProgressModel {
-  const weekStart = addDays(todayKey(), -6);
+  // Count only days the athlete has had an account: a first day is "1 / 1",
+  // not "1 / 7".
+  const today = todayKey();
+  const joined = joinedDay(data);
+  const weekStart = windowStart(today, joined, 7);
+  const days = eligibleDays(today, joined, 7);
   const workouts = dedupeWorkouts([...data.recentWorkouts, ...data.workouts]).filter((item) => workoutDateKey(item) >= weekStart);
   const workoutDone = workouts.filter(isWorkoutCompleted).length;
-  const nutritionDone = data.nutritionWeek.filter((day) => day.loggedMeals > 0).length;
+  const nutritionDone = data.nutritionWeek.filter((day) => day.date >= weekStart && day.loggedMeals > 0).length;
   const checkInDone = data.trends.filter((point) => point.date >= weekStart && point.readiness != null).length;
   const currentScore = data.daily?.readinessScore ?? data.daily?.recovery?.score ?? null;
   return {
@@ -4240,11 +4305,11 @@ function buildWeeklyProgress(data: AthleteDashboardData): WeeklyProgressModel {
     workoutTotal: workouts.length,
     workoutRate: workouts.length ? workoutDone / workouts.length : null,
     nutritionDone,
-    nutritionTotal: 7,
-    nutritionRate: nutritionDone / 7,
+    nutritionTotal: days,
+    nutritionRate: nutritionDone / days,
     checkInDone,
-    checkInTotal: 7,
-    checkInRate: checkInDone / 7,
+    checkInTotal: days,
+    checkInRate: checkInDone / days,
     recoveryLabel: readinessLabel(currentScore),
     recoveryTone: progressToneFromReadiness(currentScore),
   };
@@ -4259,7 +4324,7 @@ function buildTrainingProgress(workouts: WorkoutAssignmentSummary[], trends: Tre
     total,
     completed,
     consistency,
-    consistencyTone: consistency == null ? "neutral" : consistency >= 0.8 ? "success" : consistency >= 0.5 ? "warning" : "danger",
+    consistencyTone: judgeRate(consistency, total),
     ...buildWorkoutConsistencySeries(workouts, range),
     streak: buildCheckInStreak(trends),
     avgLoad: average(loads),
@@ -4269,8 +4334,10 @@ function buildTrainingProgress(workouts: WorkoutAssignmentSummary[], trends: Tre
 }
 
 function buildNutritionProgress(data: AthleteDashboardData): NutritionProgressModel {
-  const loggedDays = data.nutritionWeek.filter((day) => day.loggedMeals > 0).length;
-  const totalDays = Math.max(1, data.nutritionWeek.length || 7);
+  const start = windowStart(todayKey(), joinedDay(data), Math.max(1, data.nutritionWeek.length || 7));
+  const week = data.nutritionWeek.filter((day) => day.date >= start);
+  const loggedDays = week.filter((day) => day.loggedMeals > 0).length;
+  const totalDays = Math.max(1, week.length);
   const loggedDayRate = loggedDays / totalDays;
   const calories = data.nutritionWeek.map((day) => Math.round(day.calories ?? 0));
   const loggedCalories = calories.filter((value) => value > 0);
@@ -4278,7 +4345,7 @@ function buildNutritionProgress(data: AthleteDashboardData): NutritionProgressMo
     loggedDays,
     totalDays,
     loggedDayRate,
-    loggedDayTone: loggedDayRate >= 0.8 ? "success" : loggedDayRate >= 0.5 ? "warning" : "danger",
+    loggedDayTone: judgeRate(loggedDayRate, totalDays),
     calorieSeries: calories,
     dayLabels: data.nutritionWeek.map((day) => weekdayShort(day.date)),
     avgCalories: loggedCalories.length ? average(loggedCalories) : null,
@@ -4457,6 +4524,7 @@ function toneColor(tone: ProgressTone): string {
   if (tone === "warning") return colors.warn;
   if (tone === "danger") return colors.bad;
   if (tone === "primary") return colors.primary;
+  if (tone === "energy") return colors.energyInk;
   return colors.inkMuted;
 }
 
@@ -4465,6 +4533,7 @@ function toneSoftStyle(tone: ProgressTone) {
   if (tone === "warning") return { backgroundColor: colors.warnSoft };
   if (tone === "danger") return { backgroundColor: colors.badSoft };
   if (tone === "primary") return { backgroundColor: colors.primarySoft };
+  if (tone === "energy") return { backgroundColor: colors.energySoft };
   return { backgroundColor: colors.surfaceInset };
 }
 
@@ -4509,13 +4578,12 @@ function Divider({ vertical }: { vertical?: boolean }) {
 const styles = StyleSheet.create({
   partialNote: { color: colors.inkFaint, fontSize: 12, lineHeight: 17, textAlign: "center", marginTop: -4 },
   cardTitle: { color: colors.ink, fontSize: 14, lineHeight: 18, fontWeight: "900" },
-  muted: { color: colors.inkMuted, fontSize: 11, lineHeight: 15 },
+  muted: { color: colors.inkMuted, fontSize: 12, lineHeight: 16 },
   rowTitle: { color: colors.ink, fontSize: 12, lineHeight: 16, fontWeight: "900" },
-  rowValue: { color: colors.ink, fontSize: 11, fontWeight: "800" },
-  linkText: { color: colors.primary, fontSize: 11, lineHeight: 14, fontWeight: "900" },
+  linkText: { color: colors.primary, fontSize: 12, lineHeight: 16, fontWeight: "900" },
   disabledLinkText: { color: colors.inkFaint },
-  successText: { color: colors.ok, fontSize: 11, lineHeight: 15, fontWeight: "800", textAlign: "center" },
-  errorText: { color: colors.bad, fontSize: 11, lineHeight: 15, fontWeight: "800", textAlign: "center" },
+  successText: { color: colors.ok, fontSize: 12, lineHeight: 16, fontWeight: "800", textAlign: "center" },
+  errorText: { color: colors.bad, fontSize: 12, lineHeight: 16, fontWeight: "800", textAlign: "center" },
   inlineActionPanel: { gap: 9 },
   starRow: { flexDirection: "row", gap: 8, marginVertical: 8 },
   starRowSmall: { flexDirection: "row", gap: 4 },
@@ -4542,36 +4610,29 @@ const styles = StyleSheet.create({
     minHeight: 62,
     borderRadius: 14,
     borderWidth: 1,
-    borderColor: "#dbe3ef",
+    borderColor: "#dbefec",
     backgroundColor: "#ffffff",
     paddingHorizontal: 12,
     paddingVertical: 8,
     flexDirection: "row",
     alignItems: "center",
     gap: 13,
-    shadowColor: "#0f172a",
+    shadowColor: "#10201e",
     shadowOpacity: 0.035,
     shadowRadius: 10,
     shadowOffset: { width: 0, height: 3 },
     elevation: 1,
   },
-  readinessIcon: { width: 40, height: 40, borderRadius: 20, alignItems: "center", justifyContent: "center" },
-  readinessCopy: { flex: 1, minWidth: 0, gap: 3 },
-  readinessTitleLine: { flexDirection: "row", alignItems: "baseline", gap: 7, flexWrap: "wrap" },
-  readinessTitle: { color: colors.ink, fontSize: 15, lineHeight: 19, fontWeight: "900" },
-  readinessValue: { fontSize: 15, lineHeight: 19, fontWeight: "900" },
-  readinessBody: { color: colors.inkMuted, fontSize: 12, lineHeight: 16, fontWeight: "600" },
   nextWorkoutCard: { paddingHorizontal: 12, paddingVertical: 10, gap: 8, overflow: "hidden" },
   nextWorkoutTop: { minHeight: 74, flexDirection: "row", alignItems: "flex-start", gap: 10 },
   nextWorkoutIcon: { width: 46, height: 46, borderRadius: 14, backgroundColor: colors.primarySoft, alignItems: "center", justifyContent: "center" },
   nextWorkoutCopy: { flex: 1, minWidth: 0, paddingTop: 2 },
-  nextWorkoutEyebrow: { color: colors.primary, fontSize: 11, lineHeight: 14, fontWeight: "900", letterSpacing: 0.4 },
+  nextWorkoutEyebrow: { color: colors.primary, fontSize: 12, lineHeight: 16, fontWeight: "900", letterSpacing: 0.4 },
   nextWorkoutTitle: { color: colors.ink, fontSize: 17, lineHeight: 21, fontWeight: "900", marginTop: 2 },
   nextWorkoutMeta: { color: colors.inkMuted, fontSize: 12, lineHeight: 16, fontWeight: "600", marginTop: 1 },
   nextWorkoutNoteRow: { flexDirection: "row", alignItems: "center", gap: 6, marginTop: 5, paddingRight: 4 },
-  nextWorkoutNote: { flex: 1, minWidth: 0, color: colors.inkMuted, fontSize: 11.5, lineHeight: 15, fontWeight: "600" },
+  nextWorkoutNote: { flex: 1, minWidth: 0, color: colors.inkMuted, fontSize: 12, lineHeight: 16, fontWeight: "600" },
   nextWorkoutArt: { width: 62, height: 50, alignItems: "center", justifyContent: "center", marginRight: -6, marginTop: 3, opacity: 0.72 },
-  nextWorkoutImage: { width: 58, height: 50 },
   nextWorkoutButton: { flex: 0, minHeight: 38, borderRadius: 10 },
   nextWorkoutButtonDisabled: { backgroundColor: colors.surfaceInset, borderColor: colors.lineStrong },
   nextWorkoutButtonText: { fontSize: 14, lineHeight: 18 },
@@ -4582,7 +4643,7 @@ const styles = StyleSheet.create({
   scheduleCard: { paddingHorizontal: 12, paddingVertical: 10 },
   scheduleRow: { minHeight: 42, flexDirection: "row", alignItems: "center", gap: 8, paddingVertical: 1 },
   timelineCell: { width: 20, alignSelf: "stretch", alignItems: "center", justifyContent: "center", position: "relative" },
-  timelineLine: { position: "absolute", width: 2, backgroundColor: "#dce4ee", borderRadius: 1 },
+  timelineLine: { position: "absolute", width: 2, backgroundColor: "#dceeec", borderRadius: 1 },
   timelineLineTop: { top: -4, bottom: "50%" },
   timelineLineBottom: { top: "50%", bottom: -4 },
   timelineDot: { width: 18, height: 18, borderRadius: 9, borderWidth: 2, borderColor: colors.lineStrong, backgroundColor: "#ffffff", alignItems: "center", justifyContent: "center", zIndex: 2 },
@@ -4591,20 +4652,12 @@ const styles = StyleSheet.create({
   scheduleIconBubble: { width: 32, height: 32, borderRadius: 16, backgroundColor: colors.surfaceInset, alignItems: "center", justifyContent: "center" },
   scheduleCopy: { flex: 1, minWidth: 0 },
   scheduleTitle: { color: colors.ink, fontSize: 12.5, lineHeight: 15, fontWeight: "900" },
-  scheduleSubtitle: { color: colors.inkMuted, fontSize: 10.5, lineHeight: 13, fontWeight: "600", marginTop: 1 },
+  scheduleSubtitle: { color: colors.inkMuted, fontSize: 12, lineHeight: 16, fontWeight: "600", marginTop: 1 },
   scheduleRight: { minWidth: 88, maxWidth: 122, flexDirection: "row", alignItems: "center", justifyContent: "flex-end", gap: 5 },
   schedulePill: { minHeight: 22, borderRadius: 11, paddingHorizontal: 9, alignItems: "center", justifyContent: "center" },
-  schedulePillText: { fontSize: 11, lineHeight: 14, fontWeight: "900" },
+  schedulePillText: { fontSize: 12, lineHeight: 16, fontWeight: "900" },
   scheduleValuePill: { minHeight: 22, borderRadius: 11, backgroundColor: colors.primarySoft, paddingHorizontal: 8, alignItems: "center", justifyContent: "center" },
-  scheduleValueText: { color: colors.primary, fontSize: 11, lineHeight: 14, fontWeight: "900" },
-  dailyStatusCard: { paddingHorizontal: 12, paddingVertical: 8 },
-  statusGrid: { flexDirection: "row", flexWrap: "wrap", gap: 6 },
-  statusMetric: { width: "48%", minHeight: 56, borderRadius: 10, borderWidth: 1, borderColor: colors.line, backgroundColor: "#fbfdff", padding: 6, flexDirection: "row", alignItems: "center", gap: 7 },
-  statusMetricIcon: { width: 30, height: 30, borderRadius: 15, alignItems: "center", justifyContent: "center" },
-  statusMetricCopy: { flex: 1, minWidth: 0 },
-  statusLabel: { color: colors.inkMuted, fontSize: 10.5, lineHeight: 13, fontWeight: "800" },
-  statusValue: { fontSize: 17, lineHeight: 20, fontWeight: "900", marginTop: 0 },
-  statusSub: { color: colors.inkMuted, fontSize: 10.5, lineHeight: 13, fontWeight: "700", marginTop: 0 },
+  scheduleValueText: { color: colors.primary, fontSize: 12, lineHeight: 16, fontWeight: "900" },
   coachUpdateCard: { paddingHorizontal: 13, paddingVertical: 9, gap: 8 },
   coachUpdateRow: { flexDirection: "row", alignItems: "flex-start", gap: 10 },
   coachUpdateAvatarWrap: { position: "relative" },
@@ -4612,7 +4665,7 @@ const styles = StyleSheet.create({
   coachUpdateCopy: { flex: 1, minWidth: 0 },
   coachUpdateTitleRow: { minHeight: 18, flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: 8 },
   coachUpdateTitle: { color: colors.ink, fontSize: 16, lineHeight: 20, fontWeight: "900" },
-  coachUpdateTime: { color: colors.inkFaint, fontSize: 11, lineHeight: 15, fontWeight: "700" },
+  coachUpdateTime: { color: colors.inkFaint, fontSize: 12, lineHeight: 16, fontWeight: "700" },
   coachUpdateBody: { color: colors.ink, fontSize: 13, lineHeight: 17, fontWeight: "500", marginTop: 3 },
   replyButton: { alignSelf: "flex-start", minHeight: 30, flexDirection: "row", alignItems: "center", gap: 7, marginTop: 8 },
   replyText: { color: colors.primary, fontSize: 13, lineHeight: 17, fontWeight: "900" },
@@ -4620,16 +4673,13 @@ const styles = StyleSheet.create({
   tomorrowIcon: { width: 34, height: 34, borderRadius: 10, backgroundColor: colors.surfaceInset, alignItems: "center", justifyContent: "center" },
   tomorrowText: { flex: 1, color: colors.inkMuted, fontSize: 13, lineHeight: 17, fontWeight: "700" },
   tomorrowStrong: { color: colors.ink, fontWeight: "900" },
-  messageRow: { flexDirection: "row", alignItems: "center", gap: 9, marginTop: 6 },
-  messageTitle: { color: colors.ink, fontSize: 13, fontWeight: "900" },
-  messageBody: { color: colors.ink, fontSize: 12, lineHeight: 16, marginTop: 1 },
   sessionRow: { flexDirection: "row", alignItems: "center", gap: 10, marginTop: 6 },
   sessionActions: { width: 112 },
   sessionDetail: { marginTop: 10, paddingTop: 10, borderTopWidth: 1, borderTopColor: colors.line, gap: 8 },
   sessionDetailRow: { minHeight: 26, flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: 10 },
   sessionDetailLabel: { color: colors.inkMuted, fontSize: 12, fontWeight: "700" },
   sessionDetailValue: { color: colors.ink, fontSize: 12, fontWeight: "800" },
-  sessionMessage: { color: colors.inkMuted, fontSize: 11, lineHeight: 15, textAlign: "center" },
+  sessionMessage: { color: colors.inkMuted, fontSize: 12, lineHeight: 16, textAlign: "center" },
   workoutsScreenContent: { paddingTop: 30, paddingBottom: 128, gap: 8 },
   progressScreenContent: { paddingHorizontal: 18, paddingTop: 24, paddingBottom: 170, gap: 10 },
   nutritionScreenContent: { paddingHorizontal: 16, paddingTop: 12, paddingBottom: 154, gap: 10 },
@@ -4658,9 +4708,9 @@ const styles = StyleSheet.create({
     justifyContent: "center",
   },
   trainingHeroCard: { minHeight: 208, paddingHorizontal: 13, paddingVertical: 12, overflow: "hidden", position: "relative" },
-  trainingHeroImageWash: { position: "absolute", right: -14, bottom: -8, width: 142, height: 126, borderTopLeftRadius: 88, backgroundColor: "#eef5ff" },
+  trainingHeroImageWash: { position: "absolute", right: -14, bottom: -8, width: 142, height: 126, borderTopLeftRadius: 88, backgroundColor: metricColors.training.soft },
   trainingHeroTopLine: { minHeight: 28, flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: 10, marginBottom: 5 },
-  trainingHeroEyebrow: { color: colors.primary, fontSize: 12, lineHeight: 16, fontWeight: "900", letterSpacing: 1.1 },
+  trainingHeroEyebrow: { color: metricColors.training.ink, fontSize: 12, lineHeight: 16, fontWeight: "900", letterSpacing: 1.1 },
   trainingStatusBadge: { minHeight: 24, borderRadius: 12, borderWidth: 1, borderColor: colors.line, backgroundColor: colors.surfaceInset, paddingHorizontal: 9, flexDirection: "row", alignItems: "center", gap: 6 },
   trainingStatusDot: { width: 8, height: 8, borderRadius: 4 },
   trainingStatusText: { fontSize: 12, lineHeight: 15, fontWeight: "900" },
@@ -4672,12 +4722,11 @@ const styles = StyleSheet.create({
   trainingCoachIcon: { width: 32, height: 32, borderRadius: 16, backgroundColor: colors.primarySoft, alignItems: "center", justifyContent: "center" },
   trainingAssignedText: { flex: 1, minWidth: 0, color: colors.inkMuted, fontSize: 13, lineHeight: 17, fontWeight: "700" },
   trainingHeroVisual: { width: 92, height: 86, alignItems: "center", justifyContent: "center", marginTop: 6, opacity: 0.78 },
-  trainingHeroImage: { width: 84, height: 78 },
-  trainingCoachNote: { minHeight: 46, borderRadius: 10, backgroundColor: "#eef5ff", paddingHorizontal: 10, paddingVertical: 8, flexDirection: "row", alignItems: "center", gap: 9, marginTop: 8, zIndex: 1 },
+  trainingCoachNote: { minHeight: 46, borderRadius: 10, backgroundColor: "#f2fbfa", paddingHorizontal: 10, paddingVertical: 8, flexDirection: "row", alignItems: "center", gap: 9, marginTop: 8, zIndex: 1 },
   trainingCoachNoteText: { flex: 1, minWidth: 0, color: colors.inkMuted, fontSize: 12.5, lineHeight: 17, fontWeight: "600" },
   trainingProgressRow: { flexDirection: "row", alignItems: "center", gap: 10, marginTop: 8, zIndex: 1 },
   trainingProgressBar: { flex: 1 },
-  trainingProgressText: { width: 44, color: colors.primary, fontSize: 12, lineHeight: 16, fontWeight: "900", textAlign: "right" },
+  trainingProgressText: { width: 44, color: metricColors.training.ink, fontSize: 12, lineHeight: 16, fontWeight: "900", textAlign: "right" },
   trainingHeroButton: { minHeight: 43, borderRadius: 10, marginTop: 9, zIndex: 1 },
   trainingHeroButtonText: { fontSize: 15, lineHeight: 19 },
   trainingPreviewCard: { paddingHorizontal: 13, paddingVertical: 12 },
@@ -4687,15 +4736,13 @@ const styles = StyleSheet.create({
   trainingSectionActionText: { color: colors.primary, fontSize: 14, lineHeight: 18, fontWeight: "900" },
   trainingExerciseRow: { minHeight: 58, flexDirection: "row", alignItems: "center", gap: 11, paddingVertical: 5 },
   trainingExerciseIcon: { width: 42, height: 42, borderRadius: 14, backgroundColor: colors.primarySoft, alignItems: "center", justifyContent: "center" },
-  trainingExerciseImageShell: { backgroundColor: colors.primarySoft },
-  trainingExerciseImage: { width: 39, height: 39 },
   trainingExerciseCopy: { flex: 1, minWidth: 0 },
   trainingExerciseTitle: { color: colors.ink, fontSize: 15, lineHeight: 19, fontWeight: "900" },
   trainingExerciseSubtitle: { color: colors.inkMuted, fontSize: 13, lineHeight: 17, fontWeight: "600", marginTop: 3 },
   trainingVideoBadge: { width: 22, height: 18, borderRadius: 5, borderWidth: 1, borderColor: colors.lineStrong, alignItems: "center", justifyContent: "center" },
   trainingExerciseRight: { maxWidth: 96, alignItems: "flex-end", justifyContent: "center" },
   trainingUpNextCard: { minHeight: 104, paddingHorizontal: 13, paddingVertical: 12, overflow: "hidden", position: "relative" },
-  trainingUpNextWash: { position: "absolute", right: -18, bottom: -28, width: 160, height: 96, borderTopLeftRadius: 110, backgroundColor: "#eef5ff" },
+  trainingUpNextWash: { position: "absolute", right: -18, bottom: -28, width: 160, height: 96, borderTopLeftRadius: 110, backgroundColor: "#f2fbfa" },
   trainingUpNextRow: { minHeight: 58, flexDirection: "row", alignItems: "center", gap: 12, zIndex: 1 },
   trainingUpNextIcon: { width: 44, height: 44, borderRadius: 13, backgroundColor: colors.primarySoft, alignItems: "center", justifyContent: "center" },
   trainingUpNextCopy: { flex: 1, minWidth: 0 },
@@ -4713,8 +4760,8 @@ const styles = StyleSheet.create({
     padding: 4,
     borderRadius: 12,
     borderWidth: 1,
-    borderColor: "#d9e0eb",
-    backgroundColor: "#fdfeff",
+    borderColor: "#d9ebe9",
+    backgroundColor: "#fdfffe",
   },
   workoutSegment: { flex: 1, minHeight: 36, borderRadius: 9, alignItems: "center", justifyContent: "center" },
   workoutSegmentActive: {
@@ -4732,8 +4779,8 @@ const styles = StyleSheet.create({
   weekDay: { width: 43, minHeight: 54, alignItems: "center", gap: 4, paddingVertical: 7, borderRadius: 11, borderWidth: 1, borderColor: "transparent" },
   weekDayToday: { borderColor: colors.primary, backgroundColor: colors.primarySoft },
   weekDaySelected: { backgroundColor: colors.primary, borderColor: colors.primary },
-  weekDayLabel: { color: colors.inkFaint, fontSize: 10, lineHeight: 13, fontWeight: "800", letterSpacing: 0.3 },
-  weekDayLabelSelected: { color: "#e8efff" },
+  weekDayLabel: { color: colors.inkFaint, fontSize: 12, lineHeight: 16, fontWeight: "800", letterSpacing: 0.3 },
+  weekDayLabelSelected: { color: "#edfaf8" },
   weekDayNumber: { color: colors.ink, fontSize: 18, lineHeight: 22, fontWeight: "900" },
   weekDayNumberSelected: { color: "#fff" },
   weekDayDot: { width: 5, height: 5, borderRadius: 3 },
@@ -4745,35 +4792,32 @@ const styles = StyleSheet.create({
     borderRadius: 5,
     backgroundColor: colors.primarySoft,
     color: colors.primary,
-    fontSize: 9,
-    lineHeight: 12,
+    fontSize: 12,
+    lineHeight: 16,
     fontWeight: "900",
     paddingHorizontal: 6,
     paddingVertical: 3,
   },
   workoutHeroTop: { flexDirection: "row", alignItems: "flex-start", gap: 10 },
   heroWorkoutTitle: { color: colors.ink, fontSize: 15, lineHeight: 19, fontWeight: "900", marginBottom: 2 },
-  workoutHeroMeta: { color: colors.inkMuted, fontSize: 10.5, lineHeight: 14, fontWeight: "700" },
-  workoutHeroCoach: { color: colors.ink, fontSize: 10.5, lineHeight: 14, fontWeight: "700", marginTop: 3 },
+  workoutHeroMeta: { color: colors.inkMuted, fontSize: 12, lineHeight: 16, fontWeight: "700" },
+  workoutHeroCoach: { color: colors.ink, fontSize: 12, lineHeight: 16, fontWeight: "700", marginTop: 3 },
   workoutBodyIcon: { width: 58, height: 48, alignItems: "center", justifyContent: "center", marginRight: 8, marginTop: 0 },
-  workoutTorsoImage: { width: 44, height: 48 },
   progressLineRow: { flexDirection: "row", alignItems: "center", gap: 14, marginTop: 10 },
   progressLineBar: { flex: 1 },
   progressPercent: { width: 42, color: colors.primary, fontSize: 14, fontWeight: "900", textAlign: "right" },
   videoMetaRow: { flexDirection: "row", alignItems: "center", gap: 8, marginTop: 8 },
   videoMetaIcon: { width: 24, height: 18, borderRadius: 3, borderWidth: 1, borderColor: colors.inkMuted, alignItems: "center", justifyContent: "center" },
-  workoutVideoMeta: { color: colors.ink, fontSize: 11, lineHeight: 15, fontWeight: "700" },
+  workoutVideoMeta: { color: colors.ink, fontSize: 12, lineHeight: 16, fontWeight: "700" },
   workoutHeroButton: { minHeight: 28, borderRadius: 6, marginTop: 8 },
   workoutHeroButtonText: { fontSize: 12, lineHeight: 16 },
   workoutExerciseCard: { paddingHorizontal: 12, paddingVertical: 9 },
   workoutCardTitle: { color: colors.ink, fontSize: 13, lineHeight: 16, fontWeight: "900" },
   workoutExerciseRow: { minHeight: 43, flexDirection: "row", alignItems: "center", gap: 8, paddingVertical: 2 },
   workoutExerciseIcon: { width: 35, height: 35, borderRadius: 18, backgroundColor: colors.primarySoft, alignItems: "center", justifyContent: "center" },
-  workoutExerciseImageShell: { backgroundColor: "transparent" },
-  workoutExerciseIconImage: { width: 35, height: 35 },
   workoutExerciseCopy: { flex: 1, minWidth: 0 },
   workoutExerciseTitle: { color: colors.ink, fontSize: 12, lineHeight: 16, fontWeight: "900" },
-  workoutExerciseSubtitle: { color: colors.ink, fontSize: 11, lineHeight: 15, fontWeight: "500", marginTop: 1 },
+  workoutExerciseSubtitle: { color: colors.ink, fontSize: 12, lineHeight: 16, fontWeight: "500", marginTop: 1 },
   workoutSmallVideo: { width: 23, height: 18, borderRadius: 3, borderWidth: 1, borderColor: colors.inkMuted, alignItems: "center", justifyContent: "center" },
   workoutExerciseRight: { minWidth: 64, alignItems: "flex-end" },
   workoutSetValue: { color: colors.primary, fontSize: 12, lineHeight: 16, fontWeight: "900", textAlign: "right" },
@@ -4788,27 +4832,26 @@ const styles = StyleSheet.create({
     gap: 4,
   },
   workoutStatusPillSuccess: { backgroundColor: colors.okSoft, borderColor: "#bfe8c9" },
-  workoutStatusPillPrimary: { backgroundColor: colors.primarySoft, borderColor: "#c7d7ff" },
+  workoutStatusPillPrimary: { backgroundColor: colors.primarySoft, borderColor: "#d4f2ee" },
   workoutStatusPillNeutral: { backgroundColor: colors.surfaceInset, borderColor: colors.line },
-  workoutStatusPillText: { color: colors.inkMuted, fontSize: 10, lineHeight: 13, fontWeight: "800" },
+  workoutStatusPillText: { color: colors.inkMuted, fontSize: 12, lineHeight: 16, fontWeight: "800" },
   workoutStatusPillTextSuccess: { color: colors.ok },
   workoutStatusPillTextPrimary: { color: colors.primary },
-  targetRow: { flexDirection: "row", alignItems: "center", gap: 14, marginTop: 9 },
   nutritionCardTitle: { color: colors.ink, fontSize: 15, lineHeight: 19, fontWeight: "900" },
   nutritionTargetCard: { paddingVertical: 7, paddingHorizontal: 12 },
   nutritionTargetRow: { minHeight: 74, flexDirection: "row", alignItems: "center", gap: 18 },
   nutritionTargetCopy: { flex: 1, alignItems: "center", gap: 10 },
   targetRemaining: { color: colors.ink, fontSize: 13, lineHeight: 17, fontWeight: "800" },
   nutritionGoalBadge: { alignSelf: "center", borderRadius: radius.pill, backgroundColor: "#fff1e5", paddingHorizontal: 11, paddingVertical: 4 },
-  nutritionGoalDisplayText: { color: "#d45b00", fontSize: 10.5, lineHeight: 14, fontWeight: "900" },
+  nutritionGoalDisplayText: { color: colors.warn, fontSize: 12, lineHeight: 16, fontWeight: "900" },
   nutritionGoalText: { display: "none" },
   actionRow: { flexDirection: "row", gap: 10 },
   compactButton: { flex: 0, alignSelf: "stretch", marginTop: 7 },
   workoutScheduleRow: { minHeight: 30, flexDirection: "row", alignItems: "center", gap: 8 },
   workoutCalendarIcon: { width: 22, textAlign: "center" },
-  workoutScheduleDay: { width: 56, color: colors.ink, fontSize: 9.5, lineHeight: 12, fontWeight: "900" },
-  workoutScheduleName: { flex: 1, color: colors.ink, fontSize: 10.5, lineHeight: 13, fontWeight: "500" },
-  trailingLink: { alignSelf: "flex-end", marginTop: 2, fontSize: 11, lineHeight: 14 },
+  workoutScheduleDay: { width: 56, color: colors.ink, fontSize: 12, lineHeight: 16, fontWeight: "900" },
+  workoutScheduleName: { flex: 1, color: colors.ink, fontSize: 12, lineHeight: 16, fontWeight: "500" },
+  trailingLink: { alignSelf: "flex-end", marginTop: 2, fontSize: 12, lineHeight: 16 },
   macroCard: { paddingVertical: 7, paddingHorizontal: 12, gap: 2 },
   macroRow: { minHeight: 23, flexDirection: "row", alignItems: "center", gap: 9 },
   macroBareIcon: { width: 20, textAlign: "center" },
@@ -4820,31 +4863,24 @@ const styles = StyleSheet.create({
   nutritionActionRowV2: { flexDirection: "row", gap: 10 },
   nutritionPrimaryAction: { flex: 1, minHeight: 50, borderRadius: 10 },
   nutritionSummaryCard: { paddingHorizontal: 13, paddingVertical: 13, gap: 12 },
-  nutritionSummaryTop: { flexDirection: "row", alignItems: "flex-start", justifyContent: "space-between", gap: 12 },
+  nutritionSummaryTop: { flexDirection: "row", alignItems: "center", gap: 16 },
+  nutritionRingPercent: { color: metricColors.nutrition.ink, fontSize: 20, lineHeight: 24, fontWeight: "900" },
+  nutritionRingLabel: { color: colors.inkMuted, fontSize: 12, lineHeight: 15, fontWeight: "700" },
   nutritionSummaryCopy: { flex: 1, minWidth: 0 },
   nutritionEyebrow: { color: colors.inkMuted, fontSize: 12, lineHeight: 16, fontWeight: "900", letterSpacing: 1.8 },
   nutritionCaloriesRow: { flexDirection: "row", alignItems: "baseline", flexWrap: "wrap", marginTop: 9 },
-  nutritionCaloriesValue: { color: colors.ink, fontSize: 33, lineHeight: 39, fontWeight: "900", letterSpacing: 0 },
-  nutritionCaloriesTarget: { color: colors.inkMuted, fontSize: 21, lineHeight: 28, fontWeight: "800" },
-  nutritionStatusPill: { minHeight: 30, borderRadius: 15, paddingHorizontal: 11, flexDirection: "row", alignItems: "center", gap: 8 },
+  nutritionCaloriesValue: { color: colors.ink, fontSize: 30, lineHeight: 36, fontWeight: "900", letterSpacing: 0 },
+  nutritionCaloriesTarget: { color: colors.inkMuted, fontSize: 17, lineHeight: 26, fontWeight: "800" },
+  nutritionStatusPill: { alignSelf: "flex-start", marginTop: 6, minHeight: 28, borderRadius: 15, paddingHorizontal: 11, flexDirection: "row", alignItems: "center", gap: 8 },
   nutritionStatusDot: { width: 8, height: 8, borderRadius: 4 },
   nutritionStatusText: { fontSize: 13, lineHeight: 17, fontWeight: "900" },
-  nutritionProgressRowV2: { flexDirection: "row", alignItems: "center", gap: 12 },
-  nutritionProgressTrackV2: { flex: 1 },
-  nutritionProgressPercent: { width: 38, color: colors.inkMuted, fontSize: 12.5, lineHeight: 16, fontWeight: "800", textAlign: "right" },
-  nutritionRemainingText: { alignSelf: "flex-end", color: colors.ink, fontSize: 13, lineHeight: 17, fontWeight: "700", marginTop: -7 },
+  nutritionRemainingText: { color: colors.inkMuted, fontSize: 13, lineHeight: 17, fontWeight: "700" },
   nutritionMacroGrid: { flexDirection: "row", alignItems: "stretch", gap: 8 },
   nutritionMacroTile: { flex: 1, minWidth: 0, gap: 5 },
   nutritionMacroIcon: { width: 34, height: 34, borderRadius: 17, alignItems: "center", justifyContent: "center" },
   nutritionMacroProgressRow: { flexDirection: "row", alignItems: "center", gap: 6 },
   nutritionMacroBar: { flex: 1, minWidth: 0 },
-  nutritionMacroPercent: { width: 28, color: colors.inkMuted, fontSize: 11, lineHeight: 14, fontWeight: "800", textAlign: "right" },
-  nutritionSetupCard: { paddingHorizontal: 14, paddingVertical: 14, gap: 12 },
-  nutritionSetupTop: { flexDirection: "row", alignItems: "center", gap: 12 },
-  nutritionSetupCopy: { flex: 1, minWidth: 0 },
-  nutritionMissingGrid: { flexDirection: "row", flexWrap: "wrap", gap: 7 },
-  nutritionMissingChip: { minHeight: 26, borderRadius: 13, backgroundColor: colors.surfaceInset, paddingHorizontal: 10, alignItems: "center", justifyContent: "center" },
-  nutritionMissingText: { color: colors.inkMuted, fontSize: 12, lineHeight: 16, fontWeight: "800" },
+  nutritionMacroPercent: { width: 28, color: colors.inkMuted, fontSize: 12, lineHeight: 16, fontWeight: "800", textAlign: "right" },
   nutritionMealsCard: { paddingHorizontal: 13, paddingVertical: 13 },
   nutritionSectionHeader: { minHeight: 26, flexDirection: "row", alignItems: "center", justifyContent: "space-between", marginBottom: 8 },
   nutritionSectionTitle: { color: colors.ink, fontSize: 19, lineHeight: 24, fontWeight: "900" },
@@ -4853,7 +4889,7 @@ const styles = StyleSheet.create({
   nutritionMealIcon: { width: 44, height: 44, borderRadius: 22, alignItems: "center", justifyContent: "center" },
   nutritionMealCopy: { flex: 1, minWidth: 0 },
   nutritionMealSubtitle: { color: colors.inkMuted, fontSize: 13, lineHeight: 17, fontWeight: "600", marginTop: 2 },
-  nutritionMealDetail: { color: colors.primary, fontSize: 11.5, lineHeight: 15, fontWeight: "800", marginTop: 2 },
+  nutritionMealDetail: { color: colors.primary, fontSize: 12, lineHeight: 16, fontWeight: "800", marginTop: 2 },
   nutritionMealRight: { minWidth: 92, alignItems: "flex-end", gap: 6 },
   nutritionMealKcal: { color: colors.inkMuted, fontSize: 13, lineHeight: 17, fontWeight: "800", textAlign: "right" },
   nutritionLoggedBadge: { minHeight: 26, borderRadius: 13, backgroundColor: colors.ok, paddingHorizontal: 9, flexDirection: "row", alignItems: "center", gap: 5 },
@@ -4863,7 +4899,6 @@ const styles = StyleSheet.create({
   nutritionSmallButtonText: { color: colors.primary, fontSize: 13, lineHeight: 17, fontWeight: "900" },
   nutritionHydrationCard: { paddingHorizontal: 13, paddingVertical: 13, gap: 13 },
   nutritionHydrationTop: { flexDirection: "row", alignItems: "center", gap: 12 },
-  nutritionHydrationIcon: { width: 48, height: 48, borderRadius: 24, backgroundColor: colors.primarySoft, alignItems: "center", justifyContent: "center" },
   nutritionHydrationCopy: { flex: 1, minWidth: 0, gap: 6 },
   nutritionHydrationValueRow: { flexDirection: "row", alignItems: "baseline", justifyContent: "space-between", gap: 12 },
   nutritionHydrationValue: { color: colors.ink, fontSize: 18, lineHeight: 23, fontWeight: "900" },
@@ -4883,21 +4918,34 @@ const styles = StyleSheet.create({
   nutritionPlanTextActionLabel: { color: colors.primary, fontSize: 12.5, lineHeight: 16, fontWeight: "900" },
   nutritionPlanMealRow: { minHeight: 44, flexDirection: "row", alignItems: "center", gap: 9, paddingVertical: 6 },
   nutritionPlanMealIcon: { width: 30, height: 30, borderRadius: 15, alignItems: "center", justifyContent: "center" },
-  macroCount: { alignSelf: "flex-end", fontSize: 12, fontWeight: "900" },
+  streakRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 12,
+    padding: 14,
+    borderRadius: 16,
+    borderWidth: 1,
+    borderColor: "#e1ece9",
+    backgroundColor: colors.surfaceRaised,
+  },
+  streakCopy: { flex: 1, minWidth: 0 },
+  streakTitle: { color: colors.ink, fontSize: 15, fontWeight: "800" },
+  streakSub: { color: colors.inkFaint, fontSize: 13, marginTop: 2 },
+  streakChip: { flexDirection: "row", alignItems: "center", gap: 5, paddingVertical: 6, paddingHorizontal: 11, borderRadius: 999, backgroundColor: colors.energySoft },
+  streakChipText: { color: colors.energyInk, fontSize: 13, fontWeight: "900" },
   sectionInline: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: 12 },
   rowIconTitle: { flexDirection: "row", alignItems: "center", gap: 10, flex: 1, minWidth: 0 },
-  innerList: { marginTop: 9, borderWidth: 1, borderColor: colors.line, borderRadius: radius.md, overflow: "hidden", paddingHorizontal: 8 },
-  coachMealCard: { padding: 8, backgroundColor: "#f8faff" },
+  coachMealCard: { padding: 8, backgroundColor: "#fafdfd" },
   mealPlanInnerList: { marginTop: 6, borderWidth: 1, borderColor: colors.line, borderRadius: 9, overflow: "hidden", backgroundColor: "#ffffff", paddingHorizontal: 7 },
   mealPlanActions: { minHeight: 32, flexDirection: "row", alignItems: "center", borderTopWidth: 1, borderTopColor: colors.line },
   mealPlanAction: { flex: 1, minHeight: 32, alignItems: "center", justifyContent: "center", flexDirection: "row", gap: 5 },
-  mealPlanActionText: { color: colors.primary, fontSize: 11, lineHeight: 14, fontWeight: "900" },
+  mealPlanActionText: { color: colors.primary, fontSize: 12, lineHeight: 16, fontWeight: "900" },
   mealRow: { minHeight: 32, flexDirection: "row", alignItems: "center", gap: 7 },
   mealIconBubble: { width: 26, height: 26, borderRadius: 13, alignItems: "center", justifyContent: "center" },
   nutritionMealTitle: { color: colors.ink, fontSize: 14, lineHeight: 18, fontWeight: "900" },
   nutritionMealMuted: { color: colors.inkMuted, fontSize: 12.5, lineHeight: 17, fontWeight: "600" },
-  nutritionMealPlannedNote: { color: colors.primary, fontSize: 10, lineHeight: 13, fontWeight: "700", marginTop: 1 },
-  nutritionMealValue: { color: colors.ink, fontSize: 10.5, lineHeight: 14, fontWeight: "800" },
+  nutritionMealPlannedNote: { color: colors.primary, fontSize: 12, lineHeight: 16, fontWeight: "700", marginTop: 1 },
+  nutritionMealValue: { color: colors.ink, fontSize: 12, lineHeight: 16, fontWeight: "800" },
   consumedCard: { backgroundColor: "#f8fffa", borderColor: "#dbeee2", padding: 8 },
   consumedHeader: { flexDirection: "row", alignItems: "flex-start", gap: 10 },
   consumedList: { marginTop: 6, gap: 3 },
@@ -4909,17 +4957,10 @@ const styles = StyleSheet.create({
   waterCopy: { flex: 1, minWidth: 0, gap: 1 },
   waterProgress: { marginTop: 1, maxWidth: 150 },
   waterButton: { flex: 0, width: 76, minHeight: 27, borderRadius: 7 },
-  twoLinks: { flexDirection: "row", justifyContent: "space-around", borderTopWidth: 1, borderTopColor: colors.line, marginTop: 8, paddingTop: 8 },
-  coachHeader: { flexDirection: "row", alignItems: "center", gap: 14 },
-  inlineTitleRow: { flexDirection: "row", alignItems: "center", gap: 6 },
-  ratingText: { color: colors.ink, fontSize: 12, lineHeight: 16, fontWeight: "700", marginTop: 4 },
-  chipWrap: { flexDirection: "row", flexWrap: "wrap", gap: 6, marginTop: 8 },
-  bulletRow: { flexDirection: "row", flexWrap: "wrap", gap: 8, marginTop: 8, marginBottom: 8 },
-  bulletText: { color: colors.inkMuted, fontSize: 10, fontWeight: "700" },
   coachHeroCard: { minHeight: 174, paddingHorizontal: 13, paddingVertical: 11, overflow: "hidden", position: "relative", gap: 8 },
-  coachHeroWash: { position: "absolute", right: -28, top: -8, bottom: -6, width: 160, borderTopLeftRadius: 116, borderBottomLeftRadius: 70, backgroundColor: "#eef5ff" },
+  coachHeroWash: { position: "absolute", right: -28, top: -8, bottom: -6, width: 160, borderTopLeftRadius: 116, borderBottomLeftRadius: 70, backgroundColor: "#f2fbfa" },
   coachHeroMark: { position: "absolute", right: 34, top: 34, opacity: 0.9 },
-  coachHeroScribble: { position: "absolute", right: 21, top: 82, color: "#7e94bd", fontSize: 13, lineHeight: 15, fontWeight: "800", fontStyle: "italic", textAlign: "center", transform: [{ rotate: "-12deg" }], opacity: 0.8 },
+  coachHeroScribble: { position: "absolute", right: 21, top: 82, color: "#7ebdb5", fontSize: 13, lineHeight: 15, fontWeight: "800", fontStyle: "italic", textAlign: "center", transform: [{ rotate: "-12deg" }], opacity: 0.8 },
   coachHeroIdentity: { flexDirection: "row", alignItems: "center", gap: 12, paddingRight: 92, zIndex: 1 },
   coachHeroCopy: { flex: 1, minWidth: 0 },
   coachNameLine: { flexDirection: "row", alignItems: "center", gap: 5 },
@@ -4927,7 +4968,7 @@ const styles = StyleSheet.create({
   coachHeroSubtitle: { color: colors.inkMuted, fontSize: 12.5, lineHeight: 16, fontWeight: "700", marginTop: 1 },
   coachHeroRating: { color: colors.ink, fontSize: 12.5, lineHeight: 16, fontWeight: "900", marginTop: 4 },
   coachHeroChips: { flexDirection: "row", flexWrap: "wrap", gap: 6, zIndex: 1 },
-  coachSpecialtyChip: { maxWidth: "48%", minHeight: 27, borderRadius: 9, borderWidth: 1, borderColor: "#c9d9ff", backgroundColor: colors.primarySoft, paddingHorizontal: 9, alignItems: "center", justifyContent: "center" },
+  coachSpecialtyChip: { maxWidth: "48%", minHeight: 27, borderRadius: 9, borderWidth: 1, borderColor: "#d5f3ef", backgroundColor: colors.primarySoft, paddingHorizontal: 9, alignItems: "center", justifyContent: "center" },
   coachSpecialtyText: { color: colors.primary, fontSize: 12, lineHeight: 16, fontWeight: "900" },
   coachHeroActions: { flexDirection: "row", gap: 10, zIndex: 1 },
   coachHeroAction: { flex: 1, minHeight: 40, borderRadius: 10 },
@@ -4940,8 +4981,8 @@ const styles = StyleSheet.create({
   coachBubbleTheirs: { alignSelf: "flex-start", backgroundColor: colors.surfaceInset },
   coachBubbleText: { color: colors.ink, fontSize: 12.5, lineHeight: 17, fontWeight: "600" },
   coachBubbleTextMine: { color: "#ffffff" },
-  coachBubbleTime: { color: colors.inkFaint, fontSize: 10, lineHeight: 13, fontWeight: "700", marginTop: 3 },
-  coachBubbleTimeMine: { color: "#dbe7ff" },
+  coachBubbleTime: { color: colors.inkFaint, fontSize: 12, lineHeight: 16, fontWeight: "700", marginTop: 3 },
+  coachBubbleTimeMine: { color: "#e3f7f4" },
   coachComposer: { minHeight: 70, borderRadius: 10, borderWidth: 1, borderColor: colors.lineStrong, backgroundColor: "#ffffff", color: colors.ink, fontSize: 13, lineHeight: 18, paddingHorizontal: 11, paddingVertical: 9, textAlignVertical: "top" },
   coachSendButton: { minHeight: 40, borderRadius: 9 },
   nextCoachSessionCard: { paddingHorizontal: 13, paddingVertical: 11, gap: 7 },
@@ -4995,8 +5036,8 @@ const styles = StyleSheet.create({
     minHeight: 34,
     borderRadius: 10,
     borderWidth: 1,
-    borderColor: "#d9e0eb",
-    backgroundColor: "#fdfeff",
+    borderColor: "#d9ebe9",
+    backgroundColor: "#fdfffe",
     flexDirection: "row",
     padding: 3,
     overflow: "hidden",
@@ -5031,17 +5072,17 @@ const styles = StyleSheet.create({
     shadowOffset: { width: 0, height: 1 },
     elevation: 1,
   },
-  progressCategoryText: { color: colors.inkMuted, fontSize: 11.5, lineHeight: 15, fontWeight: "900" },
+  progressCategoryText: { color: colors.inkMuted, fontSize: 12, lineHeight: 16, fontWeight: "900" },
   progressCategoryTextActive: { color: "#ffffff" },
-  progressHeroCard: { minHeight: 168, paddingHorizontal: 10, paddingVertical: 9, overflow: "hidden", position: "relative", gap: 6, borderColor: "#cfe1ff" },
+  progressHeroCard: { minHeight: 168, paddingHorizontal: 10, paddingVertical: 9, overflow: "hidden", position: "relative", gap: 6, borderColor: "#daf4f1" },
   progressHeroArt: { position: "absolute", right: 7, top: 34, width: 120, height: 52, opacity: 0.9, overflow: "hidden", zIndex: 0 },
   progressHeroTop: { minHeight: 72, flexDirection: "row", alignItems: "flex-start", gap: 8, position: "relative", zIndex: 2 },
   progressHeroCopy: { flex: 1, minWidth: 0, paddingRight: 36 },
-  progressOverline: { color: colors.inkMuted, fontSize: 9.8, lineHeight: 13, fontWeight: "900", letterSpacing: 1.6 },
+  progressOverline: { color: colors.inkMuted, fontSize: 12, lineHeight: 16, fontWeight: "900", letterSpacing: 1.6 },
   progressHeroTitle: { color: colors.ink, fontSize: 19, lineHeight: 23, fontWeight: "900", letterSpacing: 0, marginTop: 2 },
-  progressHeroBody: { color: colors.inkMuted, fontSize: 11.5, lineHeight: 14, fontWeight: "600", marginTop: 2 },
+  progressHeroBody: { color: colors.inkMuted, fontSize: 12, lineHeight: 16, fontWeight: "600", marginTop: 2 },
   progressHeroBadge: { minHeight: 23, borderRadius: 12, paddingHorizontal: 8, flexDirection: "row", alignItems: "center", gap: 4, zIndex: 2 },
-  progressHeroBadgeText: { fontSize: 10.5, lineHeight: 14, fontWeight: "900" },
+  progressHeroBadgeText: { fontSize: 12, lineHeight: 16, fontWeight: "900" },
   progressSummaryGrid: { flexDirection: "row", flexWrap: "wrap", gap: 4, position: "relative", zIndex: 2 },
   progressSummaryMetric: {
     width: "49%",
@@ -5056,31 +5097,32 @@ const styles = StyleSheet.create({
     alignItems: "center",
     gap: 5,
   },
+  progressSummaryMetricIcon: { width: 30, height: 30, borderRadius: 15, alignItems: "center", justifyContent: "center" },
   progressSummaryMetricCopy: { flex: 1, minWidth: 0, gap: 1 },
-  progressSummaryMetricTitle: { color: colors.inkMuted, fontSize: 9.8, lineHeight: 12, fontWeight: "800" },
+  progressSummaryMetricTitle: { color: colors.inkMuted, fontSize: 12, lineHeight: 16, fontWeight: "800" },
   progressSummaryMetricValue: { fontSize: 13.5, lineHeight: 17, fontWeight: "900" },
   progressInsightLine: { minHeight: 23, borderTopWidth: 1, borderTopColor: colors.line, flexDirection: "row", alignItems: "center", gap: 6, paddingTop: 5, position: "relative", zIndex: 2 },
-  progressInsightLineText: { flex: 1, color: colors.inkMuted, fontSize: 10.8, lineHeight: 14, fontWeight: "600" },
+  progressInsightLineText: { flex: 1, color: colors.inkMuted, fontSize: 12, lineHeight: 16, fontWeight: "600" },
   progressWeekCard: { paddingHorizontal: 10, paddingVertical: 8 },
   progressWeekGrid: { position: "relative", flexDirection: "row", flexWrap: "wrap", marginTop: 4, rowGap: 1 },
   progressWeekVerticalDivider: { position: "absolute", top: 2, bottom: 2, left: "50%", width: 1, backgroundColor: colors.line },
   progressWeekHorizontalDivider: { position: "absolute", left: 0, right: 0, top: "50%", height: 1, backgroundColor: colors.line },
   progressWeekMetric: { width: "50%", minHeight: 38, flexDirection: "row", alignItems: "center", gap: 6, paddingVertical: 2, paddingRight: 7 },
   progressWeekCopy: { flex: 1, minWidth: 0, gap: 1 },
-  progressMetricTitle: { color: colors.ink, fontSize: 11.2, lineHeight: 14, fontWeight: "900" },
-  progressMetricValue: { color: colors.ink, fontSize: 11, lineHeight: 14, fontWeight: "800" },
-  progressTinyTrack: { height: 4, borderRadius: 2, backgroundColor: "#dfe4ed", overflow: "hidden", marginTop: 1 },
+  progressMetricTitle: { color: colors.ink, fontSize: 12, lineHeight: 16, fontWeight: "900" },
+  progressMetricValue: { color: colors.ink, fontSize: 12, lineHeight: 16, fontWeight: "800" },
+  progressTinyTrack: { height: 4, borderRadius: 2, backgroundColor: "#dfedeb", overflow: "hidden", marginTop: 1 },
   progressTinyFill: { height: "100%", borderRadius: 3 },
   progressDetailCard: { paddingHorizontal: 11, paddingVertical: 11, gap: 10 },
   progressDetailHeader: { minHeight: 38, flexDirection: "row", alignItems: "flex-start", justifyContent: "space-between", gap: 8 },
   progressDetailHeaderCopy: { flex: 1, minWidth: 0 },
   progressDetailTitle: { color: colors.ink, fontSize: 20, lineHeight: 24, fontWeight: "900", letterSpacing: 0 },
   progressDetailSubtitle: { color: colors.inkMuted, fontSize: 12, lineHeight: 15, fontWeight: "600", marginTop: 1 },
-  progressRangePill: { minHeight: 30, borderRadius: 9, borderWidth: 1, borderColor: colors.line, backgroundColor: "#fbfdff", paddingHorizontal: 9, flexDirection: "row", alignItems: "center", gap: 4 },
-  progressRangePillText: { color: colors.inkMuted, fontSize: 11.2, lineHeight: 14, fontWeight: "800" },
+  progressRangePill: { minHeight: 30, borderRadius: 9, borderWidth: 1, borderColor: colors.line, backgroundColor: "#fcfefe", paddingHorizontal: 9, flexDirection: "row", alignItems: "center", gap: 4 },
+  progressRangePillText: { color: colors.inkMuted, fontSize: 12, lineHeight: 16, fontWeight: "800" },
   progressPrimaryChartRow: { minHeight: 102, borderRadius: 10, borderWidth: 1, borderColor: colors.line, backgroundColor: "#ffffff", paddingHorizontal: 9, paddingVertical: 8, flexDirection: "row", alignItems: "center", gap: 8 },
   progressPrimaryMetric: { width: 98, alignItems: "flex-start", gap: 4 },
-  progressPrimaryLabel: { color: colors.ink, fontSize: 11.2, lineHeight: 14, fontWeight: "900" },
+  progressPrimaryLabel: { color: colors.ink, fontSize: 12, lineHeight: 16, fontWeight: "900" },
   progressPrimaryValue: { fontSize: 22, lineHeight: 26, fontWeight: "900" },
   progressDetailChartPane: { flex: 1, minWidth: 0 },
   progressDetailMetricGrid: { flexDirection: "row", flexWrap: "wrap", gap: 6 },
@@ -5098,21 +5140,21 @@ const styles = StyleSheet.create({
     gap: 6,
   },
   progressDetailMetricCopy: { flex: 1, minWidth: 0, gap: 1 },
-  progressDetailMetricLabel: { color: colors.inkMuted, fontSize: 11, lineHeight: 14, fontWeight: "800" },
+  progressDetailMetricLabel: { color: colors.inkMuted, fontSize: 12, lineHeight: 16, fontWeight: "800" },
   progressDetailMetricValue: { color: colors.ink, fontSize: 15.5, lineHeight: 19, fontWeight: "900" },
-  progressDetailMetricSub: { color: colors.inkMuted, fontSize: 10.5, lineHeight: 13, fontWeight: "600" },
+  progressDetailMetricSub: { color: colors.inkMuted, fontSize: 12, lineHeight: 16, fontWeight: "600" },
   progressInlineButton: { marginTop: 10, minHeight: 42, borderRadius: 10 },
   progressEmptyChart: { minHeight: 80, alignItems: "center", justifyContent: "center", borderRadius: 8, backgroundColor: colors.surfaceInset, paddingHorizontal: 10 },
-  progressEmptyChartText: { color: colors.inkMuted, fontSize: 11.5, lineHeight: 15, fontWeight: "800", textAlign: "center" },
+  progressEmptyChartText: { color: colors.inkMuted, fontSize: 12, lineHeight: 16, fontWeight: "800", textAlign: "center" },
   progressEmptyText: { color: colors.inkMuted, fontSize: 13, lineHeight: 18, fontWeight: "700", marginTop: 2 },
   progressBarTrend: { height: 84, flexDirection: "row", alignItems: "flex-end", justifyContent: "space-between", gap: 6 },
   progressBarTrendColumn: { flex: 1, minWidth: 0, height: "100%", alignItems: "center", justifyContent: "flex-end", gap: 5 },
-  progressBarTrendTrack: { width: "70%", flex: 1, borderRadius: 7, backgroundColor: colors.surfaceInset, justifyContent: "flex-end", overflow: "hidden" },
-  progressBarTrendFill: { width: "100%", borderRadius: 7, backgroundColor: colors.primary },
-  progressBarTrendLabel: { color: colors.inkMuted, fontSize: 9, lineHeight: 12, fontWeight: "800" },
+  progressBarTrendTrack: { width: "70%", flex: 1, borderRadius: 7, backgroundColor: metricColors.nutrition.track, justifyContent: "flex-end", overflow: "hidden" },
+  progressBarTrendFill: { width: "100%", borderRadius: 7, backgroundColor: metricColors.nutrition.to },
+  progressBarTrendLabel: { color: colors.inkMuted, fontSize: 12, lineHeight: 16, fontWeight: "800" },
   progressCardTitle: { color: colors.ink, fontSize: 15, lineHeight: 19, fontWeight: "900" },
   feedbackProgressCard: { minHeight: 86, paddingHorizontal: 12, paddingVertical: 12, flexDirection: "row", alignItems: "center", gap: 12 },
   feedbackProgressCopy: { flex: 1, minWidth: 0 },
   feedbackProgressText: { color: colors.inkMuted, fontSize: 12.5, lineHeight: 17, fontWeight: "600", marginTop: 2 },
-  feedbackProgressMeta: { color: colors.inkFaint, fontSize: 11.5, lineHeight: 15, fontWeight: "700", marginTop: 2 },
+  feedbackProgressMeta: { color: colors.inkFaint, fontSize: 12, lineHeight: 16, fontWeight: "700", marginTop: 2 },
 });

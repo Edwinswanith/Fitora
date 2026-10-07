@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
+import AsyncStorage from "@react-native-async-storage/async-storage";
 import { apiJson } from "./api";
 import type { AvatarInfo } from "../components/Avatar";
 import type { SessionSlot } from "./sessions";
@@ -425,6 +426,8 @@ type AsyncState<T> = {
   loading: boolean;
   refreshing: boolean;
   error: string | null;
+  /** True when saved data is on screen but the latest refresh failed (e.g. offline). */
+  stale: boolean;
   reload: () => void;
   /**
    * Patches this screen's data in place — no network call. Use after a
@@ -438,15 +441,15 @@ type AsyncState<T> = {
   setData: (value: T | ((prev: T | null) => T | null)) => void;
 };
 
-type CacheEntry = { data: unknown; listeners: Set<(data: unknown) => void> };
+type CacheEntry = { key: string; data: unknown; listeners: Set<(data: unknown) => void> };
 
 /**
  * Cross-mount, in-memory cache keyed by screen identity (e.g. "athlete-dashboard").
  * Lets a screen that remounts (navigated away and back, not just re-rendered)
  * paint instantly from last-known data instead of a full loading screen, while
  * a fresh fetch still runs in the background — stale-while-revalidate, not a
- * substitute for actually refetching. Cleared only by app restart; that's fine
- * here since every mount always revalidates anyway.
+ * substitute for actually refetching. Also saved on the device per user (see
+ * hydrateDataCache below) so a cold start paints instantly too.
  *
  * Also doubles as a tiny pub/sub: `updateCachedData` lets a *different*
  * screen (e.g. a "log meal" detail screen) patch another screen's data (e.g.
@@ -459,10 +462,112 @@ const asyncDataCache = new Map<string, CacheEntry>();
 function getCacheEntry(key: string): CacheEntry {
   let entry = asyncDataCache.get(key);
   if (!entry) {
-    entry = { data: undefined, listeners: new Set() };
+    entry = { key, data: undefined, listeners: new Set() };
     asyncDataCache.set(key, entry);
   }
   return entry;
+}
+
+/*
+ * On-device copy of the cache, so a cold app start paints the last-known
+ * screens instantly instead of a loading state. The server/database stays the
+ * source of truth: every screen still refetches on mount and the fresh result
+ * replaces the saved copy. Stored per signed-in user and wiped on sign-out,
+ * account deletion and session rejection (see lib/auth.tsx), so one person
+ * never sees another person's data on a shared device.
+ */
+const PERSIST_PREFIX = "fitora.cache.v1:";
+const PERSIST_MAX_AGE_MS = 7 * 24 * 60 * 60 * 1000;
+const PERSIST_DEBOUNCE_MS = 400;
+let cacheOwner: string | null = null;
+const pendingWrites = new Map<string, ReturnType<typeof setTimeout>>();
+
+type PersistedEntry = { savedAt: number; data: unknown };
+
+function persistKey(owner: string, key: string): string {
+  return `${PERSIST_PREFIX}${owner}:${key}`;
+}
+
+function schedulePersist(entry: CacheEntry): void {
+  const owner = cacheOwner;
+  if (!owner || entry.data === undefined || entry.data === null) return;
+  const existing = pendingWrites.get(entry.key);
+  if (existing) clearTimeout(existing);
+  pendingWrites.set(
+    entry.key,
+    setTimeout(() => {
+      pendingWrites.delete(entry.key);
+      if (cacheOwner !== owner) return;
+      const value: PersistedEntry = { savedAt: Date.now(), data: entry.data };
+      AsyncStorage.setItem(persistKey(owner, entry.key), JSON.stringify(value)).catch(() => undefined);
+    }, PERSIST_DEBOUNCE_MS)
+  );
+}
+
+/**
+ * Data stamped with a calendar day (a `date: "YYYY-MM-DD"` field, like the
+ * dashboards) is only reused on that same day: yesterday's "today" numbers
+ * shown as today's would be wrong, not just stale.
+ */
+function isReusable(entry: PersistedEntry, today: string, now: number): boolean {
+  if (now - entry.savedAt > PERSIST_MAX_AGE_MS) return false;
+  const data = entry.data as { date?: unknown } | null;
+  if (data && typeof data === "object" && typeof data.date === "string" && data.date !== today) return false;
+  return true;
+}
+
+/**
+ * Loads the signed-in user's saved screens into the in-memory cache. Call
+ * once per session start, before screens mount. Only touches local storage.
+ */
+export async function hydrateDataCache(owner: string): Promise<void> {
+  if (cacheOwner !== owner) clearInMemoryCache();
+  cacheOwner = owner;
+  try {
+    const prefix = persistKey(owner, "");
+    const keys = (await AsyncStorage.getAllKeys()).filter((k) => k.startsWith(prefix));
+    if (!keys.length) return;
+    const today = todayKey();
+    const now = Date.now();
+    const stale: string[] = [];
+    for (const [storageKey, raw] of await AsyncStorage.multiGet(keys)) {
+      if (!raw) continue;
+      try {
+        const parsed = JSON.parse(raw) as PersistedEntry;
+        if (!isReusable(parsed, today, now)) {
+          stale.push(storageKey);
+          continue;
+        }
+        const entry = getCacheEntry(storageKey.slice(prefix.length));
+        if (entry.data === undefined) entry.data = parsed.data;
+      } catch {
+        stale.push(storageKey);
+      }
+    }
+    if (stale.length) await AsyncStorage.multiRemove(stale);
+  } catch {
+    // Saved data is only an optimization; screens load from the server anyway.
+  }
+}
+
+function clearInMemoryCache(): void {
+  pendingWrites.forEach((timer) => clearTimeout(timer));
+  pendingWrites.clear();
+  asyncDataCache.forEach((entry) => {
+    entry.data = undefined;
+  });
+}
+
+/** Forgets every saved screen for every user on this device (sign-out, account deletion). */
+export async function clearDataCache(): Promise<void> {
+  cacheOwner = null;
+  clearInMemoryCache();
+  try {
+    const keys = (await AsyncStorage.getAllKeys()).filter((k) => k.startsWith(PERSIST_PREFIX));
+    if (keys.length) await AsyncStorage.multiRemove(keys);
+  } catch {
+    // Nothing else to do; a later hydrate for a different owner never reads these keys.
+  }
 }
 
 /**
@@ -478,6 +583,7 @@ export function updateCachedData<T>(cacheKey: string, updater: (prev: T | undefi
   const next = updater(entry.data as T | undefined);
   if (next === undefined) return;
   entry.data = next;
+  schedulePersist(entry);
   entry.listeners.forEach((listener) => listener(next));
 }
 
@@ -491,6 +597,7 @@ export function useAsyncData<T>(loader: () => Promise<T>, deps: unknown[] = [], 
   const [loading, setLoading] = useState(cached === null);
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [stale, setStale] = useState(false);
   const [version, setVersion] = useState(0);
 
   const reload = useCallback(() => {
@@ -501,7 +608,10 @@ export function useAsyncData<T>(loader: () => Promise<T>, deps: unknown[] = [], 
     (value: T | ((prev: T | null) => T | null)) => {
       setDataState((prev) => {
         const next = typeof value === "function" ? (value as (prev: T | null) => T | null)(prev) : value;
-        if (entry) entry.data = next;
+        if (entry) {
+          entry.data = next;
+          schedulePersist(entry);
+        }
         return next;
       });
     },
@@ -534,6 +644,7 @@ export function useAsyncData<T>(loader: () => Promise<T>, deps: unknown[] = [], 
       .then((result) => {
         if (!active) return;
         setData(result);
+        setStale(false);
       })
       .catch(() => {
         if (!active) return;
@@ -541,6 +652,7 @@ export function useAsyncData<T>(loader: () => Promise<T>, deps: unknown[] = [], 
         // good data already on screen — only surface the error state when
         // there's genuinely nothing to show instead.
         if (!hadDataAtStart) setError("Check your connection and try again.");
+        else setStale(true);
       })
       .finally(() => {
         if (!active) return;
@@ -554,7 +666,7 @@ export function useAsyncData<T>(loader: () => Promise<T>, deps: unknown[] = [], 
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [version, ...deps]);
 
-  return { data, loading, refreshing, error, reload, setData };
+  return { data, loading, refreshing, error, stale, reload, setData };
 }
 
 async function optional<T>(label: string, task: Promise<T>, issues: string[]): Promise<T | null> {
@@ -596,6 +708,20 @@ export function longDate(key: string): string {
   const [year, month, day] = key.split("-").map(Number);
   const date = new Date(year, (month || 1) - 1, day || 1);
   return date.toLocaleDateString(undefined, { weekday: "long", month: "long", day: "numeric" });
+}
+
+/** Header date that fits one line on a phone: "Wednesday, Oct 7". */
+export function headerDate(key: string): string {
+  const [year, month, day] = key.split("-").map(Number);
+  const date = new Date(year, (month || 1) - 1, day || 1);
+  return date.toLocaleDateString(undefined, { weekday: "long", month: "short", day: "numeric" });
+}
+
+export function timeOfDayGreeting(now = new Date()): string {
+  const hour = now.getHours();
+  if (hour < 12) return "Good morning";
+  if (hour < 17) return "Good afternoon";
+  return "Good evening";
 }
 
 export function shortDate(key: string): string {

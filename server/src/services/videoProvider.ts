@@ -194,6 +194,15 @@ export function getVideoProvider(): VideoProvider {
   return provider;
 }
 
+/**
+ * False when a real deployment (env.strictSecrets) has no LiveKit credentials:
+ * the mock provider's tokens point at a server that doesn't exist, so issuing
+ * them would just open a call that can never connect.
+ */
+export function videoAvailable(): boolean {
+  return !(env.strictSecrets && getVideoProvider() instanceof MockVideoProvider);
+}
+
 /** Test-only seam for injecting a fake provider. */
 export function setVideoProviderForTests(impl: VideoProvider | null): void {
   provider = impl;

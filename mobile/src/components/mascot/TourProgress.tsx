@@ -23,7 +23,7 @@ export function TourProgress({ index, total, accent }: TourProgressProps) {
 }
 
 const styles = StyleSheet.create({
-  count: { color: colors.inkFaint, fontSize: 10, fontWeight: "700", marginBottom: 6 },
+  count: { color: colors.inkFaint, fontSize: 12, fontWeight: "700", marginBottom: 6 },
   track: { height: 4, borderRadius: 999, backgroundColor: colors.surfaceInset, overflow: "hidden" },
   fill: { height: "100%", borderRadius: 999 },
 });

@@ -33,7 +33,12 @@ const userSchema = new Schema(
     // Set when a coach provisions the account with a temp password — the user is
     // nudged to set their own password on first sign-in. Cleared on change.
     mustChangePassword: { type: Boolean, default: false },
+    // Legacy single-session hash. Still accepted once on refresh (then moved
+    // into refreshTokenHashes) so existing logins survive the upgrade.
     refreshTokenHash: { type: String },
+    // One hash per signed-in device, most recent last, capped at
+    // MAX_REFRESH_SESSIONS in routes/auth.ts.
+    refreshTokenHashes: { type: [String], default: [] },
     // Stable identifier returned by Sign in with Apple. Email/name are not a
     // reliable account key because Apple may only disclose them on first use.
     appleSubject: { type: String, unique: true, sparse: true, index: true },
@@ -52,6 +57,7 @@ userSchema.set("toJSON", {
   transform: (_doc, ret) => {
     delete (ret as Record<string, unknown>).passwordHash;
     delete (ret as Record<string, unknown>).refreshTokenHash;
+    delete (ret as Record<string, unknown>).refreshTokenHashes;
     delete (ret as Record<string, unknown>).avatarStoredFilename;
     return ret;
   },

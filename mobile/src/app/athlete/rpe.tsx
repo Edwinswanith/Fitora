@@ -1,10 +1,16 @@
 import { useEffect, useState } from "react";
 import { Pressable, StyleSheet, TextInput, View } from "react-native";
-import { useLocalSearchParams, useRouter } from "expo-router";
+import { useLocalSearchParams } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
 import { Text } from "../../components/AppText";
-import { ActionButton, AppCard, ScreenContainer } from "../../components/fitora";
+import {
+  ActionButton,
+  AppCard,
+  BackHeader,
+  ScreenContainer,
+} from "../../components/fitora";
 import { apiFetch, apiJson } from "../../lib/api";
+import { celebrate, errorFeedback, selectionFeedback } from "../../lib/feedback";
 import { colors, radius } from "../../lib/theme";
 import { todayKey, type DailyCard } from "../../lib/fitoraData";
 
@@ -40,7 +46,6 @@ function titleCase(value: string): string {
 }
 
 export default function Rpe() {
-  const router = useRouter();
   const params = useLocalSearchParams<{ sessionType?: string; rpe?: string }>();
   const initialSession = SESSIONS.includes(params.sessionType as (typeof SESSIONS)[number])
     ? (params.sessionType as (typeof SESSIONS)[number])
@@ -113,8 +118,10 @@ export default function Rpe() {
       });
       if (!res.ok) throw new Error();
       setMsg({ kind: "ok", text: "Logged — your coach can see how today's session felt." });
+      celebrate({ title: "Session logged", body: "Your coach can see how it felt." });
       return true;
     } catch {
+      errorFeedback();
       setMsg({ kind: "error", text: "Couldn't save. Check your connection and try again." });
       return false;
     } finally {
@@ -124,13 +131,7 @@ export default function Rpe() {
 
   return (
     <ScreenContainer>
-      <View style={styles.header}>
-        <Pressable onPress={() => router.back()} style={styles.backButton} hitSlop={10}>
-          <Ionicons name="chevron-back" size={26} color={colors.ink} />
-        </Pressable>
-        <Text style={styles.title}>Post-Session Response</Text>
-      </View>
-      <Text style={styles.tagline}>A couple of quick taps — this drives your training load and risk flags.</Text>
+      <BackHeader title="How did it feel?" subtitle="A couple of quick taps. This drives your training load and risk flags." />
 
       <AppCard>
         <View style={styles.cardGap}>
@@ -154,7 +155,7 @@ export default function Rpe() {
               {Array.from({ length: 10 }, (_, i) => i + 1).map((n) => {
                 const on = rpe === n;
                 return (
-                  <Pressable key={n} onPress={() => setRpe(n)} style={[styles.rpeDot, on ? styles.rpeDotActive : null]}>
+                  <Pressable key={n} onPress={() => { selectionFeedback(); setRpe(n); }} style={[styles.rpeDot, on ? styles.rpeDotActive : null]}>
                     <Text style={[styles.rpeDotText, on ? styles.rpeDotTextActive : null]}>{n}</Text>
                   </Pressable>
                 );
@@ -168,7 +169,7 @@ export default function Rpe() {
               {(["better", "same", "worse"] as const).map((option) => {
                 const on = feeling === option;
                 return (
-                  <Pressable key={option} onPress={() => setFeeling(option)} style={[styles.feelingBtn, on ? styles.feelingBtnActive : null]}>
+                  <Pressable key={option} onPress={() => { selectionFeedback(); setFeeling(option); }} style={[styles.feelingBtn, on ? styles.feelingBtnActive : null]}>
                     <Text style={[styles.feelingText, on ? styles.feelingTextActive : null]}>{titleCase(option)}</Text>
                   </Pressable>
                 );
@@ -314,7 +315,6 @@ function NumberStepper({
 }
 
 const styles = StyleSheet.create({
-  header: { minHeight: 58, flexDirection: "row", alignItems: "center", gap: 10 },
   backButton: {
     height: 42,
     width: 42,
@@ -325,10 +325,8 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: colors.line,
   },
-  title: { flex: 1, color: colors.ink, fontSize: 24, lineHeight: 30, fontWeight: "900" },
-  tagline: { color: colors.inkMuted, fontSize: 14, lineHeight: 19, marginTop: -6, marginBottom: 4 },
   cardGap: { gap: 18 },
-  fieldLabel: { color: colors.inkMuted, fontSize: 11, fontWeight: "900", textTransform: "uppercase", letterSpacing: 0.4 },
+  fieldLabel: { color: colors.inkMuted, fontSize: 12, fontWeight: "900", textTransform: "uppercase", letterSpacing: 0.4 },
   successText: { color: colors.ok, fontSize: 13, fontWeight: "800" },
   errorText: { color: colors.bad, fontSize: 13, fontWeight: "800" },
   seg: { flexDirection: "row", gap: 8 },
@@ -379,7 +377,7 @@ const styles = StyleSheet.create({
   scalePillText: { fontSize: 16, fontWeight: "800", color: colors.inkMuted },
   scalePillTextActive: { color: "#fff" },
   hintRow: { flexDirection: "row", justifyContent: "space-between" },
-  hint: { fontSize: 11, color: colors.inkFaint, fontWeight: "600" },
+  hint: { fontSize: 12, color: colors.inkFaint, fontWeight: "600" },
   stepperRow: { flexDirection: "row", alignItems: "center", justifyContent: "space-between" },
   stepBtn: {
     height: 48,

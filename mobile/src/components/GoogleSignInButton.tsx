@@ -133,7 +133,7 @@ export function GoogleSignInButton({
 const styles = StyleSheet.create({
   dividerRow: { flexDirection: "row", alignItems: "center", gap: 12 },
   line: { flex: 1, height: 1, backgroundColor: colors.line },
-  or: { fontSize: 10, fontWeight: "700", letterSpacing: 2, color: colors.inkFaint },
+  or: { fontSize: 12, fontWeight: "700", letterSpacing: 2, color: colors.inkFaint },
   btn: {
     flexDirection: "row",
     alignItems: "center",

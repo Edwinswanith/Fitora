@@ -4,10 +4,10 @@ import { Text } from "../components/AppText";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { useRouter } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
-import { colors } from "../lib/theme";
+import { colors, metricColors } from "../lib/theme";
 import type { Role } from "../lib/roles";
 
-const BRAND_MARK = require("../../assets/fitora/landing-logo-reference.png");
+const BRAND_MARK = require("../../assets/fitora/brand-mark.png");
 const DOT_WAVE = require("../../assets/fitora/landing-dot-wave-reference.png");
 
 type RoleOption = {
@@ -69,10 +69,11 @@ const FEATURES: Feature[] = [
 ];
 
 const FEATURE_TONES: Record<Feature["tone"], { bg: string; color: string }> = {
-  blue: { bg: "#edf3ff", color: colors.primary },
-  purple: { bg: "#f0ecff", color: "#6c50d7" },
-  green: { bg: "#e9f7ef", color: "#16a34a" },
-  gold: { bg: "#fff4d8", color: "#d69a06" },
+  // Same colors the app uses for these metrics once you're inside.
+  blue: { bg: metricColors.readiness.soft, color: metricColors.readiness.ink },
+  purple: { bg: metricColors.training.soft, color: metricColors.training.ink },
+  green: { bg: metricColors.nutrition.soft, color: metricColors.nutrition.ink },
+  gold: { bg: metricColors.water.soft, color: metricColors.water.ink },
 };
 
 export default function Landing() {
@@ -133,7 +134,7 @@ export default function Landing() {
 
         <View style={styles.notice}>
           <View style={styles.noticeIcon}>
-            <Ionicons name="shield-checkmark-outline" size={17} color="#40516e" />
+            <Ionicons name="shield-checkmark-outline" size={17} color="#406e68" />
           </View>
           <Text style={styles.noticeText}>
             Existing accounts keep their saved role.{"\n"}New Google users are created from the role you pick.
@@ -190,7 +191,7 @@ const styles = StyleSheet.create({
   safe: { flex: 1, backgroundColor: "#ffffff" },
   content: {
     minHeight: "100%",
-    paddingHorizontal: 32,
+    paddingHorizontal: 20,
     paddingTop: 8,
     paddingBottom: 11,
   },
@@ -204,7 +205,7 @@ const styles = StyleSheet.create({
   brandRow: { flexDirection: "row", alignItems: "center", gap: 10 },
   brandMark: { width: 38, height: 38 },
   brandText: {
-    color: "#1c2940",
+    color: "#1c403b",
     fontSize: 14,
     lineHeight: 18,
     fontWeight: "800",
@@ -212,7 +213,7 @@ const styles = StyleSheet.create({
   },
   hero: {
     marginTop: 18,
-    color: "#111a30",
+    color: "#10201e",
     fontSize: 36,
     lineHeight: 43,
     fontWeight: "900",
@@ -238,14 +239,14 @@ const styles = StyleSheet.create({
     alignItems: "center",
     borderRadius: 17,
     borderWidth: 1,
-    borderColor: "#dfe5ef",
+    borderColor: "#dfefed",
     backgroundColor: "#ffffff",
     paddingTop: 27,
   },
   roleCardSelected: {
     borderColor: colors.primary,
     borderWidth: 1.5,
-    backgroundColor: "#fbfdff",
+    backgroundColor: "#fcfefe",
   },
   popularPill: {
     position: "absolute",
@@ -259,8 +260,8 @@ const styles = StyleSheet.create({
   },
   popularText: {
     color: "#ffffff",
-    fontSize: 9,
-    lineHeight: 11,
+    fontSize: 12,
+    lineHeight: 16,
     fontWeight: "800",
     letterSpacing: 0.8,
   },
@@ -268,13 +269,13 @@ const styles = StyleSheet.create({
     width: 59,
     height: 59,
     borderRadius: 19,
-    backgroundColor: "#f0f4ff",
+    backgroundColor: "#f3fcfb",
     alignItems: "center",
     justifyContent: "center",
   },
   roleTitle: {
     marginTop: 10,
-    color: "#111a30",
+    color: "#10201e",
     fontSize: 20,
     lineHeight: 25,
     fontWeight: "900",
@@ -295,7 +296,7 @@ const styles = StyleSheet.create({
     height: 28,
     borderRadius: 14,
     borderWidth: 2,
-    borderColor: "#cfd7e5",
+    borderColor: "#cfe5e2",
     backgroundColor: "#ffffff",
     alignItems: "center",
     justifyContent: "center",
@@ -309,7 +310,7 @@ const styles = StyleSheet.create({
     marginTop: 14,
     borderRadius: 16,
     borderWidth: 1,
-    borderColor: "#e3e8f0",
+    borderColor: "#e3f0ee",
     backgroundColor: "#ffffff",
     flexDirection: "row",
     alignItems: "center",
@@ -320,14 +321,14 @@ const styles = StyleSheet.create({
     width: 34,
     height: 34,
     borderRadius: 17,
-    backgroundColor: "#eef3fb",
+    backgroundColor: "#effaf9",
     alignItems: "center",
     justifyContent: "center",
   },
   noticeText: {
     flex: 1,
     color: "#556276",
-    fontSize: 11,
+    fontSize: 12,
     lineHeight: 16,
     fontWeight: "500",
     letterSpacing: 0,
@@ -341,7 +342,7 @@ const styles = StyleSheet.create({
   sectionLine: {
     flex: 1,
     height: 1,
-    backgroundColor: "#e6ecf5",
+    backgroundColor: "#e6f5f3",
   },
   diamond: {
     width: 6,
@@ -361,17 +362,18 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     flexWrap: "wrap",
     borderWidth: 1,
-    borderColor: "#e3e8f0",
+    borderColor: "#e3f0ee",
     borderRadius: 17,
     overflow: "hidden",
     backgroundColor: "#ffffff",
   },
   featureCell: {
     width: "50%",
-    height: 116,
-    paddingTop: 13,
-    paddingHorizontal: 16,
-    borderColor: "#e7ecf4",
+    minHeight: 120,
+    paddingTop: 14,
+    paddingBottom: 14,
+    paddingHorizontal: 14,
+    borderColor: "#e7f4f2",
   },
   featureCellRight: {
     borderLeftWidth: 1,
@@ -388,24 +390,24 @@ const styles = StyleSheet.create({
   },
   featureTitle: {
     marginTop: 8,
-    color: "#111a30",
-    fontSize: 11,
-    lineHeight: 15,
+    color: "#10201e",
+    fontSize: 12,
+    lineHeight: 16,
     fontWeight: "900",
     letterSpacing: 0,
   },
   featureSub: {
     marginTop: 5,
     color: "#5b687c",
-    fontSize: 9.5,
-    lineHeight: 13,
+    fontSize: 12,
+    lineHeight: 16,
     fontWeight: "500",
     letterSpacing: 0,
   },
   continueButton: {
-    height: 34,
-    marginTop: 15,
-    borderRadius: 8,
+    height: 52,
+    marginTop: 18,
+    borderRadius: 14,
     backgroundColor: colors.primary,
     flexDirection: "row",
     alignItems: "center",
@@ -414,13 +416,13 @@ const styles = StyleSheet.create({
   },
   continueText: {
     color: "#ffffff",
-    fontSize: 14,
-    lineHeight: 18,
+    fontSize: 16,
+    lineHeight: 20,
     fontWeight: "800",
     letterSpacing: 0,
   },
   footer: {
-    marginTop: 3,
+    marginTop: 10,
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "center",
@@ -428,8 +430,8 @@ const styles = StyleSheet.create({
   },
   footerText: {
     color: "#647084",
-    fontSize: 10.5,
-    lineHeight: 13,
+    fontSize: 12,
+    lineHeight: 16,
     fontWeight: "500",
     letterSpacing: 0,
   },

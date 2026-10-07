@@ -8,6 +8,7 @@ import {
   AppCard,
   EmptyState,
   ErrorState,
+  HeroCard,
   IconTile,
   LoadingState,
   MetricTile,
@@ -16,15 +17,24 @@ import {
   RowLink,
   ScreenContainer,
   SectionHeader,
+  SectionLabel,
+  StaleDataNotice,
 } from "../../components/fitora";
+import { Ionicons } from "@expo/vector-icons";
 import { Avatar } from "../../components/Avatar";
+import { DateField, TimeField } from "../../components/DateTimeField";
+import { combineLocalDateTime, isInFuture, isoToLocalParts, todayLocalDate } from "../../lib/dateTimeValues";
 import { apiFetch } from "../../lib/api";
+import { PAYMENTS_ENABLED } from "../../lib/features";
+import { joinSessionCall } from "../../lib/videoCall";
+import { celebrate, errorFeedback } from "../../lib/feedback";
 import { useAuth } from "../../lib/auth";
 import { colors } from "../../lib/theme";
 import {
   attentionRank,
   attentionReason,
   firstName,
+  timeOfDayGreeting,
   loadCoachHomeData,
   longDate,
   nextFutureSession,
@@ -64,6 +74,7 @@ export default function CoachHome() {
 
   return (
     <ScreenContainer refreshing={state.refreshing} onRefresh={state.reload}>
+      {state.stale ? <StaleDataNotice onRetry={state.reload} /> : null}
       <CoachHomeView data={state.data} onSessionUpdate={patchSession} />
     </ScreenContainer>
   );
@@ -77,6 +88,7 @@ function CoachHomeView({ data, onSessionUpdate }: { data: CoachHomeData; onSessi
   const [sessionBusy, setSessionBusy] = useState<string | null>(null);
   const [rescheduleDate, setRescheduleDate] = useState("");
   const [rescheduleTime, setRescheduleTime] = useState("");
+  const [rescheduleMinDate, setRescheduleMinDate] = useState(() => todayLocalDate());
   const [rescheduleNote, setRescheduleNote] = useState("");
   const [cancelNote, setCancelNote] = useState("");
   const [completeSummary, setCompleteSummary] = useState("");
@@ -109,16 +121,9 @@ function CoachHomeView({ data, onSessionUpdate }: { data: CoachHomeData; onSessi
     setSessionBusy("start");
     setSessionMessage(null);
     try {
-      const res = await apiFetch(`/api/coach/sessions/${nextSession.id}/join-token`, { method: "POST" });
-      const json = await res.json().catch(() => ({}));
-      if (!res.ok) {
-        setSessionMessage(json.error === "join_window_closed" ? "Session can only be started inside the join window." : "Could not start this session yet.");
-        return;
-      }
-      setSessionPanel(true);
-      setSessionMessage(`Video room ready: ${json.video?.roomRef ?? "live session"}`);
-    } catch {
-      setSessionMessage("Network error while starting session.");
+      const athleteLabel = nextSession.athleteName || "your client";
+      const result = await joinSessionCall("coach", nextSession.id, { withName: athleteLabel, title: `Session with ${athleteLabel}` });
+      if (!result.ok) setSessionMessage(result.message);
     } finally {
       setSessionBusy(null);
     }
@@ -193,19 +198,19 @@ function CoachHomeView({ data, onSessionUpdate }: { data: CoachHomeData; onSessi
 
   async function rescheduleSession() {
     if (!nextSession) return;
-    const trimmedDate = rescheduleDate.trim();
-    const trimmedTime = rescheduleTime.trim() || "09:00";
-    if (!/^\d{4}-\d{2}-\d{2}$/.test(trimmedDate)) {
-      setSessionMessage("Enter the new date as YYYY-MM-DD.");
+    if (!rescheduleDate || !rescheduleTime) {
+      setSessionMessage("Pick a new date and time first.");
       return;
     }
-    if (!/^\d{2}:\d{2}$/.test(trimmedTime)) {
-      setSessionMessage("Enter the new time as HH:MM (24-hour).");
-      return;
-    }
-    const nextStart = new Date(`${trimmedDate}T${trimmedTime}:00`);
-    if (Number.isNaN(nextStart.getTime())) {
+    // The pickers return the coach's LOCAL date and time; build the instant
+    // from those local fields, then send it to the server as UTC ISO.
+    const nextStart = combineLocalDateTime(rescheduleDate, rescheduleTime);
+    if (!nextStart) {
       setSessionMessage("That date and time aren't valid.");
+      return;
+    }
+    if (!isInFuture(nextStart)) {
+      setSessionMessage("Pick a time in the future.");
       return;
     }
     setSessionBusy("reschedule");
@@ -216,11 +221,28 @@ function CoachHomeView({ data, onSessionUpdate }: { data: CoachHomeData; onSessi
         body: JSON.stringify({ scheduledStart: nextStart.toISOString(), note: rescheduleNote.trim() || undefined }),
       });
       if (!res.ok) {
-        setSessionMessage("Could not reschedule this session.");
+        const json = (await res.json().catch(() => ({}))) as { error?: string };
+        const reasons: Record<string, string> = {
+          outside_availability: "That time is outside your working hours. Pick a time within your availability.",
+          slot_conflict: "You already have a session at that time. Pick another slot.",
+          // Avoid "confirmed"/"rescheduled" etc. here: the message color below keys off those words.
+          invalid_transition: "This session can't be moved right now. If it's still a request, accept it first.",
+          relationship_ended: "You no longer coach this client, so the session can't be moved.",
+        };
+        setSessionMessage((json.error && reasons[json.error]) || "Could not reschedule this session.");
         return;
       }
-      onSessionUpdate(nextSession.id, { status: "rescheduled", scheduledStart: nextStart.toISOString() });
+      // Use the server's copy: it keeps the session "confirmed" and also moves
+      // scheduledEnd, which a local guess got wrong.
+      const json = (await res.json().catch(() => ({}))) as { session?: Partial<CoachSession> };
+      onSessionUpdate(
+        nextSession.id,
+        json.session
+          ? { status: json.session.status, scheduledStart: json.session.scheduledStart, scheduledEnd: json.session.scheduledEnd }
+          : { scheduledStart: nextStart.toISOString() }
+      );
       setSessionMessage("Session rescheduled.");
+      celebrate({ title: "Session moved", body: `${nextSession.athleteName || "Your client"} has been notified.` });
     } catch {
       setSessionMessage("Network error while rescheduling session.");
     } finally {
@@ -229,23 +251,39 @@ function CoachHomeView({ data, onSessionUpdate }: { data: CoachHomeData; onSessi
   }
 
   function toggleSessionPanel() {
-    setSessionPanel((value) => {
-      const next = !value;
-      if (next && nextSession) {
-        const start = new Date(nextSession.scheduledStart);
-        setRescheduleDate(start.toISOString().slice(0, 10));
-        setRescheduleTime(start.toISOString().slice(11, 16));
-      }
-      return next;
-    });
+    const next = !sessionPanel;
+    if (next && nextSession) {
+      // Pre-fill with the session's LOCAL date/time (toISOString() slices
+      // would show UTC, e.g. 5:30 behind for a coach in India).
+      const local = isoToLocalParts(nextSession.scheduledStart);
+      setRescheduleDate(local.date);
+      setRescheduleTime(local.time);
+      setRescheduleMinDate(todayLocalDate());
+    }
+    setSessionPanel(next);
   }
 
   return (
     <>
       <PrimaryAppBar
-        greeting={`Good morning, ${firstName(user?.name, "Coach")}`}
+        greeting={`${timeOfDayGreeting()}, ${firstName(user?.name, "Coach")}`}
         title={longDate(data.date)}
       />
+
+      {data.roster.length === 0 ? <CoachGettingStartedCard /> : (
+        <CoachHomeHero
+          data={data}
+          nextSession={nextSession}
+          attention={attention}
+          starting={sessionBusy === "start"}
+          onStartSession={startSession}
+          onReview={(card) => router.push({ pathname: "/coach/athletes/[athleteId]", params: { athleteId: card.athleteId, name: card.name } } as never)}
+          onPlan={() => router.push("/coach/plan" as never)}
+        />
+      )}
+
+      <SectionLabel title="Today" />
+      <SessionRequestsCard sessions={data.sessions} today={data.date} onSessionUpdate={onSessionUpdate} />
 
       {nextSession ? (
         <AppCard>
@@ -290,8 +328,22 @@ function CoachHomeView({ data, onSessionUpdate }: { data: CoachHomeData; onSessi
               <View style={styles.sessionDivider} />
               <Text style={styles.formLabel}>Reschedule</Text>
               <View style={styles.actionRow}>
-                <TextInput value={rescheduleDate} onChangeText={setRescheduleDate} style={[styles.input, styles.inputHalf]} placeholder="YYYY-MM-DD" placeholderTextColor={colors.inkFaint} />
-                <TextInput value={rescheduleTime} onChangeText={setRescheduleTime} style={[styles.input, styles.inputHalf]} placeholder="HH:MM" placeholderTextColor={colors.inkFaint} />
+                <DateField
+                  value={rescheduleDate}
+                  onChange={setRescheduleDate}
+                  accessibilityLabel="New session date"
+                  placeholder="New date"
+                  minimumDate={rescheduleMinDate}
+                  style={styles.inputHalf}
+                />
+                <TimeField
+                  value={rescheduleTime}
+                  onChange={setRescheduleTime}
+                  accessibilityLabel="New session start time"
+                  placeholder="New time"
+                  minuteInterval={5}
+                  style={styles.inputHalf}
+                />
               </View>
               <TextInput value={rescheduleNote} onChangeText={setRescheduleNote} style={styles.input} placeholder="Note to athlete (optional)" placeholderTextColor={colors.inkFaint} />
               <ActionButton label={sessionBusy === "reschedule" ? "Moving..." : "Reschedule"} onPress={rescheduleSession} />
@@ -321,6 +373,7 @@ function CoachHomeView({ data, onSessionUpdate }: { data: CoachHomeData; onSessi
         </AppCard>
       ) : null}
 
+      <SectionLabel title="Clients" />
       <AppCard>
         <SectionHeader
           title={`Needs Attention${attention.length ? ` - ${attention.length}` : ""}`}
@@ -339,10 +392,11 @@ function CoachHomeView({ data, onSessionUpdate }: { data: CoachHomeData; onSessi
             </View>
           ))
         ) : (
-          <Text style={styles.muted}>No clients need urgent review right now.</Text>
+          <Text style={styles.muted}>{data.roster.length ? "No clients need urgent review right now." : "No clients yet. Add one to see their check-ins here."}</Text>
         )}
       </AppCard>
 
+      <SectionLabel title="At a glance" />
       {data.squadSeries.length ? (
         <AppCard>
           <SectionHeader title="Squad Readiness - 7 Days" />
@@ -363,6 +417,7 @@ function CoachHomeView({ data, onSessionUpdate }: { data: CoachHomeData; onSessi
         </View>
       </AppCard>
 
+      {PAYMENTS_ENABLED ? (
       <AppCard>
         <View style={styles.membershipRow}>
           <IconTile icon="ribbon-outline" size={44} />
@@ -381,6 +436,7 @@ function CoachHomeView({ data, onSessionUpdate }: { data: CoachHomeData; onSessi
           </Pressable>
         </View>
       </AppCard>
+      ) : null}
 
       <AppCard>
         <SectionHeader
@@ -410,9 +466,10 @@ function CoachHomeView({ data, onSessionUpdate }: { data: CoachHomeData; onSessi
           <Text style={styles.cardTitle}>Quick Actions</Text>
         </View>
         <View style={styles.actionRow}>
-          <ActionButton label="Assign Workout" icon="barbell-outline" variant="filled" onPress={() => router.push("/coach/plan" as never)} />
-          <ActionButton label="Create Plan" icon="clipboard-outline" onPress={() => router.push("/coach/plan" as never)} />
-          <ActionButton label="Upload Video" icon="cloud-upload-outline" onPress={() => router.push("/coach/content" as never)} />
+          {/* Short labels: three buttons share one row on a 360-390dp phone; longer labels truncated ("Assign W..."). */}
+          <ActionButton label="Workout" icon="barbell-outline" variant="filled" onPress={() => router.push("/coach/plan" as never)} />
+          <ActionButton label="Plans" icon="clipboard-outline" onPress={() => router.push("/coach/plan" as never)} />
+          <ActionButton label="Video" icon="cloud-upload-outline" onPress={() => router.push("/coach/content" as never)} />
         </View>
       </AppCard>
 
@@ -424,6 +481,215 @@ function CoachHomeView({ data, onSessionUpdate }: { data: CoachHomeData; onSessi
         />
       ) : null}
     </>
+  );
+}
+
+/**
+ * The coach's one "do this now" card. First match wins: booking requests
+ * waiting, a session today, a client needing attention, else all on track.
+ */
+function CoachHomeHero({
+  data,
+  nextSession,
+  attention,
+  starting,
+  onStartSession,
+  onReview,
+  onPlan,
+}: {
+  data: CoachHomeData;
+  nextSession: CoachSession | null;
+  attention: DailyCard[];
+  starting: boolean;
+  onStartSession: () => void;
+  onReview: (card: DailyCard) => void;
+  onPlan: () => void;
+}) {
+  const requests = data.sessions
+    .filter((session) => session.status === "requested" && session.scheduledEnd >= data.date)
+    .sort((a, b) => a.scheduledStart.localeCompare(b.scheduledStart));
+  if (requests.length) {
+    const first = requests[0];
+    return (
+      <HeroCard
+        icon="calendar-outline"
+        eyebrow="Waiting on you"
+        title={requests.length === 1 ? "1 session request" : `${requests.length} session requests`}
+        body={`${first.athleteName || "A client"} · ${titleCase(first.type)} · ${new Date(first.scheduledStart).toLocaleString(undefined, { weekday: "short", hour: "numeric", minute: "2-digit" })}. Confirm or decline below.`}
+      />
+    );
+  }
+  if (nextSession && nextSession.scheduledStart.slice(0, 10) <= data.date) {
+    const isConfirmed = nextSession.status === "confirmed" || nextSession.status === "rescheduled";
+    return (
+      <HeroCard
+        icon="videocam-outline"
+        eyebrow="Today's session"
+        title={`${nextSession.athleteName || "Client"} at ${new Date(nextSession.scheduledStart).toLocaleTimeString(undefined, { hour: "numeric", minute: "2-digit" })}`}
+        body={`${titleCase(nextSession.type)}. You can join from 10 minutes before it starts.`}
+        actionLabel={isConfirmed ? (starting ? "Starting..." : "Start Session") : undefined}
+        onAction={isConfirmed ? onStartSession : undefined}
+      />
+    );
+  }
+  if (attention.length) {
+    const top = attention[0];
+    return (
+      <HeroCard
+        icon="alert-circle-outline"
+        eyebrow={attention.length === 1 ? "Needs attention" : `${attention.length} clients need attention`}
+        title={top.name || "A client"}
+        body={attentionReason(top)}
+        actionLabel="Review"
+        onAction={() => onReview(top)}
+      />
+    );
+  }
+  return (
+    <HeroCard
+      calm
+      icon="checkmark-done-outline"
+      eyebrow="All good"
+      title={`All ${data.roster.length} client${data.roster.length === 1 ? "" : "s"} on track`}
+      body="No requests or alerts right now. A good time to plan tomorrow."
+      actionLabel="Plan Tomorrow"
+      onAction={onPlan}
+    />
+  );
+}
+
+/** First-day guide for a coach with no clients yet, instead of a wall of zeros. */
+function CoachGettingStartedCard() {
+  const router = useRouter();
+  const steps: { icon: keyof typeof Ionicons.glyphMap; title: string; body: string; onPress: () => void }[] = [
+    {
+      icon: "person-add-outline",
+      title: "Add your first client",
+      body: "Create their account, or link one by email.",
+      onPress: () => router.push("/coach/athletes/new" as never),
+    },
+    {
+      icon: "barbell-outline",
+      title: "Build a workout template",
+      body: "Reuse it for every client you coach.",
+      onPress: () => router.push({ pathname: "/coach/plan/workout-template", params: { kind: "workout" } } as never),
+    },
+    {
+      icon: "calendar-outline",
+      title: "Set your availability",
+      body: "So clients can book video sessions with you.",
+      onPress: () => router.push("/coach/profile" as never),
+    },
+  ];
+  return (
+    <AppCard>
+      <Text style={styles.blueTitle}>Welcome to Fitora</Text>
+      <Text style={styles.cardTitle}>Get set up in 3 steps</Text>
+      {steps.map((step, index) => (
+        <View key={step.title}>
+          <Pressable onPress={step.onPress} style={({ pressed }) => [styles.setupRow, pressed ? { opacity: 0.75 } : null]} accessibilityRole="button">
+            <IconTile icon={step.icon} size={40} />
+            <View style={{ flex: 1, minWidth: 0 }}>
+              <Text style={styles.setupTitle}>{step.title}</Text>
+              <Text style={styles.muted}>{step.body}</Text>
+            </View>
+            <Ionicons name="chevron-forward" size={20} color={colors.inkFaint} />
+          </Pressable>
+          {index < steps.length - 1 ? <Divider /> : null}
+        </View>
+      ))}
+    </AppCard>
+  );
+}
+
+/** Every pending booking request, so a coach can act on more than just the next session. */
+function SessionRequestsCard({
+  sessions,
+  today,
+  onSessionUpdate,
+}: {
+  sessions: CoachSession[];
+  /** YYYY-MM-DD; requests that ended before today are stale and hidden. */
+  today: string;
+  onSessionUpdate: (sessionId: string, patch: Partial<CoachSession>) => void;
+}) {
+  const [busy, setBusy] = useState<string | null>(null);
+  const [message, setMessage] = useState<{ kind: "ok" | "error"; text: string } | null>(null);
+  const requests = useMemo(
+    () =>
+      sessions
+        .filter((session) => session.status === "requested" && session.scheduledEnd >= today)
+        .sort((a, b) => a.scheduledStart.localeCompare(b.scheduledStart)),
+    [sessions, today]
+  );
+  if (!requests.length && !message) return null;
+
+  async function act(session: CoachSession, action: "confirm" | "cancel") {
+    setBusy(`${action}:${session.id}`);
+    setMessage(null);
+    try {
+      const res = await apiFetch(`/api/coach/sessions/${session.id}/${action}`, {
+        method: "POST",
+        body: action === "cancel" ? JSON.stringify({ note: "Declined by coach" }) : undefined,
+      });
+      const json = (await res.json().catch(() => ({}))) as { error?: string };
+      if (!res.ok) {
+        errorFeedback();
+        setMessage({
+          kind: "error",
+          text:
+            json.error === "relationship_ended"
+              ? "This athlete is no longer your client."
+              : json.error === "invalid_transition"
+                ? "This request was already handled. Pull to refresh."
+                : `Could not ${action === "confirm" ? "confirm" : "decline"} this request.`,
+        });
+        return;
+      }
+      onSessionUpdate(session.id, { status: action === "confirm" ? "confirmed" : "cancelled" });
+      setMessage({ kind: "ok", text: action === "confirm" ? `Confirmed ${session.athleteName || "the session"}.` : "Request declined." });
+      if (action === "confirm") celebrate({ title: "Session confirmed", body: `${session.athleteName || "Your client"} has been notified.` });
+    } catch {
+      setMessage({ kind: "error", text: "Network error. Please try again." });
+    } finally {
+      setBusy(null);
+    }
+  }
+
+  return (
+    <AppCard>
+      <SectionHeader title={`Session Requests${requests.length ? ` - ${requests.length}` : ""}`} />
+      {requests.map((session, index) => (
+        <View key={session.id}>
+          <View style={styles.requestRow}>
+            <View style={{ flex: 1, minWidth: 0 }}>
+              <Text style={styles.cardTitle} numberOfLines={1}>{session.athleteName || "Client"}</Text>
+              <Text style={styles.muted} numberOfLines={1}>{titleCase(session.type)}</Text>
+              <Text style={styles.muted} numberOfLines={1}>
+                {new Date(session.scheduledStart).toLocaleString(undefined, { weekday: "short", month: "short", day: "numeric", hour: "numeric", minute: "2-digit" })}
+              </Text>
+            </View>
+          </View>
+          <View style={styles.actionRow}>
+            <ActionButton
+              label={busy === `confirm:${session.id}` ? "Confirming..." : "Confirm"}
+              variant="filled"
+              disabled={Boolean(busy)}
+              onPress={() => void act(session, "confirm")}
+            />
+            <ActionButton
+              label={busy === `cancel:${session.id}` ? "Declining..." : "Decline"}
+              disabled={Boolean(busy)}
+              onPress={() => void act(session, "cancel")}
+              style={styles.cancelButton}
+              textStyle={styles.cancelButtonText}
+            />
+          </View>
+          {index < requests.length - 1 ? <Divider /> : null}
+        </View>
+      ))}
+      {message ? <Text style={message.kind === "ok" ? styles.successText : styles.errorText}>{message.text}</Text> : null}
+    </AppCard>
   );
 }
 
@@ -485,7 +751,7 @@ function Divider() {
 const styles = StyleSheet.create({
   cardTitle: { color: colors.ink, fontSize: 15, lineHeight: 19, fontWeight: "900" },
   blueTitle: { color: colors.primary, fontSize: 14, lineHeight: 18, fontWeight: "900" },
-  muted: { color: colors.inkMuted, fontSize: 11, lineHeight: 15 },
+  muted: { color: colors.inkMuted, fontSize: 12, lineHeight: 16 },
   sessionHead: { flexDirection: "row", alignItems: "center", gap: 10 },
   timeChip: {
     alignSelf: "flex-start",
@@ -493,8 +759,8 @@ const styles = StyleSheet.create({
     borderRadius: 8,
     backgroundColor: colors.warnSoft,
     color: "#b45309",
-    fontSize: 10,
-    lineHeight: 14,
+    fontSize: 12,
+    lineHeight: 16,
     fontWeight: "800",
     paddingHorizontal: 8,
     paddingVertical: 3,
@@ -508,11 +774,14 @@ const styles = StyleSheet.create({
   reviewButtonText: { color: colors.primary, fontSize: 13, fontWeight: "900" },
   quickTitleRow: { flexDirection: "row", alignItems: "center", gap: 10 },
   activityRow: { minHeight: 42, flexDirection: "row", alignItems: "center", gap: 9 },
-  timeText: { width: 48, color: colors.inkMuted, fontSize: 11, fontWeight: "700" },
+  timeText: { width: 48, color: colors.inkMuted, fontSize: 12, fontWeight: "700" },
   activityText: { flex: 1, color: colors.ink, fontSize: 12, lineHeight: 16, fontWeight: "700" },
+  setupRow: { flexDirection: "row", alignItems: "center", gap: 12, paddingVertical: 10 },
+  setupTitle: { color: colors.ink, fontSize: 15, fontWeight: "800" },
+  requestRow: { flexDirection: "row", alignItems: "center", gap: 10, paddingVertical: 6 },
   sessionPanel: { marginTop: 10, borderTopWidth: 1, borderTopColor: colors.line, paddingTop: 9, gap: 8 },
   sessionDivider: { height: 1, backgroundColor: colors.line, marginVertical: 2 },
-  formLabel: { color: colors.inkMuted, fontSize: 11, fontWeight: "800", textTransform: "uppercase", letterSpacing: 0.3 },
+  formLabel: { color: colors.inkMuted, fontSize: 12, fontWeight: "800", textTransform: "uppercase", letterSpacing: 0.3 },
   input: {
     minHeight: 40,
     borderRadius: 10,

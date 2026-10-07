@@ -141,7 +141,7 @@ const styles = StyleSheet.create({
     paddingBottom: 2,
   },
   tableTitle: {
-    fontSize: 9,
+    fontSize: 12,
     fontWeight: "800",
     letterSpacing: 1,
     textTransform: "uppercase",
@@ -159,9 +159,9 @@ const styles = StyleSheet.create({
   headerRow: { paddingTop: 6, paddingBottom: 4 },
   rowDivider: { borderTopWidth: 1, borderTopColor: colors.line },
   cellName: { flex: 2, minWidth: 0 },
-  cell: { flex: 1, fontSize: 10, color: colors.inkMuted },
-  cellWide: { flex: 1.2, fontSize: 10, color: colors.inkMuted },
-  headerText: { fontSize: 9, fontWeight: "800", color: colors.inkFaint, textTransform: "uppercase" },
-  rowName: { fontSize: 11, fontWeight: "800", color: colors.ink },
-  rowNotes: { marginTop: 1, fontSize: 9, color: colors.inkFaint },
+  cell: { flex: 1, fontSize: 12, color: colors.inkMuted },
+  cellWide: { flex: 1.2, fontSize: 12, color: colors.inkMuted },
+  headerText: { fontSize: 12, fontWeight: "800", color: colors.inkFaint, textTransform: "uppercase" },
+  rowName: { fontSize: 12, fontWeight: "800", color: colors.ink },
+  rowNotes: { marginTop: 1, fontSize: 12, color: colors.inkFaint },
 });

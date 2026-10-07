@@ -1,15 +1,14 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { ActivityIndicator, Pressable, RefreshControl, ScrollView, StyleSheet, View } from "react-native";
+import { Pressable, RefreshControl, ScrollView, StyleSheet, View } from "react-native";
 import { Text } from "../components/AppText";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { useRouter } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
 import { apiFetch, apiJson } from "../lib/api";
 import { useAuth } from "../lib/auth";
-import { ROLE_THEMES, colors, radius, type RoleTheme } from "../lib/theme";
+import { ROLE_THEMES, colors, layout, type RoleTheme } from "../lib/theme";
 import { dashboardPathForRole } from "../lib/roles";
-import { Card, Muted } from "../components/ui";
-import { ScreenHeader } from "../components/ScreenHeader";
+import { BackHeader, EmptyState, LoadingState } from "../components/fitora";
 import { fireMascotReaction } from "../lib/tour/reactions";
 
 // Routes that actually exist in the mobile app. Notification `link`s are
@@ -147,57 +146,50 @@ export default function Notifications() {
   return (
     <SafeAreaView style={styles.safe}>
       <ScrollView contentContainerStyle={styles.content} refreshControl={<RefreshControl refreshing={loading} onRefresh={load} tintColor={accent} />}>
-        <ScreenHeader
+        <BackHeader
           title="Notifications"
-          accent={accent}
-          roleLabel={theme.label}
           subtitle={data && data.unreadCount > 0 ? `${data.unreadCount} unread` : "You're all caught up"}
-          headerActions={
-            data && data.unreadCount > 0 ? (
-              <Pressable onPress={markAll} hitSlop={8} style={styles.markAllButton}>
-                <Text style={[styles.markAll, { color: accent }]}>Mark all read</Text>
-              </Pressable>
-            ) : null
-          }
+          onBack={() => (router.canGoBack() ? router.back() : router.push(dashboardPathForRole(user?.role ?? "") as never))}
+          actionLabel={data && data.unreadCount > 0 ? "Mark all read" : undefined}
+          onAction={data && data.unreadCount > 0 ? markAll : undefined}
         />
 
-        <Pressable onPress={() => (router.canGoBack() ? router.back() : router.push(dashboardPathForRole(user?.role ?? "") as never))} style={styles.backButton} hitSlop={10}>
-          <Ionicons name="arrow-back" size={15} color={colors.inkMuted} />
-          <Text style={styles.backText}>Back</Text>
-        </Pressable>
-
         {loading && !data ? (
-          <ActivityIndicator color={accent} style={{ marginTop: 40 }} />
+          <LoadingState variant="inline" label="Loading notifications..." />
         ) : data && data.notifications.length > 0 ? (
-          <View style={{ gap: 10 }}>
+          <View style={styles.list}>
             {data.notifications.map((n) => {
               const unread = !n.read && !n.readAt;
               return (
-                <Pressable key={n.id} onPress={() => openNotification(n)}>
-                  <Card style={[styles.item, unread ? { borderColor: accent + "66" } : null]}>
+                <Pressable
+                  key={n.id}
+                  onPress={() => openNotification(n)}
+                  accessibilityRole="button"
+                  accessibilityLabel={`${unread ? "Unread. " : ""}${n.title}`}
+                  style={({ pressed }) => [styles.item, unread ? styles.itemUnread : null, pressed ? { opacity: 0.8 } : null]}
+                >
+                  <View style={[styles.itemIcon, n.priority === "high" ? { backgroundColor: colors.badSoft } : null]}>
+                    <Ionicons
+                      name={n.priority === "high" ? "alert-circle-outline" : n.type === "message" ? "chatbubble-outline" : "notifications-outline"}
+                      size={19}
+                      color={n.priority === "high" ? colors.bad : colors.primary}
+                    />
+                  </View>
+                  <View style={styles.itemCopy}>
                     <View style={styles.itemHead}>
-                      {unread ? <View style={[styles.dot, { backgroundColor: accent }]} /> : null}
-                      {n.priority === "high" ? (
-                        <View style={[styles.pri, { backgroundColor: colors.bad + "1e" }]}>
-                          <Text style={[styles.priText, { color: colors.bad }]}>URGENT</Text>
-                        </View>
-                      ) : null}
-                      <Text style={[styles.itemTitle, unread ? { color: colors.ink } : { color: colors.inkMuted }]} numberOfLines={1}>
-                        {n.title}
-                      </Text>
+                      <Text style={[styles.itemTitle, unread ? null : { color: colors.inkMuted }]} numberOfLines={1}>{n.title}</Text>
                       <Text style={styles.time}>{timeAgo(n.createdAt)}</Text>
                     </View>
-                    {n.body ? <Text style={styles.body}>{n.body}</Text> : null}
-                  </Card>
+                    {n.priority === "high" ? <Text style={styles.priText}>Urgent</Text> : null}
+                    {n.body ? <Text style={styles.body} numberOfLines={3}>{n.body}</Text> : null}
+                  </View>
+                  {unread ? <View style={styles.dot} /> : null}
                 </Pressable>
               );
             })}
           </View>
         ) : (
-          <Card style={{ marginTop: 8 }}>
-            <Text style={styles.empty}>You’re all caught up.</Text>
-            <Muted style={{ marginTop: 4 }}>No notifications right now.</Muted>
-          </Card>
+          <EmptyState icon="notifications-outline" title="You're all caught up" body="New reminders, messages and updates will show up here." />
         )}
       </ScrollView>
     </SafeAreaView>
@@ -206,30 +198,16 @@ export default function Notifications() {
 
 const styles = StyleSheet.create({
   safe: { flex: 1, backgroundColor: colors.surface },
-  content: { padding: 20, paddingTop: 12, paddingBottom: 32 },
-  markAllButton: { minHeight: 34, justifyContent: "center" },
-  markAll: { fontSize: 13, fontWeight: "700" },
-  backButton: {
-    alignSelf: "flex-start",
-    height: 38,
-    borderRadius: radius.sm,
-    borderWidth: 1,
-    borderColor: colors.line,
-    backgroundColor: colors.surfaceRaised,
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 6,
-    paddingHorizontal: 12,
-    marginBottom: 14,
-  },
-  backText: { color: colors.inkMuted, fontSize: 12, fontWeight: "800" },
-  item: { gap: 6 },
+  content: { paddingHorizontal: layout.gutter, paddingTop: 4, paddingBottom: 32, gap: layout.sectionGap },
+  list: { gap: 8 },
+  item: { flexDirection: "row", alignItems: "flex-start", gap: 12, padding: 14, borderRadius: 16, borderWidth: 1, borderColor: "#e1ece9", backgroundColor: colors.surfaceRaised },
+  itemUnread: { backgroundColor: "#f3fbf9", borderColor: colors.primary + "55" },
+  itemIcon: { width: 38, height: 38, borderRadius: 19, alignItems: "center", justifyContent: "center", backgroundColor: colors.primarySoft },
+  itemCopy: { flex: 1, minWidth: 0, gap: 3 },
   itemHead: { flexDirection: "row", alignItems: "center", gap: 8 },
-  dot: { height: 8, width: 8, borderRadius: 4 },
-  pri: { borderRadius: 6, paddingHorizontal: 6, paddingVertical: 2 },
-  priText: { fontSize: 9, fontWeight: "800", letterSpacing: 0.5 },
-  itemTitle: { flex: 1, fontSize: 15, fontWeight: "700" },
+  dot: { height: 9, width: 9, borderRadius: 5, marginTop: 6, backgroundColor: colors.energy },
+  priText: { fontSize: 12, fontWeight: "800", color: colors.bad },
+  itemTitle: { flex: 1, fontSize: 15, fontWeight: "800", color: colors.ink },
   time: { fontSize: 12, color: colors.inkFaint },
   body: { fontSize: 14, color: colors.inkMuted, lineHeight: 20 },
-  empty: { fontSize: 15, fontWeight: "700", color: colors.ink },
 });

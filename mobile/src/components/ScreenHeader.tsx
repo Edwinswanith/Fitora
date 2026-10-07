@@ -93,7 +93,7 @@ const styles = StyleSheet.create({
   actionsCompact: { width: "100%" },
   headerActions: { flexDirection: "row", flexWrap: "wrap", alignItems: "center", gap: 8 },
   headerActionsEnd: { justifyContent: "flex-end" },
-  kicker: { fontSize: 11, fontWeight: "800", letterSpacing: 2, textTransform: "uppercase", marginBottom: 4 },
+  kicker: { fontSize: 12, fontWeight: "800", letterSpacing: 2, textTransform: "uppercase", marginBottom: 4 },
   title: { fontSize: 22, fontWeight: "800", letterSpacing: 0 },
   subtitle: { marginTop: 2, color: colors.inkMuted, fontSize: 12, lineHeight: 17 },
   iconBtn: {

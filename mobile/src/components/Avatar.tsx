@@ -38,12 +38,12 @@ type MascotRecipe = {
 
 const MASCOT_RECIPES: Record<string, MascotRecipe> = {
   "male-1": {
-    bg: "#eff6ff",
+    bg: "#f3fbfa",
     skin: "#f2c9a0",
     hair: "#2b2118",
-    jersey: "#2563eb",
+    jersey: "#14b8a6",
     shorts: "#ffffff",
-    sock: "#2563eb",
+    sock: "#14b8a6",
     hairStyle: "short-side",
   },
   "male-2": {
@@ -362,6 +362,6 @@ const styles = StyleSheet.create({
   },
   editorButtonText: { color: colors.primary, fontSize: 13, fontWeight: "800" },
   editorRemoveText: { color: colors.bad, fontSize: 12, fontWeight: "800" },
-  editorLabel: { color: colors.inkMuted, fontSize: 11, fontWeight: "800", textTransform: "uppercase", letterSpacing: 0.3 },
+  editorLabel: { color: colors.inkMuted, fontSize: 12, fontWeight: "800", textTransform: "uppercase", letterSpacing: 0.3 },
   editorError: { color: colors.bad, fontSize: 12, fontWeight: "800" },
 });

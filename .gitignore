@@ -47,3 +47,6 @@ all_env.txt
 !.env.example
 !**/.env.example
 *.local
+
+# Temporary agent worktrees
+.claude/worktrees/

@@ -2,7 +2,7 @@ import { ReactNode, useEffect, useRef, useState } from "react";
 import { ActivityIndicator, Pressable, StyleProp, StyleSheet, TextInput, TextInputProps, View, ViewStyle } from "react-native";
 import { Text } from "./AppText";
 import { Ionicons } from "@expo/vector-icons";
-import { colors, radius } from "../lib/theme";
+import { colors } from "../lib/theme";
 
 export function Card({ children, style }: { children: ReactNode; style?: StyleProp<ViewStyle> }) {
   return <View style={[styles.card, style]}>{children}</View>;
@@ -31,7 +31,7 @@ export function PrimaryButton({
   onPress,
   loading,
   disabled,
-  accent = colors.ink,
+  accent = colors.primary,
   accentInk = "#fff",
   successLabel,
   successDurationMs = 1600,
@@ -105,15 +105,18 @@ export function PrimaryButton({
 }
 
 export function TextField(props: TextInputProps & { isPassword?: boolean }) {
-  const { isPassword, style, ...rest } = props;
+  const { isPassword, style, onFocus, onBlur, ...rest } = props;
   const [show, setShow] = useState(false);
+  const [focused, setFocused] = useState(false);
   return (
     <View style={styles.fieldWrap}>
       <TextInput
         {...rest}
+        onFocus={(e) => { setFocused(true); onFocus?.(e); }}
+        onBlur={(e) => { setFocused(false); onBlur?.(e); }}
         secureTextEntry={isPassword && !show}
         placeholderTextColor={colors.inkFaint}
-        style={[styles.field, isPassword ? { paddingRight: 44 } : null, style as object]}
+        style={[styles.field, focused ? styles.fieldFocused : null, isPassword ? { paddingRight: 44 } : null, style as object]}
       />
       {isPassword ? (
         <Pressable
@@ -132,50 +135,46 @@ export function TextField(props: TextInputProps & { isPassword?: boolean }) {
 export function Banner({ kind, children }: { kind: "error" | "ok"; children: ReactNode }) {
   const c = kind === "error" ? colors.bad : colors.ok;
   return (
-    <View style={[styles.banner, { borderColor: c + "55", backgroundColor: c + "18" }]}>
-      <Text style={{ color: c, fontSize: 14 }}>{children}</Text>
+    <View style={[styles.banner, { borderColor: c + "40", backgroundColor: kind === "error" ? colors.badSoft : colors.okSoft }]} accessibilityRole="alert">
+      <Ionicons name={kind === "error" ? "alert-circle" : "checkmark-circle"} size={18} color={c} />
+      <Text style={[styles.bannerText, { color: c }]}>{children}</Text>
     </View>
   );
 }
 
 const styles = StyleSheet.create({
+  // Matches the AppCard look in components/fitora.tsx so legacy screens sit in the same system.
   card: {
     backgroundColor: colors.surfaceRaised,
-    borderRadius: radius.lg,
+    borderRadius: 16,
     borderWidth: 1,
-    borderColor: colors.line,
-    padding: 16,
-    shadowColor: "#2b251f",
-    shadowOpacity: 0.024,
-    shadowRadius: 26,
-    shadowOffset: { width: 0, height: 8 },
+    borderColor: "#e1ece9",
+    padding: 14,
+    shadowColor: "#0b3a36",
+    shadowOpacity: 0.05,
+    shadowRadius: 12,
+    shadowOffset: { width: 0, height: 4 },
     elevation: 1,
   },
-  label: {
-    fontSize: 11,
-    fontWeight: "700",
-    letterSpacing: 1,
-    textTransform: "uppercase",
-    color: colors.inkMuted,
-  },
-  h1: { fontSize: 34, fontWeight: "800", color: colors.ink, letterSpacing: -0.5 },
+  label: { fontSize: 13, fontWeight: "700", color: colors.inkMuted },
+  h1: { fontSize: 28, lineHeight: 34, fontWeight: "900", color: colors.ink },
   muted: { fontSize: 14, color: colors.inkMuted, lineHeight: 20 },
   btn: {
     height: 52,
-    borderRadius: radius.md,
+    borderRadius: 14,
     alignItems: "center",
     justifyContent: "center",
     flexDirection: "row",
   },
   btnRow: { flexDirection: "row", alignItems: "center", gap: 8 },
-  btnText: { fontSize: 16, fontWeight: "700" },
+  btnText: { fontSize: 16, fontWeight: "800" },
   fieldWrap: { position: "relative", justifyContent: "center" },
   field: {
     height: 52,
-    borderRadius: radius.md,
+    borderRadius: 12,
     borderWidth: 1,
     borderColor: colors.line,
-    backgroundColor: colors.surfaceInset,
+    backgroundColor: colors.surfaceRaised,
     paddingHorizontal: 14,
     fontSize: 16,
     color: colors.ink,
@@ -183,6 +182,8 @@ const styles = StyleSheet.create({
     fontWeight: "normal",
     includeFontPadding: false,
   },
+  fieldFocused: { borderColor: colors.primary, borderWidth: 1.5 },
   eye: { position: "absolute", right: 12, height: 52, width: 32, alignItems: "center", justifyContent: "center" },
-  banner: { borderWidth: 1, borderRadius: radius.md, paddingHorizontal: 12, paddingVertical: 10 },
+  banner: { flexDirection: "row", alignItems: "flex-start", gap: 8, borderWidth: 1, borderRadius: 12, paddingHorizontal: 12, paddingVertical: 10 },
+  bannerText: { flex: 1, fontSize: 14, lineHeight: 20, fontWeight: "600" },
 });

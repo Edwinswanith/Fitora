@@ -4,7 +4,8 @@ import {
   googleLogin as apiGoogleLogin,
   appleLogin as apiAppleLogin,
   registerAthlete as apiRegisterAthlete,
-  loadSession,
+  loadStoredSession,
+  validateSession,
   logout as apiLogout,
   deleteAccount as apiDeleteAccount,
   type StoredUser,
@@ -12,6 +13,12 @@ import {
 import { registerPushToken, deregisterPushToken, subscribeToPushTokenUpdates } from "./push";
 import type { Role } from "./roles";
 import { loadVoiceLanguagePreference, setCachedVoiceLanguage } from "./voiceLanguage";
+import { clearDataCache, hydrateDataCache } from "./fitoraData";
+
+/** Who owns the on-device data cache; email covers older stored users without an id. */
+function cacheOwnerFor(user: StoredUser): string {
+  return user.id || user.email;
+}
 
 type Status = "loading" | "authed" | "anon";
 
@@ -39,14 +46,35 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   useEffect(() => {
     let active = true;
-    loadSession()
-      .then((u) => {
+    // Open instantly from what's saved on the device (local reads only), then
+    // confirm with the server in the background. Only an explicit server
+    // rejection signs the user out; being offline keeps the saved session.
+    (async () => {
+      const stored = await loadStoredSession();
+      if (!active) return;
+      if (!stored) {
+        setStatus("anon");
+        return;
+      }
+      await hydrateDataCache(cacheOwnerFor(stored));
+      if (!active) return;
+      setUserState(stored);
+      setStatus("authed");
+      registerPushToken();
+
+      const check = await validateSession();
+      if (!active) return;
+      if (check.status === "valid") {
+        setUserState(check.user);
+      } else if (check.status === "invalid") {
+        await clearDataCache();
         if (!active) return;
-        setUserState(u);
-        setStatus(u ? "authed" : "anon");
-        if (u) registerPushToken();
-      })
-      .catch(() => active && setStatus("anon"));
+        setUserState(null);
+        setStatus("anon");
+      }
+    })().catch(() => {
+      if (active) setStatus("anon");
+    });
     return () => {
       active = false;
     };
@@ -69,6 +97,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const signIn = useCallback(async (email: string, password: string) => {
     const result = await apiLogin(email, password);
     if (result.ok) {
+      await hydrateDataCache(cacheOwnerFor(result.user));
       setUserState(result.user);
       setStatus("authed");
       registerPushToken();
@@ -79,6 +108,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const signInWithGoogle = useCallback(async (idToken: string, requestedRole: Role) => {
     const result = await apiGoogleLogin(idToken, requestedRole);
     if (result.ok) {
+      await hydrateDataCache(cacheOwnerFor(result.user));
       setUserState(result.user);
       setStatus("authed");
       registerPushToken();
@@ -89,6 +119,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const signInWithApple = useCallback(async (identityToken: string, requestedRole: Role, fullName?: string) => {
     const result = await apiAppleLogin(identityToken, requestedRole, fullName);
     if (result.ok) {
+      await hydrateDataCache(cacheOwnerFor(result.user));
       setUserState(result.user);
       setStatus("authed");
       registerPushToken();
@@ -99,6 +130,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const signUp = useCallback(async (fields: Parameters<typeof apiRegisterAthlete>[0]) => {
     const result = await apiRegisterAthlete(fields);
     if (result.ok) {
+      await hydrateDataCache(cacheOwnerFor(result.user));
       setUserState(result.user);
       setStatus("authed");
       registerPushToken();
@@ -109,6 +141,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const signOut = useCallback(async () => {
     await deregisterPushToken();
     await apiLogout();
+    await clearDataCache();
     setUserState(null);
     setStatus("anon");
   }, []);
@@ -116,6 +149,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const deleteAccount = useCallback(async () => {
     const result = await apiDeleteAccount();
     if (result.ok) {
+      await clearDataCache();
       setUserState(null);
       setStatus("anon");
     }

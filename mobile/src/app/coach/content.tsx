@@ -10,6 +10,7 @@ import {
   AppCard,
   EmptyState,
   ErrorState,
+  HeroCard,
   IconTile,
   LoadingState,
   PrimaryAppBar,
@@ -250,6 +251,27 @@ export default function CoachContent() {
 
       {tab === "library" ? (
         <>
+          {activeVideos.length === 0 ? (
+            <HeroCard
+              icon="videocam-outline"
+              eyebrow="Content library"
+              title="Upload your first video"
+              body="Record a form tip or a full workout once, then share it with every client who needs it."
+              actionLabel="Upload Video"
+              onAction={pickVideo}
+            />
+          ) : (
+            <HeroCard
+              calm
+              icon="play-circle-outline"
+              eyebrow="Content library"
+              title={`${activeVideos.length} video${activeVideos.length === 1 ? "" : "s"} ready to share`}
+              body={recent ? `Latest: ${recent.title}` : undefined}
+              actionLabel="Upload Video"
+              onAction={pickVideo}
+            />
+          )}
+
           <View style={styles.filterRow}>
             {CATEGORY_FILTERS.map((item) => (
               <Pressable
@@ -262,7 +284,7 @@ export default function CoachContent() {
             ))}
           </View>
 
-          <SectionHeader title="Recently Added" />
+          {recent ? <SectionHeader title="Recently Added" /> : null}
           {recent ? (
             <FeaturedVideo
               video={recent}
@@ -274,7 +296,7 @@ export default function CoachContent() {
               onDelete={() => deleteVideo(recent)}
               onPlay={() => setPlayingVideo(recent)}
             />
-          ) : <EmptyState title="No videos yet" body="Upload your first coaching video to build a reusable library." icon="videocam-outline" />}
+          ) : null}
 
           <SectionHeader title="Video Library" action={category !== "all" ? "Clear filter" : undefined} onAction={() => setCategory("all")} />
           <AppCard>
@@ -309,9 +331,10 @@ export default function CoachContent() {
 
           <SectionHeader title="Quick Actions" />
           <View style={styles.actionRow}>
-            <ActionButton label="Upload Video" icon="cloud-upload-outline" onPress={pickVideo} />
-            <ActionButton label="Assign Video" icon="people-outline" onPress={() => setAction("assign")} />
-            <ActionButton label="Add to Workout" icon="barbell-outline" onPress={() => setAction("workout")} />
+            {/* Short labels: three buttons share one row on a 360-390dp phone. */}
+            <ActionButton label="Upload" icon="cloud-upload-outline" onPress={pickVideo} />
+            <ActionButton label="Assign" icon="people-outline" onPress={() => setAction("assign")} />
+            <ActionButton label="To Workout" icon="barbell-outline" onPress={() => setAction("workout")} />
           </View>
         </>
       ) : null}
@@ -814,12 +837,12 @@ const styles = StyleSheet.create({
     backgroundColor: colors.surfaceRaised,
   },
   filterChipActive: { backgroundColor: colors.primary, borderColor: colors.primary },
-  filterText: { color: colors.ink, fontSize: 11, fontWeight: "800" },
+  filterText: { color: colors.ink, fontSize: 12, fontWeight: "800" },
   filterTextActive: { color: "#fff" },
   uploadCard: { gap: 12 },
   uploadHeader: { flexDirection: "row", alignItems: "center", gap: 12 },
   closeText: { color: colors.primary, fontSize: 13, fontWeight: "900" },
-  formLabel: { color: colors.inkMuted, fontSize: 11, lineHeight: 15, fontWeight: "900", textTransform: "uppercase" },
+  formLabel: { color: colors.inkMuted, fontSize: 12, lineHeight: 16, fontWeight: "900", textTransform: "uppercase" },
   choiceStack: { gap: 6 },
   choiceRow: { minHeight: 45, borderRadius: 10, borderWidth: 1, borderColor: colors.line, backgroundColor: colors.surfaceInset, paddingHorizontal: 9, flexDirection: "row", alignItems: "center", gap: 9 },
   choiceRowActive: { borderColor: colors.primary, backgroundColor: colors.primarySoft },
@@ -828,7 +851,7 @@ const styles = StyleSheet.create({
   checkbox: { width: 18, height: 18, borderRadius: 5, borderWidth: 2, borderColor: colors.inkFaint, alignItems: "center", justifyContent: "center" },
   checkboxOn: { borderColor: colors.primary, backgroundColor: colors.primary },
   choiceTitle: { color: colors.ink, fontSize: 13, lineHeight: 17, fontWeight: "900" },
-  choiceSub: { color: colors.inkMuted, fontSize: 11, lineHeight: 15 },
+  choiceSub: { color: colors.inkMuted, fontSize: 12, lineHeight: 16 },
   input: {
     minHeight: 50,
     borderRadius: radius.md,
@@ -861,7 +884,7 @@ const styles = StyleSheet.create({
   analyticsGrid: { flexDirection: "row", gap: 10 },
   contentStat: { flex: 1, alignItems: "center", gap: 5 },
   statValue: { color: colors.ink, fontSize: 20, lineHeight: 25, fontWeight: "900" },
-  statLabel: { color: colors.inkMuted, fontSize: 11, lineHeight: 15, textAlign: "center" },
+  statLabel: { color: colors.inkMuted, fontSize: 12, lineHeight: 16, textAlign: "center" },
   actionRow: { flexDirection: "row", gap: 10 },
   uploadButton: {
     flex: 1,

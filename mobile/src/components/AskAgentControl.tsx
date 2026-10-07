@@ -13,6 +13,7 @@ export function AskAgentControl({
   accent = "#ffad45",
   accentInk = "#1a0c00",
   labeled = false,
+  hidden = false,
   onCommand,
   tourTargetId,
   onInputOpenChange,
@@ -21,6 +22,11 @@ export function AskAgentControl({
   accent?: string;
   accentInk?: string;
   labeled?: boolean;
+  /**
+   * Hide the idle button (see lib/askAgentVisibility.ts). Ignored while a
+   * conversation, typed command or result is in progress so it's never cut off.
+   */
+  hidden?: boolean;
   onCommand: (text: string) => Promise<string | void> | string | void;
   /** Anchor id for the guided app tour (see lib/tour/steps.ts) — spotlighted when this step is active. */
   tourTargetId?: string;
@@ -174,6 +180,9 @@ export function AskAgentControl({
     ? busy ? "Executing" : null
     : speaking ? "Speaking" : busy ? "Working" : listening ? "Listening" : active ? "Tap to stop" : null;
 
+  const idle = !active && !listening && !speaking && !busy;
+  if (hidden && idle && !inputOpen) return null;
+
   return (
     <>
       {!inputOpen ? (
@@ -213,7 +222,7 @@ export function AskAgentControl({
               labeled ? styles.fabLabeledShell : { backgroundColor: modeColor },
               active || listening || speaking ? styles.fabActive : null,
               pressed ? { transform: [{ scale: 0.98 }] } : null,
-              highlightStyle ? [highlightStyle, { borderRadius: compactLabeled ? 24 : labeled ? 27 : 28 }] : null,
+              highlightStyle ? [highlightStyle, { borderRadius: compactLabeled ? 24 : labeled ? 27 : 24 }] : null,
             ]}
             accessibilityRole="button"
             accessibilityLabel="Ask agent"
@@ -265,21 +274,23 @@ export function AskAgentControl({
 }
 
 const styles = StyleSheet.create({
+  // 48dp: still a comfortable touch target, but covers less content than the
+  // previous 56dp button.
   fab: {
     position: "absolute",
     right: 16,
     bottom: 84,
     zIndex: 2000,
     elevation: 40,
-    height: 56,
-    width: 56,
+    height: 48,
+    width: 48,
     alignItems: "center",
     justifyContent: "center",
-    borderRadius: 28,
-    shadowColor: "#0f172a",
-    shadowOpacity: 0.18,
-    shadowRadius: 18,
-    shadowOffset: { width: 0, height: 10 },
+    borderRadius: 24,
+    shadowColor: "#10201e",
+    shadowOpacity: 0.14,
+    shadowRadius: 12,
+    shadowOffset: { width: 0, height: 6 },
   },
   fabLabeled: {
     position: "absolute",
@@ -297,7 +308,7 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
     gap: 8,
-    shadowColor: "#0f172a",
+    shadowColor: "#10201e",
     shadowOpacity: 0.12,
     shadowRadius: 16,
     shadowOffset: { width: 0, height: 8 },
@@ -318,7 +329,7 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
     gap: 7,
-    shadowColor: "#0f172a",
+    shadowColor: "#10201e",
     shadowOpacity: 0.12,
     shadowRadius: 14,
     shadowOffset: { width: 0, height: 7 },
@@ -353,8 +364,8 @@ const styles = StyleSheet.create({
   },
   executeFabWrap: {
     position: "absolute",
-    right: 20,
-    bottom: 150,
+    right: 16,
+    bottom: 142,
     zIndex: 2002,
     elevation: 42,
   },
@@ -367,7 +378,7 @@ const styles = StyleSheet.create({
     backgroundColor: "#16a34a",
     borderWidth: 1,
     borderColor: "#12813c",
-    shadowColor: "#0f172a",
+    shadowColor: "#10201e",
     shadowOpacity: 0.18,
     shadowRadius: 14,
     shadowOffset: { width: 0, height: 8 },
@@ -382,9 +393,9 @@ const styles = StyleSheet.create({
     bottom: 84,
     zIndex: 1999,
     elevation: 39,
-    height: 56,
-    width: 56,
-    borderRadius: 28,
+    height: 48,
+    width: 48,
+    borderRadius: 24,
   },
   glowLabeled: {
     position: "absolute",
@@ -420,12 +431,12 @@ const styles = StyleSheet.create({
     backgroundColor: colors.surfaceRaised,
     borderWidth: 1,
     borderColor: colors.line,
-    shadowColor: "#0f172a",
+    shadowColor: "#10201e",
     shadowOpacity: 0.12,
     shadowRadius: 12,
     shadowOffset: { width: 0, height: 6 },
   },
-  statusText: { color: colors.inkMuted, fontSize: 11, fontWeight: "900" },
+  statusText: { color: colors.inkMuted, fontSize: 12, fontWeight: "900" },
   inputOverlay: {
     position: "absolute",
     top: 0,
@@ -447,7 +458,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 20,
     color: colors.ink,
     fontSize: 15,
-    shadowColor: "#0f172a",
+    shadowColor: "#10201e",
     shadowOpacity: 0.12,
     shadowRadius: 18,
     shadowOffset: { width: 0, height: 10 },

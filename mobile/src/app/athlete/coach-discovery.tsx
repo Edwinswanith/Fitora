@@ -7,6 +7,7 @@ import { Avatar } from "../../components/Avatar";
 import {
   AlertBanner,
   AppCard,
+  BackHeader,
   EmptyState,
   ErrorState,
   LoadingState,
@@ -98,14 +99,7 @@ export default function CoachDiscovery() {
 
   return (
     <ScreenContainer refreshing={state.refreshing} onRefresh={state.reload}>
-      <View style={styles.headerRow}>
-        <Pressable onPress={() => router.back()} style={styles.backButton} hitSlop={10}>
-          <Ionicons name="arrow-back" size={24} color={colors.ink} />
-        </Pressable>
-        <Text style={styles.title}>Find a Coach</Text>
-        <View style={styles.backButton} />
-      </View>
-      <Text style={styles.tagline}>{"Match your goal to a coach's plan, price, and availability."}</Text>
+      <BackHeader title="Find a Coach" subtitle="Match your goal to a coach's plan, price and availability." />
 
       {state.data?.currentCoachName ? (
         <AlertBanner
@@ -240,10 +234,6 @@ function CoachCard({ coach, onPress }: { coach: MarketplaceCoach; onPress: () =>
 }
 
 const styles = StyleSheet.create({
-  headerRow: { minHeight: 58, flexDirection: "row", alignItems: "center", justifyContent: "space-between" },
-  backButton: { height: 42, width: 42, borderRadius: 21, alignItems: "center", justifyContent: "center" },
-  title: { color: colors.ink, fontSize: 26, lineHeight: 32, fontWeight: "900" },
-  tagline: { color: colors.inkMuted, fontSize: 14, lineHeight: 19, marginTop: -6 },
   searchBox: {
     minHeight: 52,
     borderRadius: radius.lg,
@@ -288,12 +278,12 @@ const styles = StyleSheet.create({
   nameRow: { flexDirection: "row", alignItems: "center", gap: 6 },
   coachName: { flex: 1, color: colors.ink, fontSize: 18, lineHeight: 23, fontWeight: "900" },
   muted: { color: colors.inkMuted, fontSize: 13, lineHeight: 18 },
-  mutedSmall: { color: colors.inkMuted, fontSize: 11, lineHeight: 15 },
+  mutedSmall: { color: colors.inkMuted, fontSize: 12, lineHeight: 16 },
   ratingRow: { flexDirection: "row", alignItems: "center", gap: 6, marginTop: 4, flexWrap: "wrap" },
   rating: { color: colors.ink, fontSize: 13, fontWeight: "800" },
   availableDot: { flexDirection: "row", alignItems: "center", gap: 4, marginLeft: 4 },
   dot: { width: 6, height: 6, borderRadius: 3, backgroundColor: colors.ok },
-  availableText: { color: colors.ok, fontSize: 11, fontWeight: "800" },
+  availableText: { color: colors.ok, fontSize: 12, fontWeight: "800" },
   tagWrap: { flexDirection: "row", flexWrap: "wrap", gap: 7, marginTop: 11 },
   bottomRow: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", marginTop: 13 },
   price: { color: colors.ink, fontSize: 16, lineHeight: 20, fontWeight: "900" },

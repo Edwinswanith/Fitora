@@ -12,7 +12,7 @@ import {
   closeSessionAndReleaseLocks,
   BookingConflictError,
 } from "./bookingConcurrency";
-import { getVideoProvider, roomNameForSession, type ParticipantRole, type IssuedToken } from "./videoProvider";
+import { getVideoProvider, roomNameForSession, videoAvailable, type ParticipantRole, type IssuedToken } from "./videoProvider";
 import { evaluateAndDispatch } from "./notificationEligibility";
 import { resolveTimezoneForUser } from "./timezone";
 import { categoryForType, type NotificationType } from "../lib/notificationTypes";
@@ -280,6 +280,7 @@ export async function issueJoinToken(
   const windowStartMs = session.scheduledStart.getTime() - JOIN_WINDOW_BEFORE_MIN * 60_000;
   const windowEndMs = session.scheduledEnd.getTime() + JOIN_WINDOW_AFTER_MIN * 60_000;
   if (now < windowStartMs || now > windowEndMs) throw new CoachSessionError(403, "outside_join_window");
+  if (!videoAvailable()) throw new CoachSessionError(503, "video_unavailable");
 
   const provider = getVideoProvider();
   if (!session.videoRoomRef) {

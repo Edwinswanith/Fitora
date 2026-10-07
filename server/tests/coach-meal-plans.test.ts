@@ -198,6 +198,26 @@ describe("Validation: allergy hard-block (only for tagged foods) + non-blocking 
     expect(await PlannedMeal.countDocuments({})).toBe(0);
   });
 
+  test("allergen tag matching is case-insensitive (athlete 'Peanuts' vs coach tag 'peanuts')", async () => {
+    const { coach, profile } = await makeCoachWithAthlete("case-coach", "case-athlete");
+    await AthleteProfile.updateOne({ _id: profile._id }, { $set: { allergies: ["Peanuts"] } });
+    const app = buildApp();
+    const coachToken = `Bearer ${tokenFor(coach._id, "coach")}`;
+    const plan = await request(app).post("/api/coach/meal-plans").set("Authorization", coachToken).send({
+      name: "Peanut Plan",
+      durationDays: 1,
+      days: [{ dayIndex: 0, meals: [{ mealType: "snack", foods: [{ name: "Peanut Bar", quantity: 1, unit: "bar", calories: 200, proteinG: 8, carbsG: 20, fatG: 10, allergenTags: ["peanuts"] }] }] }],
+    });
+
+    const res = await request(app)
+      .post(`/api/coach/athletes/${profile._id}/meal-plan-assignments`)
+      .set("Authorization", coachToken)
+      .send({ mealPlanId: plan.body.mealPlan.id, startDate: "2026-08-14" });
+    expect(res.status).toBe(422);
+    expect(res.body.error).toBe("plan_contains_tagged_allergen");
+    expect(res.body.violatingFoods).toContain("Peanut Bar");
+  });
+
   test("an UNTAGGED food is never auto-blocked, but the athlete's allergy list is still surfaced as a reminder", async () => {
     const { coach, profile } = await makeCoachWithAthlete("untagged-coach", "untagged-athlete");
     await AthleteProfile.updateOne({ _id: profile._id }, { $set: { allergies: ["shellfish"] } });

@@ -4,9 +4,12 @@ import { useRouter } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
 import { Text } from "../components/AppText";
 import { Avatar, AvatarEditorPanel } from "../components/Avatar";
+import { DateField } from "../components/DateTimeField";
+import { todayLocalDate, yearsAgoLocalDate } from "../lib/dateTimeValues";
 import {
   ActionButton,
   AppCard,
+  BackHeader,
   ErrorState,
   IconTile,
   LoadingState,
@@ -18,6 +21,7 @@ import {
 } from "../components/fitora";
 import { apiFetch, changePassword } from "../lib/api";
 import { useAuth } from "../lib/auth";
+import { PRIVACY_POLICY_URL, SUPPORT_URL, openExternal } from "../lib/links";
 import { colors, radius } from "../lib/theme";
 import { useNotificationPreferences, type NotificationCategories } from "../lib/notificationPreferences";
 import {
@@ -37,6 +41,7 @@ const FITNESS_GOALS = ["lose_weight", "maintain_weight", "gain_weight"] as const
 const GOAL_INTENSITIES = ["mild", "moderate", "aggressive"] as const;
 const ACTIVITY_LEVELS = ["sedentary", "light", "moderate", "active", "very_active"] as const;
 const BIOLOGICAL_SEXES = ["male", "female"] as const;
+const DOB_MIN_DATE = "1920-01-01";
 
 const NOTIFICATION_ROWS: { key: keyof NotificationCategories; label: string; icon: keyof typeof Ionicons.glyphMap }[] = [
   { key: "alerts", label: "Risk Alerts", icon: "notifications-outline" },
@@ -149,19 +154,11 @@ function ProfileShell({
   onRefresh: () => void;
   onEditPress: () => void;
 }) {
-  const router = useRouter();
   return (
     <ScreenContainer refreshing={refreshing} onRefresh={onRefresh}>
-      <View style={styles.headerRow}>
-        <Pressable onPress={() => router.back()} hitSlop={10} style={styles.iconButton}>
-          <Ionicons name="arrow-back" size={24} color={colors.ink} />
-        </Pressable>
-        <Text style={styles.pageTitle}>Profile</Text>
-        <Pressable onPress={onEditPress} hitSlop={10}>
-          <Text style={styles.editText}>Edit</Text>
-        </Pressable>
-      </View>
+      <BackHeader title="Profile" actionLabel="Edit" onAction={onEditPress} />
       {children}
+      <SupportCard />
       <SecurityCard />
       <DangerZone />
     </ScreenContainer>
@@ -221,11 +218,11 @@ function AthleteProfileContent({ data, onManageGoal }: { data: AthleteDashboardD
 
       <AppCard>
         <SectionHeader title="Personal" />
-        <SettingsRow icon="scale-outline" label="Weight" value={profile?.weightKg ? `${profile.weightKg} kg` : "Not set"} />
-        <SettingsRow icon="flag-outline" label="Target Weight" value={profile?.targetWeightKg ? `${profile.targetWeightKg} kg` : "Not set"} />
-        <SettingsRow icon="resize-outline" label="Height" value={profile?.heightCm ? `${profile.heightCm} cm` : "Not set"} />
-        <SettingsRow icon="calendar-outline" label="Age" value={profile?.dob ? String(ageFromDob(profile.dob)) : "Not set"} />
-        <SettingsRow icon="pulse-outline" label="Activity Level" value={titleCase(profile?.activityLevel) || "Not set"} />
+        <SettingsRow icon="scale-outline" label="Weight" value={profile?.weightKg ? `${profile.weightKg} kg` : "Not set"} onPress={onManageGoal} />
+        <SettingsRow icon="flag-outline" label="Target Weight" value={profile?.targetWeightKg ? `${profile.targetWeightKg} kg` : "Not set"} onPress={onManageGoal} />
+        <SettingsRow icon="resize-outline" label="Height" value={profile?.heightCm ? `${profile.heightCm} cm` : "Not set"} onPress={onManageGoal} />
+        <SettingsRow icon="calendar-outline" label="Age" value={profile?.dob ? String(ageFromDob(profile.dob)) : "Not set"} onPress={onManageGoal} />
+        <SettingsRow icon="pulse-outline" label="Activity Level" value={titleCase(profile?.activityLevel) || "Not set"} onPress={onManageGoal} />
       </AppCard>
 
       <AppCard>
@@ -262,14 +259,7 @@ function AthleteProfileContent({ data, onManageGoal }: { data: AthleteDashboardD
         </View>
       </AppCard>
 
-      <AppCard>
-        <SectionHeader title="Connected Devices" />
-        <SettingsRow icon="heart-outline" label="Apple Health" value="Not connected" />
-        <SettingsRow icon="watch-outline" label="Wearable" value="Not connected" />
-      </AppCard>
-
       <NotificationCard />
-      <PreferencesCard />
     </>
   );
 }
@@ -311,14 +301,6 @@ function CoachProfileContent({ data }: { data: CoachProfileData }) {
       </AppCard>
 
       <NotificationCard />
-      <PreferencesCard />
-
-      <AppCard>
-        <SectionHeader title="Account" />
-        <SettingsRow icon="lock-closed-outline" label="Account & Security" />
-        <SettingsRow icon="help-circle-outline" label="Help & Support" />
-        <SettingsRow icon="document-text-outline" label="Terms & Privacy" />
-      </AppCard>
     </>
   );
 }
@@ -336,7 +318,11 @@ function AthleteEditForm({
   const [weightKg, setWeightKg] = useState(profile?.weightKg != null ? String(profile.weightKg) : "");
   const [targetWeightKg, setTargetWeightKg] = useState(profile?.targetWeightKg != null ? String(profile.targetWeightKg) : "");
   const [heightCm, setHeightCm] = useState(profile?.heightCm != null ? String(profile.heightCm) : "");
+  // The server stores dob as a calendar date (UTC midnight) and returns it as
+  // "YYYY-MM-DD", so the first 10 chars are the date itself, no tz shift.
   const [dob, setDob] = useState(profile?.dob ? profile.dob.slice(0, 10) : "");
+  // Picker bounds: today (no future birthdays) and, when empty, open around 25 years ago.
+  const [dobBounds] = useState(() => ({ today: todayLocalDate(), defaultDate: yearsAgoLocalDate(25) }));
   const [biologicalSex, setBiologicalSex] = useState(profile?.biologicalSex ?? "");
   const [activityLevel, setActivityLevel] = useState(profile?.activityLevel ?? "");
   const [fitnessGoal, setFitnessGoal] = useState(profile?.fitnessGoal ?? "");
@@ -368,8 +354,8 @@ function AthleteEditForm({
       setError("Height must be a number.");
       return;
     }
-    if (dob.trim() && !/^\d{4}-\d{2}-\d{2}$/.test(dob.trim())) {
-      setError("Date of birth must be in YYYY-MM-DD format.");
+    if (dob && dob > todayLocalDate()) {
+      setError("Date of birth can't be in the future.");
       return;
     }
     setSaving(true);
@@ -436,7 +422,17 @@ function AthleteEditForm({
       <TextInput value={heightCm} onChangeText={setHeightCm} keyboardType="numeric" style={styles.input} placeholder="e.g. 178" placeholderTextColor={colors.inkFaint} />
 
       <Text style={styles.formLabel}>Date of Birth</Text>
-      <TextInput value={dob} onChangeText={setDob} style={styles.input} placeholder="YYYY-MM-DD" placeholderTextColor={colors.inkFaint} />
+      <DateField
+        value={dob}
+        onChange={setDob}
+        accessibilityLabel="Date of birth"
+        placeholder="Select your date of birth"
+        minimumDate={DOB_MIN_DATE}
+        maximumDate={dobBounds.today}
+        initialPickerDate={dobBounds.defaultDate}
+        fieldStyle={styles.dateInput}
+        textStyle={styles.dateInputText}
+      />
 
       <Text style={styles.formLabel}>Biological Sex</Text>
       <ChipPicker options={BIOLOGICAL_SEXES} value={biologicalSex} onChange={setBiologicalSex} />
@@ -573,7 +569,7 @@ function NotificationCard() {
               disabled={disabled}
               onValueChange={(value) => update({ enabled: value || enabled, categories: { [row.key]: value } })}
               trackColor={{ true: colors.primarySoft }}
-              thumbColor={categories[row.key] ? colors.primary : "#f8fafc"}
+              thumbColor={categories[row.key] ? colors.primary : "#f8fcfb"}
             />
           </View>
           {index < NOTIFICATION_ROWS.length - 1 ? <Divider /> : null}
@@ -583,14 +579,12 @@ function NotificationCard() {
   );
 }
 
-function PreferencesCard() {
+function SupportCard() {
   return (
     <AppCard>
-      <SectionHeader title="Preferences" />
-      <SettingsRow icon="resize-outline" label="Units" />
-      <SettingsRow icon="globe-outline" label="Timezone" />
-      <SettingsRow icon="sunny-outline" label="Appearance" />
-      <SettingsRow icon="shield-outline" label="Privacy" />
+      <SectionHeader title="Help & Legal" />
+      <SettingsRow icon="help-circle-outline" label="Help & Support" onPress={() => openExternal(SUPPORT_URL)} />
+      <SettingsRow icon="shield-checkmark-outline" label="Privacy Policy" onPress={() => openExternal(PRIVACY_POLICY_URL)} />
     </AppCard>
   );
 }
@@ -740,9 +734,6 @@ function Divider() {
 }
 
 const styles = StyleSheet.create({
-  headerRow: { minHeight: 58, flexDirection: "row", alignItems: "center", justifyContent: "space-between" },
-  iconButton: { height: 42, width: 42, borderRadius: 21, alignItems: "center", justifyContent: "center" },
-  pageTitle: { color: colors.ink, fontSize: 28, lineHeight: 34, fontWeight: "900" },
   editText: { color: colors.primary, fontSize: 16, fontWeight: "800" },
   identityRow: { flexDirection: "row", alignItems: "center", gap: 15 },
   identityName: { color: colors.ink, fontSize: 22, lineHeight: 28, fontWeight: "900" },
@@ -759,6 +750,9 @@ const styles = StyleSheet.create({
   switchLabel: { flex: 1, color: colors.ink, fontSize: 15, fontWeight: "800" },
   securityHeader: { minHeight: 56, flexDirection: "row", alignItems: "center", gap: 12 },
   passwordForm: { gap: 10, marginTop: 12 },
+  // DateField box/text matched to `input` below.
+  dateInput: { minHeight: 50, borderRadius: radius.md, paddingHorizontal: 14 },
+  dateInputText: { fontSize: 15, fontWeight: "400" },
   input: {
     minHeight: 50,
     borderRadius: radius.md,
@@ -793,7 +787,7 @@ const styles = StyleSheet.create({
   disabled: { opacity: 0.6 },
   divider: { height: 1, backgroundColor: colors.line },
   editHeader: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", marginBottom: 6 },
-  formLabel: { color: colors.inkMuted, fontSize: 11, lineHeight: 15, fontWeight: "900", textTransform: "uppercase", marginTop: 12, marginBottom: 6 },
+  formLabel: { color: colors.inkMuted, fontSize: 12, lineHeight: 16, fontWeight: "900", textTransform: "uppercase", marginTop: 12, marginBottom: 6 },
   inputMultiline: { minHeight: 90, paddingTop: 14, textAlignVertical: "top" },
   chipPickerRow: { flexDirection: "row", flexWrap: "wrap", gap: 8 },
   chipOption: {
