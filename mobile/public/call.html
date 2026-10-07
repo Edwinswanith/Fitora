@@ -1,0 +1,204 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <meta name="referrer" content="no-referrer" />
+  <meta name="robots" content="noindex" />
+  <title>Fitora Session</title>
+  <!--
+    Live coach<->athlete video call. Opened by the app (mobile/src/lib/videoCall.ts)
+    with the LiveKit join token in the URL fragment (#token=...&url=...), which
+    browsers never send to any server or put in a Referer header. The token is
+    issued by POST /api/{coach,athlete}/sessions/:id/join-token and only inside
+    the session's join window.
+  -->
+  <style>
+    :root { color-scheme: dark; --bg: #0b1020; --panel: #151b2e; --ink: #f4f6fb; --muted: #9aa6c1; --primary: #0f62fe; --bad: #e5484d; }
+    * { box-sizing: border-box; }
+    html, body { margin: 0; height: 100%; background: var(--bg); color: var(--ink); font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Inter, sans-serif; }
+    body { display: flex; flex-direction: column; }
+    header { padding: max(12px, env(safe-area-inset-top)) 16px 8px; display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+    header h1 { font-size: 16px; margin: 0; font-weight: 800; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    #status { font-size: 13px; color: var(--muted); white-space: nowrap; }
+    main { position: relative; flex: 1; min-height: 0; margin: 0 12px; border-radius: 18px; overflow: hidden; background: var(--panel); }
+    #remote { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; }
+    #remote video { width: 100%; height: 100%; object-fit: cover; }
+    #placeholder { text-align: center; padding: 24px; color: var(--muted); font-size: 15px; line-height: 1.45; }
+    #placeholder strong { display: block; color: var(--ink); font-size: 18px; margin-bottom: 6px; }
+    #local { position: absolute; right: 12px; bottom: 12px; width: 28%; max-width: 150px; aspect-ratio: 3 / 4; border-radius: 12px; overflow: hidden; background: #000; border: 2px solid rgba(255,255,255,0.18); display: none; }
+    #local video { width: 100%; height: 100%; object-fit: cover; transform: scaleX(-1); }
+    footer { padding: 14px 16px max(16px, env(safe-area-inset-bottom)); display: flex; justify-content: center; gap: 14px; }
+    button { border: 0; border-radius: 999px; min-width: 64px; height: 56px; padding: 0 18px; font-size: 14px; font-weight: 800; color: var(--ink); background: #2a3350; cursor: pointer; }
+    button[aria-pressed="true"] { background: #f4f6fb; color: #0b1020; }
+    button.leave { background: var(--bad); }
+    button:disabled { opacity: 0.5; cursor: default; }
+  </style>
+  <script src="https://cdn.jsdelivr.net/npm/livekit-client@2.22.3/dist/livekit-client.umd.js"
+          integrity="sha384-G/xxtkVytOx/ia9Q8MXxM+V0ohsaY1fZAgVP3iSGTPz4wJ0s3+ulJNKXh/gnzEDZ"
+          crossorigin="anonymous"></script>
+</head>
+<body>
+  <header>
+    <h1 id="title">Fitora Session</h1>
+    <span id="status">Connecting…</span>
+  </header>
+  <main>
+    <div id="remote"><div id="placeholder"><strong>Connecting…</strong>Getting your call ready.</div></div>
+    <div id="local"></div>
+  </main>
+  <footer>
+    <button id="mic" aria-pressed="false" disabled>Mute</button>
+    <button id="cam" aria-pressed="false" disabled>Camera off</button>
+    <button id="leave" class="leave">Leave</button>
+  </footer>
+  <script>
+    (function () {
+      var params = new URLSearchParams(window.location.hash.replace(/^#/, ""));
+      var token = params.get("token");
+      var url = params.get("url");
+      var other = params.get("with") || "the other participant";
+      var title = params.get("title");
+      // Drop the token from the address bar and history as soon as it's read.
+      history.replaceState(null, "", window.location.pathname);
+
+      var statusEl = document.getElementById("status");
+      var remoteEl = document.getElementById("remote");
+      var localEl = document.getElementById("local");
+      var micBtn = document.getElementById("mic");
+      var camBtn = document.getElementById("cam");
+      var leaveBtn = document.getElementById("leave");
+      if (title) document.getElementById("title").textContent = title;
+
+      function showMessage(heading, body) {
+        remoteEl.innerHTML = "";
+        var box = document.createElement("div");
+        box.id = "placeholder";
+        var strong = document.createElement("strong");
+        strong.textContent = heading;
+        box.appendChild(strong);
+        box.appendChild(document.createTextNode(body));
+        remoteEl.appendChild(box);
+      }
+      function setStatus(text) { statusEl.textContent = text; }
+      function endCall(heading, body) {
+        micBtn.disabled = true;
+        camBtn.disabled = true;
+        leaveBtn.textContent = "Close";
+        localEl.style.display = "none";
+        setStatus("Ended");
+        showMessage(heading, body);
+      }
+
+      if (!token || !url) {
+        endCall("This link is incomplete.", "Go back to the app and tap Join again.");
+        leaveBtn.onclick = function () { window.close(); };
+        return;
+      }
+      if (typeof LivekitClient === "undefined") {
+        endCall("Couldn't load the video library.", "Check your internet connection, then go back and tap Join again.");
+        leaveBtn.onclick = function () { window.close(); };
+        return;
+      }
+
+      var LK = LivekitClient;
+      var room = new LK.Room({ adaptiveStream: true, dynacast: true });
+      var left = false;
+
+      function renderRemote() {
+        var participants = Array.from(room.remoteParticipants.values());
+        if (!participants.length) {
+          showMessage("Waiting for " + other + "…", "They'll appear here as soon as they join.");
+          setStatus("Waiting");
+          return;
+        }
+        setStatus("Live");
+      }
+
+      room
+        .on(LK.RoomEvent.TrackSubscribed, function (track) {
+          if (track.kind === LK.Track.Kind.Video) {
+            remoteEl.innerHTML = "";
+            remoteEl.appendChild(track.attach());
+            setStatus("Live");
+          } else if (track.kind === LK.Track.Kind.Audio) {
+            document.body.appendChild(track.attach());
+          }
+        })
+        .on(LK.RoomEvent.TrackUnsubscribed, function (track) {
+          track.detach().forEach(function (el) { el.remove(); });
+          if (track.kind === LK.Track.Kind.Video) showMessage(other + " turned their camera off", "You can still hear each other.");
+        })
+        .on(LK.RoomEvent.ParticipantConnected, renderRemote)
+        .on(LK.RoomEvent.ParticipantDisconnected, renderRemote)
+        .on(LK.RoomEvent.Reconnecting, function () { setStatus("Reconnecting…"); })
+        .on(LK.RoomEvent.Reconnected, function () { setStatus("Live"); })
+        .on(LK.RoomEvent.Disconnected, function () {
+          if (!left) endCall("The call has ended.", "Go back to the app if you need to rejoin.");
+        });
+
+      function syncButtons() {
+        var lp = room.localParticipant;
+        micBtn.textContent = lp.isMicrophoneEnabled ? "Mute" : "Unmute";
+        micBtn.setAttribute("aria-pressed", String(!lp.isMicrophoneEnabled));
+        camBtn.textContent = lp.isCameraEnabled ? "Camera off" : "Camera on";
+        camBtn.setAttribute("aria-pressed", String(!lp.isCameraEnabled));
+        var camPub = lp.getTrackPublication(LK.Track.Source.Camera);
+        localEl.innerHTML = "";
+        if (lp.isCameraEnabled && camPub && camPub.track) {
+          localEl.appendChild(camPub.track.attach());
+          localEl.style.display = "block";
+        } else {
+          localEl.style.display = "none";
+        }
+      }
+
+      micBtn.onclick = function () {
+        room.localParticipant.setMicrophoneEnabled(!room.localParticipant.isMicrophoneEnabled).then(syncButtons, syncButtons);
+      };
+      camBtn.onclick = function () {
+        room.localParticipant.setCameraEnabled(!room.localParticipant.isCameraEnabled).then(syncButtons, syncButtons);
+      };
+      leaveBtn.onclick = function () {
+        if (left || room.state === "disconnected") { window.close(); return; }
+        left = true;
+        room.disconnect().finally(function () {
+          endCall("You left the call.", "You can close this window and return to Fitora.");
+          leaveBtn.onclick = function () { window.close(); };
+        });
+      };
+
+      room.connect(url, token)
+        .then(function () {
+          renderRemote();
+          return room.localParticipant.enableCameraAndMicrophone().catch(function () {
+            setStatus("No camera/mic");
+            showMessage(
+              "Camera or microphone blocked.",
+              "Allow camera and microphone access for this page in your browser settings, then rejoin. You can still see and hear " + other + "."
+            );
+          });
+        })
+        .then(function () {
+          micBtn.disabled = false;
+          camBtn.disabled = false;
+          syncButtons();
+          room.remoteParticipants.forEach(function (p) {
+            p.trackPublications.forEach(function (pub) {
+              if (pub.track && pub.kind === LK.Track.Kind.Video) {
+                remoteEl.innerHTML = "";
+                remoteEl.appendChild(pub.track.attach());
+              }
+            });
+          });
+        })
+        .catch(function () {
+          endCall("Couldn't connect to the call.", "The link may have expired. Go back to the app and tap Join again.");
+          leaveBtn.onclick = function () { window.close(); };
+        });
+
+      window.addEventListener("pagehide", function () { if (!left) room.disconnect(); });
+    })();
+  </script>
+</body>
+</html>

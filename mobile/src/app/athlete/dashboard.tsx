@@ -26,6 +26,7 @@ import type { MessageView } from "../../components/MessageCenter";
 import { apiFetch, apiJson } from "../../lib/api";
 import { useAuth } from "../../lib/auth";
 import { PAYMENTS_ENABLED } from "../../lib/features";
+import { joinSessionCall } from "../../lib/videoCall";
 import { exerciseVisual, mealVisual, workoutVisual, type FitoraIconAsset, type FitoraVisual } from "../../lib/fitoraIcons";
 import { colors, radius } from "../../lib/theme";
 import {
@@ -978,20 +979,8 @@ function SessionCard({
     setJoining(true);
     setSessionMessage(null);
     try {
-      const res = await apiFetch(`/api/athlete/sessions/${session.id}/join-token`, { method: "POST" });
-      const body = (await res.json().catch(() => ({}))) as { error?: string; video?: { roomRef?: string } };
-      if (!res.ok) {
-        const reason = body.error === "outside_join_window"
-          ? "This session can be joined 10 minutes before it starts."
-          : body.error === "session_not_joinable"
-            ? "This session is not joinable in its current status."
-            : "Could not open the video session.";
-        setSessionMessage(reason);
-        return;
-      }
-      setSessionMessage(body.video?.roomRef ? "Video room is ready." : "Session token created.");
-    } catch {
-      setSessionMessage("Could not reach the session service.");
+      const result = await joinSessionCall("athlete", session.id, { withName: coachName, title: `Session with ${coachName}` });
+      if (!result.ok) setSessionMessage(result.message);
     } finally {
       setJoining(false);
     }
@@ -1770,7 +1759,7 @@ function NutritionView({
   const target = data.target;
   const consumed = consumedCalories(data);
   const remaining = target ? Math.max(0, target.calories - consumed) : null;
-  const coachName = data.coaches[0]?.name ?? data.coachProfile?.name ?? "Arjun";
+  const coachName = data.coaches[0]?.name ?? data.coachProfile?.name ?? "your coach";
   const coachId = data.coaches[0]?.coachId ?? data.subscription?.coachId ?? data.coachProfile?.coachId ?? null;
   const plannedCalories = data.plannedMeals.reduce((sum, meal) => sum + mealCalories(meal), 0);
   const plannedMealRows = orderedMealPlanRows(data.plannedMeals);
@@ -2110,7 +2099,7 @@ function NutritionViewV2({
   const [savingPlannedMealId, setSavingPlannedMealId] = useState<string | null>(null);
   const target = data.target;
   const consumed = consumedCalories(data);
-  const coachName = data.coaches[0]?.name ?? data.coachProfile?.name ?? "Arjun";
+  const coachName = data.coaches[0]?.name ?? data.coachProfile?.name ?? "your coach";
   const coachId = data.coaches[0]?.coachId ?? data.subscription?.coachId ?? data.coachProfile?.coachId ?? null;
   const plannedMealRows = orderedMealPlanRows(data.plannedMeals);
   const plannedCalories = data.plannedMeals.reduce((sum, meal) => sum + mealCalories(meal), 0);
@@ -2855,6 +2844,11 @@ function CoachView({
             session={nextSession}
             sessionCount={data.sessions.length}
             onViewAll={() => setPanel((current) => (current === "sessions" ? null : "sessions"))}
+            onBook={
+              coachId
+                ? () => router.push({ pathname: "/athlete/book-session", params: { coachId, coachName } } as never)
+                : undefined
+            }
           />
 
           {panel === "sessions" ? <CoachSessionsPanel sessions={data.sessions} /> : null}
@@ -3024,10 +3018,12 @@ function NextCoachSessionCard({
   session,
   sessionCount,
   onViewAll,
+  onBook,
 }: {
   session: CoachSession | null;
   sessionCount: number;
   onViewAll: () => void;
+  onBook?: () => void;
 }) {
   const [expanded, setExpanded] = useState(false);
   const [joining, setJoining] = useState(false);
@@ -3039,21 +3035,9 @@ function NextCoachSessionCard({
     setJoining(true);
     setSessionMessage(null);
     try {
-      const res = await apiFetch(`/api/athlete/sessions/${session.id}/join-token`, { method: "POST" });
-      const body = (await res.json().catch(() => ({}))) as { error?: string; video?: { roomRef?: string } };
-      if (!res.ok) {
-        setSessionMessage(
-          body.error === "outside_join_window"
-            ? "This session can be joined 10 minutes before it starts."
-            : body.error === "session_not_joinable"
-              ? "This session is not joinable in its current status."
-              : "Could not open the video session."
-        );
-        return;
-      }
-      setSessionMessage(body.video?.roomRef ? "Video room is ready." : "Session token created.");
-    } catch {
-      setSessionMessage("Could not reach the session service.");
+      const coachLabel = session.coachName || "your coach";
+      const result = await joinSessionCall("athlete", session.id, { withName: coachLabel, title: `Session with ${coachLabel}` });
+      if (!result.ok) setSessionMessage(result.message);
     } finally {
       setJoining(false);
     }
@@ -3085,10 +3069,11 @@ function NextCoachSessionCard({
           <IconTile icon="calendar-outline" size={48} />
           <View style={styles.nextCoachSessionCopy}>
             <Text style={styles.nextCoachSessionTitle}>No upcoming sessions</Text>
-            <Text style={styles.nextCoachSessionMeta}>New bookings will appear here when confirmed.</Text>
+            <Text style={styles.nextCoachSessionMeta}>Book a video session with your coach.</Text>
           </View>
         </View>
       )}
+      {onBook ? <ActionButton label="Book a Session" icon="calendar-outline" onPress={onBook} /> : null}
       {expanded && session ? (
         <View style={styles.coachSessionDetailBox}>
           <CoachDetailRow label="Status" value={titleCase(session.status)} />

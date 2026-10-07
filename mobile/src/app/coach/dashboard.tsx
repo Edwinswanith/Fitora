@@ -20,6 +20,7 @@ import {
 import { Avatar } from "../../components/Avatar";
 import { apiFetch } from "../../lib/api";
 import { PAYMENTS_ENABLED } from "../../lib/features";
+import { joinSessionCall } from "../../lib/videoCall";
 import { useAuth } from "../../lib/auth";
 import { colors } from "../../lib/theme";
 import {
@@ -111,16 +112,9 @@ function CoachHomeView({ data, onSessionUpdate }: { data: CoachHomeData; onSessi
     setSessionBusy("start");
     setSessionMessage(null);
     try {
-      const res = await apiFetch(`/api/coach/sessions/${nextSession.id}/join-token`, { method: "POST" });
-      const json = await res.json().catch(() => ({}));
-      if (!res.ok) {
-        setSessionMessage(json.error === "join_window_closed" ? "Session can only be started inside the join window." : "Could not start this session yet.");
-        return;
-      }
-      setSessionPanel(true);
-      setSessionMessage(`Video room ready: ${json.video?.roomRef ?? "live session"}`);
-    } catch {
-      setSessionMessage("Network error while starting session.");
+      const athleteLabel = nextSession.athleteName || "your client";
+      const result = await joinSessionCall("coach", nextSession.id, { withName: athleteLabel, title: `Session with ${athleteLabel}` });
+      if (!result.ok) setSessionMessage(result.message);
     } finally {
       setSessionBusy(null);
     }
@@ -248,6 +242,8 @@ function CoachHomeView({ data, onSessionUpdate }: { data: CoachHomeData; onSessi
         greeting={`${timeOfDayGreeting()}, ${firstName(user?.name, "Coach")}`}
         title={longDate(data.date)}
       />
+
+      <SessionRequestsCard sessions={data.sessions} today={data.date} onSessionUpdate={onSessionUpdate} />
 
       {nextSession ? (
         <AppCard>
@@ -432,6 +428,95 @@ function CoachHomeView({ data, onSessionUpdate }: { data: CoachHomeData; onSessi
   );
 }
 
+/** Every pending booking request, so a coach can act on more than just the next session. */
+function SessionRequestsCard({
+  sessions,
+  today,
+  onSessionUpdate,
+}: {
+  sessions: CoachSession[];
+  /** YYYY-MM-DD; requests that ended before today are stale and hidden. */
+  today: string;
+  onSessionUpdate: (sessionId: string, patch: Partial<CoachSession>) => void;
+}) {
+  const [busy, setBusy] = useState<string | null>(null);
+  const [message, setMessage] = useState<{ kind: "ok" | "error"; text: string } | null>(null);
+  const requests = useMemo(
+    () =>
+      sessions
+        .filter((session) => session.status === "requested" && session.scheduledEnd >= today)
+        .sort((a, b) => a.scheduledStart.localeCompare(b.scheduledStart)),
+    [sessions, today]
+  );
+  if (!requests.length && !message) return null;
+
+  async function act(session: CoachSession, action: "confirm" | "cancel") {
+    setBusy(`${action}:${session.id}`);
+    setMessage(null);
+    try {
+      const res = await apiFetch(`/api/coach/sessions/${session.id}/${action}`, {
+        method: "POST",
+        body: action === "cancel" ? JSON.stringify({ note: "Declined by coach" }) : undefined,
+      });
+      const json = (await res.json().catch(() => ({}))) as { error?: string };
+      if (!res.ok) {
+        setMessage({
+          kind: "error",
+          text:
+            json.error === "relationship_ended"
+              ? "This athlete is no longer your client."
+              : json.error === "invalid_transition"
+                ? "This request was already handled. Pull to refresh."
+                : `Could not ${action === "confirm" ? "confirm" : "decline"} this request.`,
+        });
+        return;
+      }
+      onSessionUpdate(session.id, { status: action === "confirm" ? "confirmed" : "cancelled" });
+      setMessage({ kind: "ok", text: action === "confirm" ? `Confirmed ${session.athleteName || "the session"}.` : "Request declined." });
+    } catch {
+      setMessage({ kind: "error", text: "Network error. Please try again." });
+    } finally {
+      setBusy(null);
+    }
+  }
+
+  return (
+    <AppCard>
+      <SectionHeader title={`Session Requests${requests.length ? ` - ${requests.length}` : ""}`} />
+      {requests.map((session, index) => (
+        <View key={session.id}>
+          <View style={styles.requestRow}>
+            <View style={{ flex: 1, minWidth: 0 }}>
+              <Text style={styles.cardTitle} numberOfLines={1}>{session.athleteName || "Client"}</Text>
+              <Text style={styles.muted} numberOfLines={1}>{titleCase(session.type)}</Text>
+              <Text style={styles.muted} numberOfLines={1}>
+                {new Date(session.scheduledStart).toLocaleString(undefined, { weekday: "short", month: "short", day: "numeric", hour: "numeric", minute: "2-digit" })}
+              </Text>
+            </View>
+          </View>
+          <View style={styles.actionRow}>
+            <ActionButton
+              label={busy === `confirm:${session.id}` ? "Confirming..." : "Confirm"}
+              variant="filled"
+              disabled={Boolean(busy)}
+              onPress={() => void act(session, "confirm")}
+            />
+            <ActionButton
+              label={busy === `cancel:${session.id}` ? "Declining..." : "Decline"}
+              disabled={Boolean(busy)}
+              onPress={() => void act(session, "cancel")}
+              style={styles.cancelButton}
+              textStyle={styles.cancelButtonText}
+            />
+          </View>
+          {index < requests.length - 1 ? <Divider /> : null}
+        </View>
+      ))}
+      {message ? <Text style={message.kind === "ok" ? styles.successText : styles.errorText}>{message.text}</Text> : null}
+    </AppCard>
+  );
+}
+
 function AttentionRow({ card, avatar, onPress }: { card: DailyCard; avatar?: CoachHomeData["roster"][number]["avatar"]; onPress: () => void }) {
   const rank = attentionRank(card);
   const tone = rank <= 1 ? "danger" : "warning";
@@ -515,6 +600,7 @@ const styles = StyleSheet.create({
   activityRow: { minHeight: 42, flexDirection: "row", alignItems: "center", gap: 9 },
   timeText: { width: 48, color: colors.inkMuted, fontSize: 11, fontWeight: "700" },
   activityText: { flex: 1, color: colors.ink, fontSize: 12, lineHeight: 16, fontWeight: "700" },
+  requestRow: { flexDirection: "row", alignItems: "center", gap: 10, paddingVertical: 6 },
   sessionPanel: { marginTop: 10, borderTopWidth: 1, borderTopColor: colors.line, paddingTop: 9, gap: 8 },
   sessionDivider: { height: 1, backgroundColor: colors.line, marginVertical: 2 },
   formLabel: { color: colors.inkMuted, fontSize: 11, fontWeight: "800", textTransform: "uppercase", letterSpacing: 0.3 },

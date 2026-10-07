@@ -14,6 +14,7 @@ function siteUrl(): string {
 
 export const PRIVACY_POLICY_URL = `${siteUrl()}/privacy.html`;
 export const SUPPORT_URL = `${siteUrl()}/support.html`;
+export const CALL_PAGE_URL = `${siteUrl()}/call.html`;
 
 export function openExternal(url: string): void {
   Linking.openURL(url).catch(() => undefined);
