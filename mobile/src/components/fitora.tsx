@@ -449,6 +449,84 @@ function SkeletonScreen({ label }: { label: string }) {
   );
 }
 
+/**
+ * The one thing to do now on a screen. Every main screen opens with exactly
+ * one hero (filled teal, white text, one clear action); everything below it is
+ * a quieter AppCard. Text on the hero is >= 6:1 on primaryStrong.
+ */
+export function HeroCard({
+  eyebrow,
+  title,
+  body,
+  icon,
+  actionLabel,
+  onAction,
+  secondaryLabel,
+  onSecondary,
+  children,
+  calm = false,
+}: {
+  eyebrow?: string;
+  title: string;
+  body?: string;
+  icon?: IconName;
+  actionLabel?: string;
+  onAction?: () => void;
+  secondaryLabel?: string;
+  onSecondary?: () => void;
+  children?: ReactNode;
+  /** A softer tinted hero for "all done" / informational states. */
+  calm?: boolean;
+}) {
+  return (
+    <View style={[styles.hero, calm ? styles.heroCalm : null]} accessibilityRole="summary">
+      <View style={styles.heroTop}>
+        {icon ? (
+          <View style={[styles.heroIcon, calm ? styles.heroIconCalm : null]}>
+            <Ionicons name={icon} size={24} color={calm ? colors.primary : "#ffffff"} />
+          </View>
+        ) : null}
+        <View style={styles.heroCopy}>
+          {eyebrow ? <Text style={[styles.heroEyebrow, calm ? styles.heroEyebrowCalm : null]}>{eyebrow.toUpperCase()}</Text> : null}
+          <Text style={[styles.heroTitle, calm ? styles.heroTitleCalm : null]}>{title}</Text>
+          {body ? <Text style={[styles.heroBody, calm ? styles.heroBodyCalm : null]}>{body}</Text> : null}
+        </View>
+      </View>
+      {children}
+      {actionLabel && onAction ? (
+        <View style={styles.heroActions}>
+          <Pressable
+            onPress={onAction}
+            style={({ pressed }) => [styles.heroButton, calm ? styles.heroButtonCalm : null, pressed ? styles.pressed : null]}
+            accessibilityRole="button"
+          >
+            <Text style={[styles.heroButtonText, calm ? styles.heroButtonTextCalm : null]} numberOfLines={1}>{actionLabel}</Text>
+          </Pressable>
+          {secondaryLabel && onSecondary ? (
+            <Pressable onPress={onSecondary} hitSlop={8} accessibilityRole="button" style={({ pressed }) => [styles.heroSecondary, pressed ? styles.pressed : null]}>
+              <Text style={[styles.heroSecondaryText, calm ? styles.heroSecondaryTextCalm : null]} numberOfLines={1}>{secondaryLabel}</Text>
+            </Pressable>
+          ) : null}
+        </View>
+      ) : null}
+    </View>
+  );
+}
+
+/** Quiet label that groups the cards under it ("TODAY", "AT A GLANCE"). */
+export function SectionLabel({ title, action, onAction }: { title: string; action?: string; onAction?: () => void }) {
+  return (
+    <View style={styles.sectionLabelRow}>
+      <Text style={styles.sectionLabel} accessibilityRole="header">{title.toUpperCase()}</Text>
+      {action && onAction ? (
+        <Pressable onPress={onAction} hitSlop={8}>
+          <Text style={styles.sectionLabelAction}>{action}</Text>
+        </Pressable>
+      ) : null}
+    </View>
+  );
+}
+
 /** Shown above content when saved data is displayed but the refresh failed. */
 export function StaleDataNotice({ onRetry }: { onRetry: () => void }) {
   return (
@@ -821,6 +899,39 @@ const styles = StyleSheet.create({
   retryText: { color: colors.primary, fontSize: 15, fontWeight: "800" },
   loadingState: { flex: 1, minHeight: 420, alignItems: "center", justifyContent: "center", gap: 12 },
   loadingText: { color: colors.inkMuted, fontSize: 14, fontWeight: "700" },
+  hero: {
+    borderRadius: 20,
+    padding: 16,
+    gap: 14,
+    backgroundColor: colors.primaryStrong,
+    shadowColor: colors.primaryStrong,
+    shadowOpacity: 0.22,
+    shadowRadius: 16,
+    shadowOffset: { width: 0, height: 8 },
+    elevation: 4,
+  },
+  heroCalm: { backgroundColor: colors.primarySoft, shadowOpacity: 0, elevation: 0, borderWidth: 1, borderColor: "#c4e8e1" },
+  heroTop: { flexDirection: "row", alignItems: "flex-start", gap: 12 },
+  heroIcon: { width: 46, height: 46, borderRadius: 14, alignItems: "center", justifyContent: "center", backgroundColor: "rgba(255,255,255,0.14)" },
+  heroIconCalm: { backgroundColor: colors.surfaceRaised },
+  heroCopy: { flex: 1, minWidth: 0, gap: 3 },
+  heroEyebrow: { color: "#c9efe8", fontSize: 12, fontWeight: "800", letterSpacing: 0.8 },
+  heroEyebrowCalm: { color: colors.primary },
+  heroTitle: { color: "#ffffff", fontSize: 22, lineHeight: 27, fontWeight: "900" },
+  heroTitleCalm: { color: colors.ink },
+  heroBody: { color: "#e6f7f4", fontSize: 14, lineHeight: 20, fontWeight: "500" },
+  heroBodyCalm: { color: colors.inkMuted },
+  heroActions: { flexDirection: "row", alignItems: "center", gap: 14, flexWrap: "wrap" },
+  heroButton: { flexGrow: 1, minHeight: 48, borderRadius: 14, alignItems: "center", justifyContent: "center", paddingHorizontal: 18, backgroundColor: "#ffffff" },
+  heroButtonCalm: { backgroundColor: colors.primary },
+  heroButtonText: { color: colors.primaryStrong, fontSize: 16, fontWeight: "900" },
+  heroButtonTextCalm: { color: "#ffffff" },
+  heroSecondary: { minHeight: 48, justifyContent: "center", paddingHorizontal: 4 },
+  heroSecondaryText: { color: "#e6f7f4", fontSize: 14, fontWeight: "800" },
+  heroSecondaryTextCalm: { color: colors.primary },
+  sectionLabelRow: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", marginTop: 10, marginBottom: -2, paddingHorizontal: 2 },
+  sectionLabel: { color: colors.inkFaint, fontSize: 12, fontWeight: "800", letterSpacing: 1 },
+  sectionLabelAction: { color: colors.primary, fontSize: 13, fontWeight: "800" },
   staleNotice: { flexDirection: "row", alignItems: "center", gap: 8, paddingVertical: 8, paddingHorizontal: 12, borderRadius: radius.md, backgroundColor: colors.surfaceInset },
   staleText: { color: colors.inkMuted, fontSize: 13, fontWeight: "700" },
   skeleton: { gap: 10, paddingTop: 6 },
