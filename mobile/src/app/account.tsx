@@ -245,7 +245,7 @@ function AthleteProfileContent({ data, onManageGoal }: { data: AthleteDashboardD
           <View style={{ flex: 1, minWidth: 0 }}>
             <Text style={styles.cardTitle}>{coachName ? "My Coach" : "No coach connected"}</Text>
             <Text style={[styles.statusText, { color: coachName ? colors.ok : colors.inkMuted }]}>
-              {coachName ? `Connected with ${firstName(coachName, "Coach")}` : "Browse coaches to start a plan"}
+              {coachName ? `Connected with ${firstName(coachName, "your coach")}` : "Browse coaches to start a plan"}
             </Text>
           </View>
           <ActionButton

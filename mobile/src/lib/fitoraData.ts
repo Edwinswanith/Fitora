@@ -853,8 +853,8 @@ export function deriveNextAction(data: AthleteDashboardData): NextAction {
     return {
       kind: "checkin",
       eyebrow: "Next up",
-      title: "Daily Check-in",
-      body: "Complete your wellness check before training.",
+      title: "Check in",
+      body: "Under a minute. It sets your readiness.",
       ctaLabel: "Check In",
     };
   }
@@ -887,7 +887,7 @@ export function deriveNextAction(data: AthleteDashboardData): NextAction {
           kind: "rpe",
           eyebrow: "Next up",
           title: "Daily review",
-          body: "Training completed. Log your session effort.",
+          body: "How hard was today's session?",
           ctaLabel: "Log RPE",
         };
       }
@@ -911,7 +911,7 @@ export function deriveNextAction(data: AthleteDashboardData): NextAction {
       kind: "meal",
       eyebrow: "Next up",
       title: pendingMeal.name || titleCase(pendingMeal.mealType) || "Meal",
-      body: `${titleCase(pendingMeal.mealType)} planned by your coach`,
+      body: `${titleCase(pendingMeal.mealType)} from your plan`,
       ctaLabel: "Log Meal",
     };
   }
@@ -921,7 +921,7 @@ export function deriveNextAction(data: AthleteDashboardData): NextAction {
       kind: "hydration",
       eyebrow: "Next up",
       title: "Hydration",
-      body: `${(Math.max(0, data.water.goalMl - data.water.totalMl) / 1000).toFixed(1)} L left to reach your goal`,
+      body: `${(Math.max(0, data.water.goalMl - data.water.totalMl) / 1000).toFixed(1)} L to go`,
       ctaLabel: "Log Water",
     };
   }
@@ -930,7 +930,7 @@ export function deriveNextAction(data: AthleteDashboardData): NextAction {
     kind: "complete",
     eyebrow: "All set",
     title: "Day complete",
-    body: "Nice work — you're all caught up for today.",
+    body: "Nice work. Nothing left for today.",
     ctaLabel: "",
   };
 }
