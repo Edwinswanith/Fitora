@@ -328,7 +328,7 @@ const styles = StyleSheet.create({
   title: { flex: 1, color: colors.ink, fontSize: 24, lineHeight: 30, fontWeight: "900" },
   tagline: { color: colors.inkMuted, fontSize: 14, lineHeight: 19, marginTop: -6, marginBottom: 4 },
   cardGap: { gap: 18 },
-  fieldLabel: { color: colors.inkMuted, fontSize: 11, fontWeight: "900", textTransform: "uppercase", letterSpacing: 0.4 },
+  fieldLabel: { color: colors.inkMuted, fontSize: 12, fontWeight: "900", textTransform: "uppercase", letterSpacing: 0.4 },
   successText: { color: colors.ok, fontSize: 13, fontWeight: "800" },
   errorText: { color: colors.bad, fontSize: 13, fontWeight: "800" },
   seg: { flexDirection: "row", gap: 8 },
@@ -379,7 +379,7 @@ const styles = StyleSheet.create({
   scalePillText: { fontSize: 16, fontWeight: "800", color: colors.inkMuted },
   scalePillTextActive: { color: "#fff" },
   hintRow: { flexDirection: "row", justifyContent: "space-between" },
-  hint: { fontSize: 11, color: colors.inkFaint, fontWeight: "600" },
+  hint: { fontSize: 12, color: colors.inkFaint, fontWeight: "600" },
   stepperRow: { flexDirection: "row", alignItems: "center", justifyContent: "space-between" },
   stepBtn: {
     height: 48,

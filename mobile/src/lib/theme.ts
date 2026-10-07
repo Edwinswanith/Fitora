@@ -8,17 +8,20 @@ export const colors = {
   surfaceInset: "#f5f7fb",
   ink: "#0f172a",
   inkMuted: "#475569",
-  inkFaint: "#64748b",
-  line: "#e2e8f0",
+  // Status/hint colors below are tuned to >= 4.5:1 (WCAG AA) on white,
+  // surface, surfaceInset and their own *Soft backgrounds: they carry small
+  // text ("Due", "Decline", risk labels), not just icons.
+  inkFaint: "#5b6b80",
+  line: "#d5dce7",
   lineStrong: "#cbd5e1",
   primary: "#0b5cff",
   primaryStrong: "#0048d9",
   primarySoft: "#eaf1ff",
-  ok: "#16a34a",
+  ok: "#157a3a",
   okSoft: "#e8f7ed",
-  warn: "#f59e0b",
+  warn: "#b45309",
   warnSoft: "#fff7e6",
-  bad: "#ef4444",
+  bad: "#c81e1e",
   badSoft: "#feecec",
 } as const;
 

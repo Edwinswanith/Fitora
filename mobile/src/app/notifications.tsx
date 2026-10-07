@@ -227,7 +227,7 @@ const styles = StyleSheet.create({
   itemHead: { flexDirection: "row", alignItems: "center", gap: 8 },
   dot: { height: 8, width: 8, borderRadius: 4 },
   pri: { borderRadius: 6, paddingHorizontal: 6, paddingVertical: 2 },
-  priText: { fontSize: 9, fontWeight: "800", letterSpacing: 0.5 },
+  priText: { fontSize: 12, fontWeight: "800", letterSpacing: 0.5 },
   itemTitle: { flex: 1, fontSize: 15, fontWeight: "700" },
   time: { fontSize: 12, color: colors.inkFaint },
   body: { fontSize: 14, color: colors.inkMuted, lineHeight: 20 },

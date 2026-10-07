@@ -166,7 +166,7 @@ export const editorStyles = StyleSheet.create({
   cardTitle: { flex: 1, minWidth: 0, color: colors.ink, fontSize: 15, lineHeight: 20, fontWeight: "900" },
   muted: { color: colors.inkMuted, fontSize: 12, lineHeight: 17 },
   sectionTitle: { color: colors.ink, fontSize: 16, lineHeight: 21, fontWeight: "900", marginTop: 6 },
-  badge: { color: colors.primary, fontSize: 11, fontWeight: "900" },
+  badge: { color: colors.primary, fontSize: 12, fontWeight: "900" },
 });
 
 const styles = StyleSheet.create({
@@ -177,7 +177,7 @@ const styles = StyleSheet.create({
   backText: { color: colors.primary, fontSize: 14, fontWeight: "800" },
   title: { color: colors.ink, fontSize: 24, lineHeight: 30, fontWeight: "900" },
   subtitle: { color: colors.inkMuted, fontSize: 13, lineHeight: 18 },
-  label: { color: colors.inkMuted, fontSize: 11, lineHeight: 15, fontWeight: "900", textTransform: "uppercase" },
+  label: { color: colors.inkMuted, fontSize: 12, lineHeight: 16, fontWeight: "900", textTransform: "uppercase" },
   field: { gap: 4 },
   input: {
     minHeight: 44,

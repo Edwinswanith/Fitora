@@ -778,7 +778,7 @@ const styles = StyleSheet.create({
   disabled: { opacity: 0.6 },
   divider: { height: 1, backgroundColor: colors.line },
   editHeader: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", marginBottom: 6 },
-  formLabel: { color: colors.inkMuted, fontSize: 11, lineHeight: 15, fontWeight: "900", textTransform: "uppercase", marginTop: 12, marginBottom: 6 },
+  formLabel: { color: colors.inkMuted, fontSize: 12, lineHeight: 16, fontWeight: "900", textTransform: "uppercase", marginTop: 12, marginBottom: 6 },
   inputMultiline: { minHeight: 90, paddingTop: 14, textAlignVertical: "top" },
   chipPickerRow: { flexDirection: "row", flexWrap: "wrap", gap: 8 },
   chipOption: {

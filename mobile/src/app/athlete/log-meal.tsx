@@ -308,7 +308,7 @@ const styles = StyleSheet.create({
   scanRow: { flexDirection: "row", alignItems: "center", gap: 6, marginTop: 12 },
   scanRowText: { color: colors.primary, fontSize: 13, fontWeight: "800" },
   recentBlock: { marginTop: 16 },
-  recentLabel: { color: colors.inkMuted, fontSize: 11, fontWeight: "900", letterSpacing: 0.4, marginBottom: 8 },
+  recentLabel: { color: colors.inkMuted, fontSize: 12, fontWeight: "900", letterSpacing: 0.4, marginBottom: 8 },
   muted: { color: colors.inkMuted, fontSize: 13 },
   recentChipRow: { flexDirection: "row", flexWrap: "wrap", gap: 8 },
   recentChip: {
@@ -321,11 +321,11 @@ const styles = StyleSheet.create({
     paddingVertical: 9,
   },
   recentChipText: { color: colors.ink, fontSize: 13, fontWeight: "800" },
-  recentChipMeta: { color: colors.inkMuted, fontSize: 11, fontWeight: "700", marginTop: 2 },
+  recentChipMeta: { color: colors.inkMuted, fontSize: 12, fontWeight: "700", marginTop: 2 },
   detailsToggle: { flexDirection: "row", alignItems: "center", gap: 6 },
   detailsToggleText: { color: colors.inkMuted, fontSize: 13, fontWeight: "700" },
   fieldBlock: { marginBottom: 12, marginTop: 12 },
-  label: { color: colors.inkMuted, fontSize: 11, fontWeight: "900", textTransform: "uppercase" },
+  label: { color: colors.inkMuted, fontSize: 12, fontWeight: "900", textTransform: "uppercase" },
   inputWrap: { position: "relative", justifyContent: "center", marginTop: 6 },
   input: {
     minHeight: 52,

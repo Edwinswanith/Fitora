@@ -428,7 +428,7 @@ const styles = StyleSheet.create({
   },
   removeButton: { height: 36, width: 36, borderRadius: 18, alignItems: "center", justifyContent: "center", backgroundColor: colors.badSoft },
   editFieldsRow: { flexDirection: "row", flexWrap: "wrap", gap: 8 },
-  miniFieldLabel: { color: colors.inkMuted, fontSize: 10, fontWeight: "800", textTransform: "uppercase", marginBottom: 4 },
+  miniFieldLabel: { color: colors.inkMuted, fontSize: 12, fontWeight: "800", textTransform: "uppercase", marginBottom: 4 },
   miniFieldInput: {
     minHeight: 38,
     borderRadius: 8,

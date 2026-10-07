@@ -461,7 +461,7 @@ const styles = StyleSheet.create({
   reviewRow: { gap: 4 },
   reviewHeader: { flexDirection: "row", alignItems: "center", justifyContent: "space-between" },
   reviewStars: { flexDirection: "row", gap: 2 },
-  reviewDate: { color: colors.inkFaint, fontSize: 11, fontWeight: "700" },
+  reviewDate: { color: colors.inkFaint, fontSize: 12, fontWeight: "700" },
   reviewerName: { color: colors.ink, fontSize: 13, fontWeight: "800" },
   reviewBody: { color: colors.inkMuted, fontSize: 13, lineHeight: 19 },
   switchNote: { color: colors.inkMuted, fontSize: 12, lineHeight: 17, textAlign: "center" },

@@ -500,13 +500,13 @@ const styles = StyleSheet.create({
   // Tiles
   tileRow: { flexDirection: "row", gap: 8, width: "100%" },
   tile: { flex: 1, borderRadius: radius.sm, borderWidth: 1, borderColor: colors.line, backgroundColor: colors.surfaceInset, paddingHorizontal: 10, paddingVertical: 10 },
-  tileLabel: { fontSize: 10, fontWeight: "800", color: colors.inkFaint, textTransform: "uppercase", letterSpacing: 1 },
+  tileLabel: { fontSize: 12, fontWeight: "800", color: colors.inkFaint, textTransform: "uppercase", letterSpacing: 1 },
   tileValue: { marginTop: 3, fontSize: 18, fontWeight: "800", color: colors.ink },
   // Status
   statusBox: { width: "100%", borderRadius: radius.sm, borderWidth: 1, borderColor: colors.line, backgroundColor: colors.surfaceInset, paddingHorizontal: 12, paddingVertical: 10 },
   statusBoxOk: { borderColor: `${OK}55`, backgroundColor: `${OK}14` },
   statusText: { fontSize: 14, fontWeight: "800", color: colors.ink },
-  statusSub: { marginTop: 2, fontSize: 11, color: colors.inkMuted },
+  statusSub: { marginTop: 2, fontSize: 12, color: colors.inkMuted },
   // Presets
   presetRow: { flexDirection: "row", gap: 8, marginTop: 10 },
   preset: { flex: 1, height: 40, borderRadius: radius.sm, borderWidth: 1, borderColor: colors.line, backgroundColor: colors.surfaceInset, alignItems: "center", justifyContent: "center" },
@@ -518,7 +518,7 @@ const styles = StyleSheet.create({
   input: { flex: 1, height: 46, borderRadius: radius.sm, borderWidth: 1, borderColor: colors.line, backgroundColor: colors.surfaceInset, paddingHorizontal: 12, color: colors.ink, fontSize: 14 },
   primaryBtn: { height: 46, borderRadius: radius.sm, paddingHorizontal: 18, alignItems: "center", justifyContent: "center" },
   primaryBtnText: { color: "#fff", fontSize: 14, fontWeight: "800" },
-  errText: { marginTop: 8, fontSize: 11, fontWeight: "700", color: colors.bad },
+  errText: { marginTop: 8, fontSize: 12, fontWeight: "700", color: colors.bad },
   // Quick add
   quickRow: { flexDirection: "row", gap: 8, marginTop: 10 },
   quick: { flex: 1, flexDirection: "row", gap: 6, alignItems: "center", justifyContent: "center", height: 48, borderRadius: radius.sm, borderWidth: 1, borderColor: colors.line, backgroundColor: colors.surfaceRaised },
@@ -526,25 +526,25 @@ const styles = StyleSheet.create({
   // Reminders
   reminderHead: { flexDirection: "row", alignItems: "center", gap: 10, marginTop: 8 },
   reminderTitle: { fontSize: 14, fontWeight: "800", color: colors.ink },
-  reminderSub: { marginTop: 2, fontSize: 11, color: colors.inkMuted },
+  reminderSub: { marginTop: 2, fontSize: 12, color: colors.inkMuted },
   toggle: { height: 36, borderRadius: 999, borderWidth: 1, borderColor: colors.line, backgroundColor: colors.surfaceInset, paddingHorizontal: 14, alignItems: "center", justifyContent: "center" },
   toggleText: { fontSize: 12, fontWeight: "800", color: colors.inkMuted },
   // Chart
   seg: { flexDirection: "row", gap: 4, backgroundColor: colors.surfaceInset, borderRadius: radius.sm, padding: 3 },
   segBtn: { paddingHorizontal: 12, paddingVertical: 6, borderRadius: radius.sm - 2 },
   segBtnOn: { backgroundColor: WATER },
-  segText: { fontSize: 11, fontWeight: "800", color: colors.inkMuted },
+  segText: { fontSize: 12, fontWeight: "800", color: colors.inkMuted },
   segTextOn: { color: "#fff" },
   chartAxis: { flexDirection: "row", justifyContent: "space-between", marginTop: 8 },
-  axisText: { fontSize: 10, color: colors.inkFaint, fontWeight: "600" },
+  axisText: { fontSize: 12, color: colors.inkFaint, fontWeight: "600" },
   // History
   histRow: { flexDirection: "row", alignItems: "center", gap: 10, paddingVertical: 10 },
   histDivider: { borderTopWidth: 1, borderTopColor: colors.line },
   histDate: { fontSize: 14, fontWeight: "700", color: colors.ink },
-  histSub: { marginTop: 1, fontSize: 11, color: colors.inkMuted },
+  histSub: { marginTop: 1, fontSize: 12, color: colors.inkMuted },
   histValue: { fontSize: 16, fontWeight: "800", color: colors.ink },
   // Entries
   entryWrap: { flexDirection: "row", flexWrap: "wrap", gap: 6, marginTop: 8 },
   entryChip: { flexDirection: "row", alignItems: "center", gap: 5, borderRadius: 999, borderWidth: 1, borderColor: colors.line, backgroundColor: colors.surfaceInset, paddingHorizontal: 10, paddingVertical: 6 },
-  entryChipText: { fontSize: 11, fontWeight: "700", color: colors.inkMuted },
+  entryChipText: { fontSize: 12, fontWeight: "700", color: colors.inkMuted },
 });

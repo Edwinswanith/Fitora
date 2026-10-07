@@ -763,7 +763,7 @@ const styles = StyleSheet.create({
   editorTitle: { color: colors.ink, fontSize: 15, lineHeight: 20, fontWeight: "900" },
   formGrid: { flexDirection: "row", gap: 8 },
   formField: { flex: 1, gap: 5 },
-  formLabel: { color: colors.inkMuted, fontSize: 10, lineHeight: 14, fontWeight: "900", textTransform: "uppercase" },
+  formLabel: { color: colors.inkMuted, fontSize: 12, lineHeight: 16, fontWeight: "900", textTransform: "uppercase" },
   input: { minHeight: 42, borderRadius: 10, borderWidth: 1, borderColor: colors.lineStrong, paddingHorizontal: 10, color: colors.ink, fontSize: 13, fontWeight: "800" },
   toggleRow: { flexDirection: "row", flexWrap: "wrap", gap: 7 },
   toggleChip: { minHeight: 32, borderRadius: 10, borderWidth: 1, borderColor: colors.lineStrong, paddingHorizontal: 10, alignItems: "center", justifyContent: "center" },
@@ -779,7 +779,7 @@ const styles = StyleSheet.create({
   dayGrid: { flexDirection: "row", flexWrap: "wrap", gap: 6 },
   dayChip: { minHeight: 30, minWidth: 42, borderRadius: 10, borderWidth: 1, borderColor: colors.lineStrong, alignItems: "center", justifyContent: "center" },
   dayChipActive: { borderColor: colors.primary, backgroundColor: colors.primarySoft },
-  dayChipText: { color: colors.inkMuted, fontSize: 11, fontWeight: "900" },
+  dayChipText: { color: colors.inkMuted, fontSize: 12, fontWeight: "900" },
   dayChipTextActive: { color: colors.primary },
   logout: {
     minHeight: 52,

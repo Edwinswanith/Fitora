@@ -362,6 +362,6 @@ const styles = StyleSheet.create({
   },
   editorButtonText: { color: colors.primary, fontSize: 13, fontWeight: "800" },
   editorRemoveText: { color: colors.bad, fontSize: 12, fontWeight: "800" },
-  editorLabel: { color: colors.inkMuted, fontSize: 11, fontWeight: "800", textTransform: "uppercase", letterSpacing: 0.3 },
+  editorLabel: { color: colors.inkMuted, fontSize: 12, fontWeight: "800", textTransform: "uppercase", letterSpacing: 0.3 },
   editorError: { color: colors.bad, fontSize: 12, fontWeight: "800" },
 });

@@ -112,5 +112,5 @@ const styles = StyleSheet.create({
   safe: { flex: 1, backgroundColor: colors.surface },
   content: { padding: 24, paddingTop: 16, paddingBottom: 32 },
   back: { flexDirection: "row", alignItems: "center", gap: 6, marginBottom: 20 },
-  backText: { fontSize: 11, fontWeight: "700", letterSpacing: 2, color: colors.inkFaint },
+  backText: { fontSize: 12, fontWeight: "700", letterSpacing: 2, color: colors.inkFaint },
 });

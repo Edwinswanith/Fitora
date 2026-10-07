@@ -204,7 +204,7 @@ const styles = StyleSheet.create({
   avatar: { height: 40, width: 40, borderRadius: 20, alignItems: "center", justifyContent: "center" },
   name: { fontSize: 16, fontWeight: "700", color: colors.ink },
   meta: { fontSize: 13, color: colors.inkMuted, marginTop: 2 },
-  fieldLabel: { color: colors.inkMuted, fontSize: 11, fontWeight: "900", textTransform: "uppercase", letterSpacing: 0.4 },
+  fieldLabel: { color: colors.inkMuted, fontSize: 12, fontWeight: "900", textTransform: "uppercase", letterSpacing: 0.4 },
   input: {
     minHeight: 48,
     borderRadius: radius.md,
@@ -220,7 +220,7 @@ const styles = StyleSheet.create({
   created: { borderColor: colors.ok + "55", marginBottom: 16 },
   createdTitle: { fontSize: 15, fontWeight: "800", color: colors.ink },
   secret: { backgroundColor: colors.surfaceInset, borderRadius: radius.md, padding: 12 },
-  secretLabel: { fontSize: 11, fontWeight: "700", color: colors.inkMuted, textTransform: "uppercase", letterSpacing: 1 },
+  secretLabel: { fontSize: 12, fontWeight: "700", color: colors.inkMuted, textTransform: "uppercase", letterSpacing: 1 },
   secretValue: { fontSize: 17, fontWeight: "700", color: colors.ink, marginTop: 4, fontFamily: Platform.OS === "ios" ? "Menlo" : "monospace" },
-  once: { fontSize: 11, color: colors.inkFaint },
+  once: { fontSize: 12, color: colors.inkFaint },
 });

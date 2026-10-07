@@ -128,7 +128,7 @@ const styles = StyleSheet.create({
   safe: { flex: 1, backgroundColor: colors.surface },
   content: { padding: 24, paddingTop: 16, paddingBottom: 36 },
   back: { flexDirection: "row", alignItems: "center", gap: 6, marginBottom: 24 },
-  backText: { fontSize: 11, fontWeight: "700", letterSpacing: 2, color: colors.inkFaint },
+  backText: { fontSize: 12, fontWeight: "700", letterSpacing: 2, color: colors.inkFaint },
   chip: {
     flexDirection: "row",
     alignItems: "center",
@@ -138,7 +138,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 12,
     paddingVertical: 7,
   },
-  chipText: { fontSize: 11, fontWeight: "800", letterSpacing: 1, textTransform: "uppercase" },
+  chipText: { fontSize: 12, fontWeight: "800", letterSpacing: 1, textTransform: "uppercase" },
   registerLink: { alignItems: "center", paddingVertical: 6 },
   registerText: { fontSize: 13, color: colors.inkMuted },
 });

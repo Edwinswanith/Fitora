@@ -152,7 +152,7 @@ const styles = StyleSheet.create({
     elevation: 1,
   },
   label: {
-    fontSize: 11,
+    fontSize: 12,
     fontWeight: "700",
     letterSpacing: 1,
     textTransform: "uppercase",

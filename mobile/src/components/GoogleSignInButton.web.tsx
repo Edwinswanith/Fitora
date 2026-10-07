@@ -145,6 +145,6 @@ const styles = StyleSheet.create({
   wrap: { gap: 14, marginTop: 4, width: "100%" },
   dividerRow: { flexDirection: "row", alignItems: "center", gap: 12 },
   line: { flex: 1, height: 1, backgroundColor: colors.line },
-  or: { fontSize: 10, fontWeight: "700", letterSpacing: 2, color: colors.inkFaint },
+  or: { fontSize: 12, fontWeight: "700", letterSpacing: 2, color: colors.inkFaint },
   buttonHost: { width: "100%", minHeight: 44, alignItems: "center" },
 });

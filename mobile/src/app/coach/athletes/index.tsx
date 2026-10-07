@@ -252,7 +252,7 @@ const styles = StyleSheet.create({
   goalText: { color: colors.inkMuted, fontSize: 12, lineHeight: 16 },
   clientMetrics: { flexDirection: "row", gap: 6 },
   smallMetric: { flex: 1, minWidth: 0, gap: 1 },
-  smallMetricLabel: { color: colors.inkMuted, fontSize: 10, lineHeight: 13 },
+  smallMetricLabel: { color: colors.inkMuted, fontSize: 12, lineHeight: 16 },
   smallMetricValue: { color: colors.ink, fontSize: 12, lineHeight: 16, fontWeight: "800" },
   divider: { height: 1, backgroundColor: colors.line },
   summaryRow: { flexDirection: "row", alignItems: "center", gap: 12 },

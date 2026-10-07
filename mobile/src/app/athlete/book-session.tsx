@@ -258,7 +258,7 @@ const styles = StyleSheet.create({
   dayRow: { gap: 8, paddingVertical: 2 },
   dayChip: { width: 54, paddingVertical: 8, borderRadius: radius.md, alignItems: "center", borderWidth: 1, borderColor: colors.line },
   dayChipActive: { backgroundColor: colors.primary, borderColor: colors.primary },
-  dayTop: { color: colors.inkMuted, fontSize: 11, fontWeight: "800" },
+  dayTop: { color: colors.inkMuted, fontSize: 12, fontWeight: "800" },
   dayBottom: { color: colors.ink, fontSize: 18, fontWeight: "900", marginTop: 2 },
   dayTextActive: { color: "#fff" },
   stateBox: { alignItems: "center", gap: 10, paddingVertical: 16 },

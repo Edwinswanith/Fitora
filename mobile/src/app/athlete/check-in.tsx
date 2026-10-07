@@ -261,7 +261,7 @@ const styles = StyleSheet.create({
   sectionSub: { color: colors.inkMuted, fontSize: 13, lineHeight: 18, marginTop: -4 },
   cardGap: { gap: 18 },
   hrRow: { flexDirection: "row", gap: 12 },
-  fieldLabel: { color: colors.inkMuted, fontSize: 11, fontWeight: "900", textTransform: "uppercase", letterSpacing: 0.4 },
+  fieldLabel: { color: colors.inkMuted, fontSize: 12, fontWeight: "900", textTransform: "uppercase", letterSpacing: 0.4 },
   input: {
     marginTop: 6,
     minHeight: 48,
@@ -291,7 +291,7 @@ const styles = StyleSheet.create({
   scalePillText: { fontSize: 16, fontWeight: "800", color: colors.inkMuted },
   scalePillTextActive: { color: "#fff" },
   hintRow: { flexDirection: "row", justifyContent: "space-between" },
-  hint: { fontSize: 11, color: colors.inkFaint, fontWeight: "600" },
+  hint: { fontSize: 12, color: colors.inkFaint, fontWeight: "600" },
   stepperRow: { flexDirection: "row", alignItems: "center", justifyContent: "space-between" },
   stepBtn: {
     height: 48,
