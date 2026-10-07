@@ -194,6 +194,48 @@ router.get("/meals", async (req: Request, res: Response) => {
   });
 });
 
+const MAX_SUMMARY_DAYS = 120;
+
+/**
+ * GET /nutrition/daily-summary?from=YYYY-MM-DD&to=YYYY-MM-DD: per-day logged
+ * totals for a range (inclusive), so Progress can chart 4W/3M without one
+ * request per day. Days with no meals are omitted.
+ */
+router.get("/daily-summary", async (req: Request, res: Response) => {
+  const profileId = selfAthleteId(req);
+  if (!profileId) return void res.status(404).json({ error: "athlete_profile_not_found" });
+  const from = parseDateOrNull(req.query.from);
+  const to = parseDateOrNull(req.query.to);
+  if (!from || !to || from > to) return void res.status(400).json({ error: "invalid_range" });
+  const start = dayRange(from).start;
+  const end = dayRange(to).end;
+  if ((end.getTime() - start.getTime()) / 86_400_000 > MAX_SUMMARY_DAYS) {
+    return void res.status(400).json({ error: "range_too_long" });
+  }
+  const meals = await Meal.find({ athleteId: profileId, date: { $gte: start, $lt: end } }).select("date").lean();
+  const foods = await MealFood.find({ mealId: { $in: meals.map((m) => m._id) } })
+    .select("mealId calories proteinG")
+    .lean();
+  const dayByMeal = new Map(meals.map((m) => [m._id.toString(), (m.date as Date).toISOString().slice(0, 10)]));
+  const days = new Map<string, { date: string; loggedMeals: number; calories: number; proteinG: number }>();
+  for (const day of dayByMeal.values()) {
+    const row = days.get(day) ?? { date: day, loggedMeals: 0, calories: 0, proteinG: 0 };
+    row.loggedMeals += 1;
+    days.set(day, row);
+  }
+  for (const f of foods) {
+    const row = days.get(dayByMeal.get((f.mealId as Types.ObjectId).toString()) ?? "");
+    if (!row) continue;
+    row.calories += f.calories;
+    row.proteinG += f.proteinG;
+  }
+  res.json({
+    days: [...days.values()]
+      .map((d) => ({ ...d, calories: Math.round(d.calories), proteinG: Math.round(d.proteinG) }))
+      .sort((a, b) => a.date.localeCompare(b.date)),
+  });
+});
+
 /**
  * POST /nutrition/meals — logs a CONSUMED meal. body: { date?, mealType,
  * source ("ad_hoc" | "confirmed_from_plan" | "modified_from_plan"),
