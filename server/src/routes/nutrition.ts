@@ -44,6 +44,10 @@ router.get("/target", async (req: Request, res: Response) => {
   if (req.query.date) {
     const date = parseDateOrNull(req.query.date);
     if (!date) return void res.status(400).json({ error: "invalid_date" });
+    // Bring the current target up to date with the profile first, so "today"
+    // reflects a changed weight/goal; past dates still resolve to the target
+    // that was active then.
+    await getCurrentTarget(profileId);
     const target = await resolveTargetForDate(profileId, date);
     res.json({ target: target ? serializeTarget(target) : null });
     return;

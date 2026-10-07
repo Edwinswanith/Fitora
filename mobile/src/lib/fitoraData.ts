@@ -111,6 +111,18 @@ export type NutritionTarget = {
   fitnessGoal?: string | null;
   goalIntensity?: string | null;
   effectiveFrom?: string;
+  /** Step-by-step numbers behind `calories` (server: explainNutritionTarget). */
+  breakdown?: NutritionTargetBreakdown | null;
+};
+
+export type NutritionTargetBreakdown = {
+  inputs: { weightKg: number; heightCm: number; age: number; biologicalSex: string; activityLevel: string; goal: string; goalIntensity: string };
+  bmr: number;
+  activityFactor: number;
+  tdee: number;
+  goalDelta: number;
+  floorApplied: "minimum" | "resting_burn" | null;
+  calories: number;
 };
 
 export type MealFood = {
