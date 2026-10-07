@@ -3,11 +3,11 @@ import { KeyboardAvoidingView, Platform, Pressable, ScrollView, StyleSheet, View
 import { Text } from "../../../components/AppText";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { useRouter } from "expo-router";
-import { Ionicons } from "@expo/vector-icons";
 import { apiFetch } from "../../../lib/api";
 import { ROLE_THEMES, colors, radius } from "../../../lib/theme";
 import { updateCachedData, type CoachHomeData } from "../../../lib/fitoraData";
 import { Banner, Card, Label, Muted, PrimaryButton, TextField } from "../../../components/ui";
+import { BackHeader } from "../../../components/fitora";
 
 const theme = ROLE_THEMES.coach;
 
@@ -154,12 +154,7 @@ export default function NewAthlete() {
     <SafeAreaView style={styles.safe} edges={["top"]}>
       <KeyboardAvoidingView behavior={Platform.OS === "ios" ? "padding" : undefined} style={{ flex: 1 }}>
         <ScrollView contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
-          <Pressable onPress={() => router.back()} style={styles.back} hitSlop={10}>
-            <Ionicons name="arrow-back" size={18} color={colors.inkFaint} />
-            <Text style={styles.backText}>ROSTER</Text>
-          </Pressable>
-          <Text style={styles.title}>Add athlete</Text>
-          <Muted style={{ marginBottom: 16 }}>Create a new account, or link an athlete who already signed up on their own.</Muted>
+          <BackHeader title="Add client" subtitle="Create a new account, or link someone who already signed up." />
 
           <View style={styles.modeToggle}>
             <Pressable onPress={() => { setMode("create"); setError(null); }} style={[styles.modeButton, mode === "create" ? styles.modeButtonActive : null]}>
@@ -216,8 +211,6 @@ function Secret({ label, value }: { label: string; value: string }) {
 const styles = StyleSheet.create({
   safe: { flex: 1, backgroundColor: colors.surface },
   content: { padding: 20, paddingTop: 12, paddingBottom: 32 },
-  back: { flexDirection: "row", alignItems: "center", gap: 6, marginBottom: 16 },
-  backText: { fontSize: 12, fontWeight: "700", letterSpacing: 2, color: colors.inkFaint },
   title: { fontSize: 26, fontWeight: "800", color: colors.ink, letterSpacing: -0.4 },
   modeToggle: { flexDirection: "row", gap: 8, marginBottom: 16 },
   modeButton: { flex: 1, minHeight: 40, borderRadius: radius.md, alignItems: "center", justifyContent: "center", backgroundColor: colors.surfaceInset },

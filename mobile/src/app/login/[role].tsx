@@ -4,6 +4,7 @@ import { Text } from "../../components/AppText";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
+import { LinearGradient } from "expo-linear-gradient";
 import { ROLE_THEMES, colors, radius } from "../../lib/theme";
 import { dashboardPathForRole, isKnownRole } from "../../lib/roles";
 import { useAuth } from "../../lib/auth";
@@ -55,20 +56,28 @@ export default function LoginScreen() {
     <SafeAreaView style={styles.safe}>
       <KeyboardAvoidingView behavior={Platform.OS === "ios" ? "padding" : "height"} style={{ flex: 1 }}>
         <ScrollView contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
-          <Pressable onPress={() => router.back()} style={styles.back} hitSlop={10}>
-            <Ionicons name="arrow-back" size={18} color={colors.inkFaint} />
-            <Text style={styles.backText}>ALL ROLES</Text>
+          <Pressable
+            onPress={() => (router.canGoBack() ? router.back() : router.replace("/" as never))}
+            style={({ pressed }) => [styles.back, pressed ? { opacity: 0.7 } : null]}
+            hitSlop={10}
+            accessibilityRole="button"
+            accessibilityLabel="Back to all roles"
+          >
+            <Ionicons name="chevron-back" size={22} color={colors.ink} />
           </Pressable>
 
+          <LinearGradient colors={["#0f766e", "#0b4f4a"]} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={styles.brandTile}>
+            <Ionicons name={`${theme.icon}` as never} size={26} color="#ffffff" />
+          </LinearGradient>
+
           <View style={[styles.chip, { backgroundColor: theme.accentSoft }]}>
-            <Ionicons name={`${theme.icon}` as never} size={14} color={theme.accentStrong} />
-            <Text style={[styles.chipText, { color: theme.accentStrong }]}>{theme.label} login</Text>
+            <Text style={[styles.chipText, { color: theme.accentStrong }]}>{theme.label} sign in</Text>
           </View>
 
-          <H1 style={{ marginTop: 14 }}>{theme.heading}</H1>
-          <Muted style={{ marginTop: 10, maxWidth: 300 }}>{theme.subcopy}</Muted>
+          <H1 style={{ marginTop: 10 }}>{theme.heading}</H1>
+          <Muted style={{ marginTop: 8, maxWidth: 320 }}>{theme.subcopy}</Muted>
 
-          <View style={{ marginTop: 28, gap: 16 }}>
+          <View style={styles.form}>
             <View>
               <Label>Email</Label>
               <View style={{ marginTop: 6 }}>
@@ -126,9 +135,10 @@ export default function LoginScreen() {
 
 const styles = StyleSheet.create({
   safe: { flex: 1, backgroundColor: colors.surface },
-  content: { padding: 24, paddingTop: 16, paddingBottom: 36 },
-  back: { flexDirection: "row", alignItems: "center", gap: 6, marginBottom: 24 },
-  backText: { fontSize: 12, fontWeight: "700", letterSpacing: 2, color: colors.inkFaint },
+  content: { paddingHorizontal: 20, paddingTop: 8, paddingBottom: 36 },
+  back: { width: 40, height: 40, borderRadius: 20, alignItems: "center", justifyContent: "center", backgroundColor: colors.surfaceRaised, borderWidth: 1, borderColor: "#e1ece9", marginBottom: 20 },
+  brandTile: { width: 56, height: 56, borderRadius: 18, alignItems: "center", justifyContent: "center", marginBottom: 14 },
+  form: { marginTop: 24, gap: 16, padding: 16, borderRadius: 16, backgroundColor: colors.surfaceRaised, borderWidth: 1, borderColor: "#e1ece9" },
   chip: {
     flexDirection: "row",
     alignItems: "center",
@@ -138,7 +148,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 12,
     paddingVertical: 7,
   },
-  chipText: { fontSize: 12, fontWeight: "800", letterSpacing: 1, textTransform: "uppercase" },
+  chipText: { fontSize: 12, fontWeight: "800" },
   registerLink: { alignItems: "center", paddingVertical: 6 },
   registerText: { fontSize: 13, color: colors.inkMuted },
 });

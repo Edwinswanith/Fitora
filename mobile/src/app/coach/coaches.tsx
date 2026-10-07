@@ -5,8 +5,7 @@ import { SafeAreaView } from "react-native-safe-area-context";
 import { Ionicons } from "@expo/vector-icons";
 import { apiFetch, apiJson, isAuthFailure, ApiError } from "../../lib/api";
 import { ROLE_THEMES, colors, radius } from "../../lib/theme";
-import { ActionButton, AppCard, EmptyState, ErrorState, LoadingState, StatusChip } from "../../components/fitora";
-import { ScreenHeader } from "../../components/ScreenHeader";
+import { ActionButton, AppCard, BackHeader, EmptyState, ErrorState, LoadingState, StatusChip } from "../../components/fitora";
 import { useTourHighlight, useTourScrollView } from "../../lib/tour/MobileTourProvider";
 import { useSpotlightRef } from "../../lib/tour/SpotlightTarget";
 
@@ -93,14 +92,8 @@ export default function Coaches() {
           keyboardShouldPersistTaps="handled"
           refreshControl={<RefreshControl refreshing={loading} onRefresh={load} tintColor={accent} />}
         >
-          <ScreenHeader
-            title="Coaches"
-            accent={accent}
-            roleLabel="Coach"
-            subtitle="Academy owner"
-            inlineActions
-            headerActions={
-              !forbidden ? (
+          <BackHeader title="Coaches" subtitle="Coaches in your academy" />
+          {!forbidden ? (
                 <Pressable
                   ref={coachesSpotlightRef}
                   onLayout={coachesSpotlightOnLayout}
@@ -112,9 +105,7 @@ export default function Coaches() {
                   <Ionicons name={adding ? "close" : "add"} size={20} color="#fff" />
                   <Text style={styles.addBtnLabel}>{adding ? "Cancel" : "Add coach"}</Text>
                 </Pressable>
-              ) : undefined
-            }
-          />
+          ) : null}
 
           {created ? (
             <AppCard style={[styles.created, { gap: 10 }]}>
@@ -198,7 +189,7 @@ function Secret({ label, value }: { label: string; value: string }) {
 const styles = StyleSheet.create({
   safe: { flex: 1, backgroundColor: colors.surface },
   content: { padding: 20, paddingTop: 12, paddingBottom: 32 },
-  addBtn: { flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 6, height: 40, paddingHorizontal: 14, borderRadius: 12 },
+  addBtn: { alignSelf: "flex-start", flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 6, height: 40, paddingHorizontal: 14, borderRadius: 12 },
   addBtnLabel: { color: "#fff", fontWeight: "800", fontSize: 13 },
   row: { flexDirection: "row", alignItems: "center", gap: 14 },
   avatar: { height: 40, width: 40, borderRadius: 20, alignItems: "center", justifyContent: "center" },

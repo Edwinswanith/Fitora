@@ -5,8 +5,7 @@ import { SafeAreaView } from "react-native-safe-area-context";
 import { Ionicons } from "@expo/vector-icons";
 import { apiFetch, apiJson } from "../../lib/api";
 import { ROLE_THEMES, colors, radius } from "../../lib/theme";
-import { ActionButton, AppCard, EmptyState, ErrorState, LoadingState } from "../../components/fitora";
-import { ScreenHeader } from "../../components/ScreenHeader";
+import { ActionButton, AppCard, BackHeader, EmptyState, ErrorState, LoadingState } from "../../components/fitora";
 import { useTourHighlight, useTourScrollView } from "../../lib/tour/MobileTourProvider";
 import { SpotlightTarget } from "../../lib/tour/SpotlightTarget";
 
@@ -104,12 +103,7 @@ export default function Announcements() {
           keyboardShouldPersistTaps="handled"
           refreshControl={<RefreshControl refreshing={loading} onRefresh={load} tintColor={accent} />}
         >
-          <ScreenHeader
-            title="Announcements"
-            accent={accent}
-            roleLabel="Coach"
-            subtitle="Broadcast to your whole squad"
-          />
+          <BackHeader title="Announcements" subtitle="Broadcast to your whole squad" />
 
           <SpotlightTarget id="mobile-coach-announce" style={announceHighlight}>
           <AppCard style={styles.composeCard}>

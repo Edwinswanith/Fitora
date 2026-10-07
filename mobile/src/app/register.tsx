@@ -1,13 +1,12 @@
 import { useState } from "react";
-import { KeyboardAvoidingView, Platform, Pressable, ScrollView, StyleSheet, View } from "react-native";
-import { Text } from "../components/AppText";
+import { KeyboardAvoidingView, Platform, ScrollView, StyleSheet, View } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { useRouter } from "expo-router";
-import { Ionicons } from "@expo/vector-icons";
 import { useAuth } from "../lib/auth";
 import { dashboardPathForRole } from "../lib/roles";
 import { ROLE_THEMES, colors } from "../lib/theme";
-import { Banner, Card, H1, Label, Muted, PrimaryButton, TextField } from "../components/ui";
+import { Banner, Card, Label, PrimaryButton, TextField } from "../components/ui";
+import { BackHeader } from "../components/fitora";
 
 const theme = ROLE_THEMES.athlete;
 
@@ -69,15 +68,9 @@ export default function Register() {
     <SafeAreaView style={styles.safe}>
       <KeyboardAvoidingView behavior={Platform.OS === "ios" ? "padding" : undefined} style={{ flex: 1 }}>
         <ScrollView contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
-          <Pressable onPress={() => router.back()} style={styles.back} hitSlop={10}>
-            <Ionicons name="arrow-back" size={18} color={colors.inkFaint} />
-            <Text style={styles.backText}>BACK</Text>
-          </Pressable>
+          <BackHeader title="Create your account" subtitle="Join as an athlete. It takes under a minute." />
 
-          <H1>Create your account</H1>
-          <Muted style={{ marginTop: 8, marginBottom: 20 }}>Join as an athlete and start logging in under a minute.</Muted>
-
-          <Card style={{ gap: 14 }}>
+          <Card style={{ gap: 14, marginTop: 12 }}>
             <Field label="Full name" value={name} onChange={setName} placeholder="Jane Doe" />
             <Field label="Email" value={email} onChange={setEmail} placeholder="you@academy.com" email />
             <View>
@@ -110,7 +103,5 @@ function Field({ label, value, onChange, placeholder, email }: { label: string; 
 
 const styles = StyleSheet.create({
   safe: { flex: 1, backgroundColor: colors.surface },
-  content: { padding: 24, paddingTop: 16, paddingBottom: 32 },
-  back: { flexDirection: "row", alignItems: "center", gap: 6, marginBottom: 20 },
-  backText: { fontSize: 12, fontWeight: "700", letterSpacing: 2, color: colors.inkFaint },
+  content: { paddingHorizontal: 20, paddingTop: 8, paddingBottom: 32 },
 });

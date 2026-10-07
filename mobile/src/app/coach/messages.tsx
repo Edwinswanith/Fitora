@@ -21,7 +21,7 @@ import { ROLE_THEMES, colors, radius } from "../../lib/theme";
 import { Card, Muted } from "../../components/ui";
 import { ChatMediaBubble, type ChatMedia, type WorkoutTableRow } from "../../components/ChatMediaBubble";
 import type { MessageView } from "../../components/MessageCenter";
-import { ScreenHeader } from "../../components/ScreenHeader";
+import { BackHeader } from "../../components/fitora";
 import { Avatar as PhotoAvatar, type AvatarInfo } from "../../components/Avatar";
 import { useTourHighlight, useTourScrollView } from "../../lib/tour/MobileTourProvider";
 import { SpotlightTarget } from "../../lib/tour/SpotlightTarget";
@@ -562,12 +562,7 @@ export default function CoachMessages() {
         contentContainerStyle={styles.content}
         refreshControl={<RefreshControl refreshing={loading} onRefresh={load} tintColor={accent} />}
       >
-        <ScreenHeader
-          title="Messages"
-          accent={accent}
-          roleLabel="Coach"
-          subtitle="Direct chats with your athletes"
-        />
+        <BackHeader title="Messages" subtitle="Direct chats with your clients" />
 
         {loading && parties.length === 0 ? (
           <ActivityIndicator color={accent} style={{ marginTop: 40 }} />
