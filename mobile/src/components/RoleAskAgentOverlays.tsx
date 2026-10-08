@@ -8,6 +8,9 @@ import { AskAgentControl } from "./AskAgentControl";
 import { isAskAgentHiddenOn } from "../lib/askAgentVisibility";
 import { AthleteAskAgentOverlayV2 } from "./voiceAssistant/AthleteAskAgentOverlayV2";
 import { apiFetch, apiJson } from "../lib/api";
+import { useAuth } from "../lib/auth";
+import { todayKey } from "../lib/fitoraData";
+import { classifyPendingReply, coachAgentMemoryKey } from "../lib/coachAgentPending";
 import { ROLE_THEMES, colors } from "../lib/theme";
 import { SESSION_SLOTS } from "../lib/sessions";
 
@@ -88,8 +91,8 @@ type CoachWellnessPoint = {
   bedHr: number | null;
 };
 
-const today = () => new Date().toISOString().slice(0, 10);
-const COACH_AGENT_MEMORY_KEY = "scp.coach.askAgent.memory";
+// Local calendar day (not UTC): reports, notes and memory follow the coach's own day.
+const today = () => todayKey();
 
 function dateFromKey(key: string) {
   const [year, month, day] = key.split("-").map(Number);
@@ -300,16 +303,20 @@ export function CoachAskAgentOverlay() {
   const [memory, setMemory] = useState<CoachAgentMemory>(() => ({ date: today(), turns: [] }));
   const chatSeqRef = useRef(0);
   const memoryRef = useRef<CoachAgentMemory>({ date: today(), turns: [] });
-  const pendingCoachActionRef = useRef<PendingCoachAction | null>(null);
+  const pendingCoachActionRef = useRef<(PendingCoachAction & { at: number }) | null>(null);
+  const { user } = useAuth();
+  const memoryKey = coachAgentMemoryKey(user?.id);
 
   useEffect(() => {
     let cancelled = false;
-    void AsyncStorage.getItem(COACH_AGENT_MEMORY_KEY)
+    // Old unscoped key from before memory was per user: never read it, just delete it.
+    void AsyncStorage.removeItem("scp.coach.askAgent.memory").catch(() => undefined);
+    void AsyncStorage.getItem(memoryKey)
       .then((raw) => {
         if (!raw || cancelled) return;
         const parsed = JSON.parse(raw) as CoachAgentMemory;
         if (parsed.date !== today()) {
-          void AsyncStorage.removeItem(COACH_AGENT_MEMORY_KEY);
+          void AsyncStorage.removeItem(memoryKey);
           return;
         }
         memoryRef.current = { ...parsed, turns: parsed.turns ?? [] };
@@ -326,7 +333,7 @@ export function CoachAskAgentOverlay() {
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [memoryKey]);
 
   function updateMemory(patch: Partial<CoachAgentMemory>, turn?: { role: "user" | "agent"; text: string }) {
     const base = memoryRef.current.date === today() ? memoryRef.current : { date: today(), turns: [] };
@@ -334,7 +341,7 @@ export function CoachAskAgentOverlay() {
     const next: CoachAgentMemory = { ...base, ...patch, date: today(), turns: nextTurns };
     memoryRef.current = next;
     setMemory(next);
-    void AsyncStorage.setItem(COACH_AGENT_MEMORY_KEY, JSON.stringify(next)).catch(() => undefined);
+    void AsyncStorage.setItem(memoryKey, JSON.stringify(next)).catch(() => undefined);
   }
 
   function appendChat(role: "user" | "agent", text: string) {
@@ -449,7 +456,7 @@ export function CoachAskAgentOverlay() {
       setResult({ title: "Client Note", subtitle: athlete.name, summary, rows: [] });
       return summary;
     }
-    pendingCoachActionRef.current = { kind: "client_note", athleteId: athlete.athleteId, athleteName: athlete.name, body };
+    pendingCoachActionRef.current = { kind: "client_note", athleteId: athlete.athleteId, athleteName: athlete.name, body, at: Date.now() };
     setResult({
       title: "Confirm Client Note",
       subtitle: athlete.name,
@@ -618,7 +625,7 @@ export function CoachAskAgentOverlay() {
    * regex match alone.
    */
   function prepareAnnouncement(body: string): string {
-    pendingCoachActionRef.current = { kind: "announcement", body };
+    pendingCoachActionRef.current = { kind: "announcement", body, at: Date.now() };
     setResult({
       title: "Confirm Announcement",
       subtitle: "All assigned athletes",
@@ -642,11 +649,13 @@ export function CoachAskAgentOverlay() {
     try {
       const pending = pendingCoachActionRef.current;
       if (pending) {
-        if (/^(yes|yeah|yep|confirm|send|send it|do it|save it)\b/.test(lower)) {
+        const reply = classifyPendingReply(lower, pending.at);
+        if (reply === "confirm") {
+          pendingCoachActionRef.current = null;
           setResult(null);
           return pending.kind === "announcement" ? sendAnnouncement(pending.body) : sendClientNote(pending);
         }
-        if (/^(no|nope|cancel|stop|never mind|dont|don't)\b/.test(lower)) {
+        if (reply === "cancel") {
           pendingCoachActionRef.current = null;
           const summary = "Okay, cancelled.";
           setResult({
@@ -657,9 +666,9 @@ export function CoachAskAgentOverlay() {
           });
           return summary;
         }
-        return pending.kind === "announcement"
-          ? "Please say yes to send the announcement, or no to cancel."
-          : "Please say yes to send the client note, or no to cancel.";
+        // Expired, or the coach moved on to something else: drop the
+        // confirmation (never send it later) and handle this command normally.
+        pendingCoachActionRef.current = null;
       }
 
       setResult(null);
@@ -736,7 +745,16 @@ export function CoachAskAgentOverlay() {
         onInputOpenChange={setInputOpen}
         tourTargetId="mobile-coach-agent"
       />
-      {!inputOpen ? <AgentResultSheet result={result} onClose={() => setResult(null)} /> : null}
+      {!inputOpen ? (
+        <AgentResultSheet
+          result={result}
+          onClose={() => {
+            // Closing the sheet abandons any confirmation it was asking for.
+            pendingCoachActionRef.current = null;
+            setResult(null);
+          }}
+        />
+      ) : null}
     </>
   );
 }

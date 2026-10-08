@@ -71,7 +71,7 @@ Optional features (each is off when unset): `GEMINI_API_KEY` (Ask Agent, meal
 scan, workout-photo conversion), `FCM_PROJECT_ID` + `FCM_SERVICE_ACCOUNT_JSON`
 (push notifications), `DEEP_GRAM` (voice), `LIVEKIT_API_KEY` +
 `LIVEKIT_API_SECRET` + `LIVEKIT_URL` (video calls). Leave all `RAZORPAY_*`
-unset and do not set `EXPO_PUBLIC_PAYMENTS_ENABLED` while payments are off.
+unset and do not set `EXPO_PUBLIC_PAYMENTS_ENABLED` while payments are off. Ask Agent uses its own fast model, `GEMINI_VOICE_MODEL` (default `gemini-3.1-flash-lite`, thinking `GEMINI_VOICE_THINKING=minimal`); photo features keep `GEMINI_MODEL`.
 
 Changing a variable only takes effect on the **next deploy** (Deployments >
 latest > Redeploy).

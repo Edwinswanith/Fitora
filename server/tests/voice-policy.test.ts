@@ -64,14 +64,20 @@ describe("voiceIntentPolicy — fresh intents", () => {
     const result = derivePolicy(turn("log_rpe", { effortScore: 8 } as Record<string, unknown>), null);
     // effortScore is not part of log_rpe's own entity schema, so it's dropped entirely.
     expect(result.entities.effortScore).toBeUndefined();
-    expect(result.missingFields).toEqual(["rpe"]);
+    expect(result.missingFields).toEqual(["rpe", "trainingCategory", "plannedIntensityPercent"]);
     expect(result.action).toBe("collect_fields");
   });
 
-  test("log_rpe with rpe present auto-executes", () => {
-    const result = derivePolicy(turn("log_rpe", { rpe: 7, trainingCategory: "ENDURANCE" }), null);
+  test("log_rpe with rpe, category and planned intensity auto-executes", () => {
+    const result = derivePolicy(turn("log_rpe", { rpe: 7, trainingCategory: "ENDURANCE", plannedIntensityPercent: 70 }), null);
     expect(result.action).toBe("execute");
     expect(result.entities.rpe).toBe(7);
+  });
+
+  test("a bare 'RPE 8' asks for category and planned intensity instead of failing on save", () => {
+    const result = derivePolicy(turn("log_rpe", { rpe: 8 }), null);
+    expect(result.action).toBe("collect_fields");
+    expect(result.missingFields).toEqual(["trainingCategory", "plannedIntensityPercent"]);
   });
 
   test("log_rpe rejects a trainingCategory outside the allowlist", () => {
@@ -343,7 +349,8 @@ describe("voiceIntentPolicy — low-confidence classifications are never acted o
     expect(result.action).toBe("collect_fields");
     expect(result.effectiveIntent).toBe("log_meal");
     expect(result.entities).toEqual(pendingMeal.entities);
-    expect(result.spokenResponse).toBe("I didn't catch that. Could you say it again?");
+    // Re-asks the pending question instead of a generic "say it again".
+    expect(result.spokenResponse).toBe("I didn't catch that. How many calories should I log?");
   });
 
   test("meta-intents (yes/no/correction) are exempt from the confidence gate even when reported low", () => {
@@ -370,5 +377,31 @@ describe("voiceIntentPolicy — malformed/unexpected model output never executes
     const result = derivePolicy(turn("log_wellness", { sleepQuality: "99" } as Record<string, unknown>), null);
     expect(result.entities.sleepQuality).toBeUndefined();
     expect(result.missingFields).toContain("sleepQuality");
+  });
+});
+
+describe("an unrecognised or garbled turn never throws away an in-progress workflow", () => {
+  const mealPending: PolicyPendingState = { intent: "log_meal", entities: { mealType: "lunch", foodName: "rice" }, missingFields: ["calories"] };
+
+  test("unknown_intent mid-collection keeps the workflow and re-asks the missing field", () => {
+    const result = derivePolicy(turn("unknown_intent", {}, 0), mealPending);
+    expect(result.action).toBe("collect_fields");
+    expect(result.effectiveIntent).toBe("log_meal");
+    expect(result.entities).toEqual({ mealType: "lunch", foodName: "rice" });
+    expect(result.missingFields).toEqual(["calories"]);
+    expect(result.spokenResponse).toMatch(/calories/i);
+  });
+
+  test("unknown_intent while a coach note awaits confirmation stays a confirmation", () => {
+    const notePending: PolicyPendingState = { intent: "send_coach_note", entities: { body: "Knee is sore" }, missingFields: [] };
+    const result = derivePolicy(turn("unknown_intent", {}, 0), notePending);
+    expect(result.action).toBe("ready_to_confirm");
+    expect(result.spokenResponse).toMatch(/yes to send/i);
+  });
+
+  test("a low-confidence fresh intent mid-collection also keeps the workflow", () => {
+    const result = derivePolicy(turn("add_water", { amountMl: 250 }, 0.2), mealPending);
+    expect(result.action).toBe("collect_fields");
+    expect(result.effectiveIntent).toBe("log_meal");
   });
 });

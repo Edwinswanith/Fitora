@@ -24,8 +24,8 @@ import { resolveTimezoneForUser } from "../services/timezone";
 import { buildReadinessRiskFlag } from "../services/notificationTemplates";
 import { withIdempotency } from "../lib/voiceIdempotency";
 import { logVoiceEvent } from "../lib/voiceObservability";
-import { getVoiceIntentInterpreterV2 } from "../services/voiceIntentInterpreterV2";
-import { derivePolicy, VOICE_INTENTS_V2, OPEN_SCREEN_ALLOWLIST, type PolicyPendingState, type VoiceIntentNameV2, type OpenScreenTarget } from "../services/voiceIntentPolicy";
+import { getVoiceIntentInterpreterV2, VoiceInterpreterError } from "../services/voiceIntentInterpreterV2";
+import { derivePolicy, keepPendingWorkflow, VOICE_INTENTS_V2, OPEN_SCREEN_ALLOWLIST, type PolicyPendingState, type VoiceIntentNameV2, type OpenScreenTarget } from "../services/voiceIntentPolicy";
 
 /**
  * V2 athlete voice pipeline — additive and inert unless called. The existing
@@ -89,6 +89,7 @@ router.post(
       ? (req.body.currentScreen as OpenScreenTarget)
       : undefined;
 
+    const requestStartedAt = Date.now();
     const existing = await VoicePendingState.findOne({ athleteProfileId: profileId }).lean();
     const pending: PolicyPendingState = existing
       ? { intent: existing.intent as VoiceIntentNameV2, entities: (existing.entities as Record<string, unknown>) ?? {}, missingFields: existing.missingFields ?? [] }
@@ -99,25 +100,34 @@ router.post(
     const startedAt = Date.now();
     let policyResult;
     let interpreterOutcome: "success" | "error" = "success";
+    let failureReason: string | undefined;
+    let failureStatus: number | undefined;
+    let turnIntent: VoiceIntentNameV2 | undefined;
     let confidence = 0;
     try {
       const turn = await getVoiceIntentInterpreterV2().interpret({ transcript, today, pendingIntent: pending, currentScreen });
       confidence = turn.confidence;
+      turnIntent = turn.intent;
       policyResult = derivePolicy(turn, pending);
-    } catch {
+    } catch (err) {
       interpreterOutcome = "error";
-      policyResult = derivePolicy({ intent: "unknown_intent", entities: {}, confidence: 0 }, pending);
+      failureReason = err instanceof VoiceInterpreterError ? err.reason : "internal";
+      failureStatus = err instanceof VoiceInterpreterError ? err.status : undefined;
+      if (!(err instanceof VoiceInterpreterError)) console.error("[voice:interpret] interpreter crashed", err);
+      // The model being unavailable is not the athlete's fault: keep any
+      // half-finished workflow and say so, rather than "didn't catch that".
+      policyResult = pending
+        ? keepPendingWorkflow(pending, "Sorry, I had trouble with that.")
+        : {
+            effectiveIntent: "unknown_intent" as VoiceIntentNameV2,
+            entities: {},
+            missingFields: [],
+            action: "reject" as const,
+            requiresConfirmation: false,
+            spokenResponse: "Sorry, I had trouble with that. Please try again.",
+          };
     }
-    logVoiceEvent("interpret", {
-      athleteId: profileId.toString(),
-      interpreterOutcome,
-      hadPending: Boolean(pending),
-      intent: policyResult.effectiveIntent,
-      confidence,
-      action: policyResult.action,
-      transcriptLength: transcript.length,
-      latencyMs: Date.now() - startedAt,
-    });
+    const interpreterMs = Date.now() - startedAt;
 
     if (policyResult.action === "collect_fields" || policyResult.action === "ready_to_confirm") {
       await VoicePendingState.findOneAndUpdate(
@@ -134,9 +144,36 @@ router.post(
       );
     } else if (policyResult.action === "execute" || policyResult.action === "reject") {
       // Workflow resolved (confirmed, cancelled, or rejected) — nothing pending anymore.
-      await VoicePendingState.deleteOne({ athleteProfileId: profileId });
+      if (existing && (turnIntent === "confirm_action" || turnIntent === "update_field") && policyResult.action === "execute") {
+        // Claim the pending workflow atomically: of two concurrent "yes"
+        // turns (spoken yes + tapped Save), only one may execute it.
+        const claimed = await VoicePendingState.findOneAndDelete({ _id: existing._id });
+        if (!claimed) {
+          policyResult = {
+            ...policyResult,
+            action: "reject" as const,
+            spokenResponse: "That's already been handled.",
+          };
+        }
+      } else {
+        await VoicePendingState.deleteOne({ athleteProfileId: profileId });
+      }
     }
     // navigate/answer: one-shot, doesn't touch any existing pending workflow.
+
+    logVoiceEvent("interpret", {
+      athleteId: profileId.toString(),
+      interpreterOutcome,
+      failureReason,
+      failureStatus,
+      hadPending: Boolean(pending),
+      intent: policyResult.effectiveIntent,
+      confidence,
+      action: policyResult.action,
+      transcriptLength: transcript.length,
+      interpreterMs,
+      latencyMs: Date.now() - requestStartedAt,
+    });
 
     res.json({
       intent: policyResult.effectiveIntent,
@@ -145,6 +182,7 @@ router.post(
       action: policyResult.action,
       requiresConfirmation: policyResult.requiresConfirmation,
       spokenResponse: policyResult.spokenResponse,
+      ...(interpreterOutcome === "error" ? { interpreterError: true } : {}),
     });
   }
 );

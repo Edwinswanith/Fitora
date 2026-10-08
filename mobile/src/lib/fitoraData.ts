@@ -578,7 +578,8 @@ export async function clearDataCache(): Promise<void> {
   cacheOwner = null;
   clearInMemoryCache();
   try {
-    const keys = (await AsyncStorage.getAllKeys()).filter((k) => k.startsWith(PERSIST_PREFIX));
+    // Includes the coach assistant's per-user chat memory (lib/coachAgentPending.ts).
+    const keys = (await AsyncStorage.getAllKeys()).filter((k) => k.startsWith(PERSIST_PREFIX) || k.startsWith("scp.coach.askAgent.memory"));
     if (keys.length) await AsyncStorage.multiRemove(keys);
   } catch {
     // Nothing else to do; a later hydrate for a different owner never reads these keys.

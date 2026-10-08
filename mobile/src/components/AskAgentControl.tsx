@@ -1,4 +1,4 @@
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Platform, Pressable, StyleSheet, TextInput, useWindowDimensions, View } from "react-native";
 import Animated, { useAnimatedStyle, useSharedValue, withTiming } from "react-native-reanimated";
 import { Ionicons } from "@expo/vector-icons";
@@ -6,7 +6,7 @@ import { Text } from "./AppText";
 import { colors } from "../lib/theme";
 import { useTourHighlight } from "../lib/tour/MobileTourProvider";
 import { useSpotlightRef } from "../lib/tour/SpotlightTarget";
-import { speakAgentReply } from "../lib/agentSpeech";
+import { speakAgentReply, stopAgentSpeech } from "../lib/agentSpeech";
 import { startVoiceConversation, type VoiceConversationHandle } from "../lib/voiceSession";
 
 export function AskAgentControl({
@@ -51,6 +51,20 @@ export function AskAgentControl({
   const longPressRef = useRef(false);
   const conversationRef = useRef<VoiceConversationHandle | null>(null);
   const submitLockRef = useRef(false);
+  const restartTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  // Leaving the screen tree (logout, role change) must release the mic and
+  // silence any reply; nothing here may outlive the button.
+  useEffect(
+    () => () => {
+      conversationRef.current?.stop();
+      conversationRef.current = null;
+      if (holdTimerRef.current) clearTimeout(holdTimerRef.current);
+      if (restartTimerRef.current) clearTimeout(restartTimerRef.current);
+      void stopAgentSpeech();
+    },
+    []
+  );
   const compactLabeled = labeled && width < 370;
   // Driven by real mic input level (see lib/voiceSession) — powers the glow
   // that pulses around the FAB while the user is actually speaking.
@@ -84,6 +98,8 @@ export function AskAgentControl({
   }
 
   function startVoice(nextMode: "voice" | "execute") {
+    // Never run two conversations: a second one would orphan the first's mic.
+    if (conversationRef.current?.isActive()) conversationRef.current.stop();
     setInputOpen(false);
     onInputOpenChange?.(false);
     setMode(nextMode);
@@ -113,8 +129,8 @@ export function AskAgentControl({
       },
       onError: () => {
         setListening(false);
+        onListeningChange?.(false);
       },
-      onTimeout: () => undefined,
       onNeedsFallback: () => {
         setInputOpen(true);
         onInputOpenChange?.(true);
@@ -157,9 +173,12 @@ export function AskAgentControl({
   }
 
   function pressExecute() {
-    if (busy) return;
+    if (busy || restartTimerRef.current) return;
     stopConversation();
-    setTimeout(() => startVoice("execute"), 80);
+    restartTimerRef.current = setTimeout(() => {
+      restartTimerRef.current = null;
+      startVoice("execute");
+    }, 80);
   }
 
   const glowStyle = useAnimatedStyle(() => ({

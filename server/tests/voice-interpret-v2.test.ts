@@ -240,6 +240,52 @@ describe("POST /api/athlete/voice/interpret-v2 — contract", () => {
     expect(pending).toBeNull();
   });
 
+  test("two concurrent 'yes' turns (spoken yes + tapped Save) execute the workflow only once", async () => {
+    const app = buildApp();
+    const { user, profile } = await makeAthlete("Farah");
+    const token = tokenFor(user._id as Types.ObjectId, "athlete");
+    await request(app)
+      .post("/api/athlete/voice/interpret-v2")
+      .set("Cookie", [`accessToken=${token}`])
+      .send({ transcript: "tell my coach I'll be late today" });
+
+    setVoiceIntentInterpreterV2ForTests({ interpret: async () => ({ intent: "confirm_action", entities: {}, confidence: 0.95 }) });
+    const [a, b] = await Promise.all(
+      [0, 1].map(() =>
+        request(app).post("/api/athlete/voice/interpret-v2").set("Cookie", [`accessToken=${token}`]).send({ transcript: "yes" })
+      )
+    );
+    const actions = [a.body.action, b.body.action].sort();
+    expect(actions).toEqual(["execute", "reject"]);
+    expect(await VoicePendingState.findOne({ athleteProfileId: profile._id })).toBeNull();
+  });
+
+  test("an interpreter failure mid-workflow keeps the pending workflow and flags the error", async () => {
+    const app = buildApp();
+    const { user, profile } = await makeAthlete("Ganesh");
+    const token = tokenFor(user._id as Types.ObjectId, "athlete");
+    await request(app)
+      .post("/api/athlete/voice/interpret-v2")
+      .set("Cookie", [`accessToken=${token}`])
+      .send({ transcript: "tell my coach I'll be late today" });
+
+    setVoiceIntentInterpreterV2ForTests({
+      interpret: async () => {
+        throw new Error("model down");
+      },
+    });
+    const res = await request(app)
+      .post("/api/athlete/voice/interpret-v2")
+      .set("Cookie", [`accessToken=${token}`])
+      .send({ transcript: "yes" });
+    expect(res.status).toBe(200);
+    expect(res.body.interpreterError).toBe(true);
+    expect(res.body.action).toBe("ready_to_confirm");
+    expect(res.body.intent).toBe("send_coach_note");
+    const pending = await VoicePendingState.findOne({ athleteProfileId: profile._id }).lean();
+    expect(pending?.intent).toBe("send_coach_note");
+  });
+
   test("cancel_action clears an in-progress (still-collecting) pending workflow without executing anything", async () => {
     const app = buildApp();
     const { user, profile } = await makeAthlete("Guru");
