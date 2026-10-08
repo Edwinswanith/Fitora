@@ -7,6 +7,27 @@ import { API_BASE, apiFetch, getAccessToken } from "./api";
 import { normalizeVoiceCommandForAgent } from "./voiceTranslation";
 import { getDeepgramLanguageHint, getVoiceRecognitionLanguage } from "./voiceLanguage";
 import { isSystemicTranscribeFailure } from "./voiceTranscribeFailure";
+import { startVoiceTurnTimer, type VoiceTurnTimer } from "./voiceTiming";
+import {
+  batchEndpoint,
+  DEFAULT_FOLLOW_UP_WINDOW_MS,
+  DEFAULT_MAX_EMPTY_LISTENS,
+  DEFAULT_SILENCE_TIMEOUT_MS,
+  shouldListenAfterReply,
+  type BatchEndpointState,
+} from "./voiceTurnRules";
+
+export { shouldListenAfterReply } from "./voiceTurnRules";
+
+/**
+ * Live Deepgram streaming needs a WebSocket-capable API host (the long-running
+ * Node server, e.g. Cloud Run). The Vercel API cannot upgrade connections, so
+ * streaming is opt-in; otherwise devices without on-device recognition go
+ * straight to the batch recorder instead of paying a failed handshake first.
+ */
+function isVoiceStreamingEnabled(): boolean {
+  return process.env.EXPO_PUBLIC_VOICE_STREAMING === "true";
+}
 
 export type VoiceSessionHandlers = {
   onListeningChange: (listening: boolean) => void;
@@ -31,8 +52,14 @@ export type VoiceConversationHandlers = {
   onResult: (transcript: string) => Promise<string | void> | string | void;
   onError: () => void;
   onNeedsFallback: () => void;
+  /** The conversation ended because nobody spoke (no-speech window elapsed). */
   onTimeout?: () => void;
+  /** How long to wait for speech to start before ending the conversation. */
   silenceTimeoutMs?: number;
+  /** After a reply that asks a question, how long to wait for the answer. */
+  followUpWindowMs?: number;
+  /** Consecutive empty/failed listens (no speech, recognizer error) before giving up. */
+  maxEmptyListens?: number;
   introPrompt?: string;
   speakReplies?: boolean;
   ttsListenDebounceMs?: number;
@@ -43,6 +70,13 @@ export type VoiceConversationHandle = {
   isActive: () => boolean;
 };
 
+/** Which audio path a new listen would use (for timing reports). */
+export function voicePathName(): "web-speech" | "on-device" | "stream" | "batch" {
+  if (Platform.OS === "web") return "web-speech";
+  if (isNativeSpeechRecognitionAvailable()) return "on-device";
+  return isVoiceStreamingEnabled() ? "stream" : "batch";
+}
+
 /**
  * Starts one streaming voice-command session and sends live 16 kHz linear16 PCM
  * to the API's Deepgram WebSocket proxy. The batch recorder remains as fallback.
@@ -50,11 +84,20 @@ export type VoiceConversationHandle = {
 export function startVoiceSession(handlers: VoiceSessionHandlers): VoiceSessionHandle {
   if (Platform.OS === "web") return startWebSpeechVoiceSession(handlers);
   if (isNativeSpeechRecognitionAvailable()) return startNativeSpeechRecognitionVoiceSession(handlers);
-  return startDeepgramStreamingVoiceSession(handlers);
+  return isVoiceStreamingEnabled() ? startDeepgramStreamingVoiceSession(handlers) : startDeepgramVoiceSession(handlers);
 }
 
+/**
+ * One voice conversation: listen, hand the transcript to `onResult`, speak
+ * the reply, and keep listening only if the reply asked a question. It ends
+ * by itself when nobody speaks, after a couple of empty listens, or when any
+ * step fails; it never loops forever and never stays "active" without a
+ * session.
+ */
 export function startVoiceConversation(handlers: VoiceConversationHandlers): VoiceConversationHandle {
-  const silenceTimeoutMs = handlers.silenceTimeoutMs ?? 300000;
+  const silenceTimeoutMs = handlers.silenceTimeoutMs ?? DEFAULT_SILENCE_TIMEOUT_MS;
+  const followUpWindowMs = handlers.followUpWindowMs ?? DEFAULT_FOLLOW_UP_WINDOW_MS;
+  const maxEmptyListens = handlers.maxEmptyListens ?? DEFAULT_MAX_EMPTY_LISTENS;
   let active = true;
   let listening = false;
   let current: VoiceSessionHandle | null = null;
@@ -62,6 +105,8 @@ export function startVoiceConversation(handlers: VoiceConversationHandlers): Voi
   let listenDeadlineAt = 0;
   let turnSeq = 0;
   let speechSeq = 0;
+  let emptyListens = 0;
+  let turnTimer: VoiceTurnTimer | null = null;
   const activeSpeechLevel = 0.01;
 
   function clearSilenceTimer() {
@@ -74,18 +119,14 @@ export function startVoiceConversation(handlers: VoiceConversationHandlers): Voi
     clearSilenceTimer();
     silenceTimer = setTimeout(() => {
       if (!active || !listening) return;
+      turnTimer?.finish("no_speech");
       handlers.onTimeout?.();
-      current?.stop();
-      current = null;
-      setListening(false);
-      setTimeout(() => {
-        if (active && !current) listen(true);
-      }, 180);
+      stop();
     }, Math.max(0, listenDeadlineAt - Date.now()));
   }
 
-  function extendSilenceDeadline() {
-    listenDeadlineAt = Date.now() + silenceTimeoutMs;
+  function extendSilenceDeadline(windowMs: number) {
+    listenDeadlineAt = Math.max(listenDeadlineAt, Date.now() + windowMs);
     armSilenceTimer();
   }
 
@@ -106,51 +147,59 @@ export function startVoiceConversation(handlers: VoiceConversationHandlers): Voi
     clearSilenceTimer();
     current?.stop();
     current = null;
+    turnTimer?.finish("stopped");
     void stopAgentSpeech();
     handlers.onSpeakingChange?.(false);
     setListening(false);
     handlers.onActiveChange?.(false);
   }
 
-  function listen(resetDeadline = true) {
+  function listen(windowMs: number) {
     if (!active) return;
-    if (resetDeadline) {
-      listenDeadlineAt = Date.now() + silenceTimeoutMs;
-    }
+    listenDeadlineAt = Date.now() + windowMs;
     const seq = ++turnSeq;
     let processingResult = false;
-    function recoverListeningWindow() {
+    const timer = startVoiceTurnTimer(voicePathName());
+    turnTimer = timer;
+
+    function recoverListeningWindow(outcome: string) {
       if (!active || seq !== turnSeq || processingResult) return;
+      // Release the finished recognizer (clears its listeners) before the next one.
+      current?.stop();
       current = null;
       setListening(false);
-      if (Date.now() >= listenDeadlineAt) {
+      timer.finish(outcome);
+      emptyListens += 1;
+      if (emptyListens > maxEmptyListens || Date.now() >= listenDeadlineAt) {
         handlers.onTimeout?.();
-        setTimeout(() => {
-          if (active && seq === turnSeq && !current) listen(true);
-        }, 180);
+        stop();
         return;
       }
       setTimeout(() => {
-        if (active && seq === turnSeq && !current) listen(false);
+        if (active && seq === turnSeq && !current) listen(Math.max(1000, listenDeadlineAt - Date.now()));
       }, 180);
     }
+
     current = startVoiceSession({
       onListeningChange: (value) => {
         if (!active || seq !== turnSeq) return;
+        if (value) timer.mark("listening");
         setListening(value);
       },
       onVolume: (level) => {
         if (!active || seq !== turnSeq) return;
-        if (level >= activeSpeechLevel) extendSilenceDeadline();
+        if (level >= activeSpeechLevel) extendSilenceDeadline(silenceTimeoutMs);
         handlers.onVolume(level);
       },
       onResult: (transcript) => {
         if (!active || seq !== turnSeq) return;
         if (!transcript.trim()) {
-          recoverListeningWindow();
+          recoverListeningWindow("empty");
           return;
         }
         processingResult = true;
+        emptyListens = 0;
+        timer.mark("final");
         clearSilenceTimer();
         current?.stop();
         current = null;
@@ -158,23 +207,36 @@ export function startVoiceConversation(handlers: VoiceConversationHandlers): Voi
         void normalizeVoiceCommandForAgent(transcript)
           .then((normalized) => handlers.onResult(normalized))
           .then(async (reply) => {
+            timer.mark("reply");
             const spokenReply = reply?.trim();
             if (!active) return;
             if (spokenReply && handlers.speakReplies !== false) {
               const thisSpeech = ++speechSeq;
               handlers.onSpeakingChange?.(true);
-              await speakAgentReply(spokenReply)
+              await speakAgentReply(spokenReply, { onStart: () => timer.mark("speechStart") })
                 .catch(() => undefined)
                 .finally(() => {
+                  timer.mark("speechEnd");
                   if (active && speechSeq === thisSpeech) handlers.onSpeakingChange?.(false);
                 });
             }
+            timer.finish("replied");
+            if (!active) return;
+            if (!shouldListenAfterReply(spokenReply)) {
+              stop();
+              return;
+            }
             setTimeout(() => {
-              if (active) listen(true);
+              if (active) listen(followUpWindowMs);
             }, handlers.ttsListenDebounceMs ?? 300);
           })
           .catch(() => {
-            if (active) handlers.onError();
+            // Translation or the command itself failed: report it and end the
+            // conversation instead of leaving it "active" with no session.
+            timer.finish("error");
+            if (!active) return;
+            handlers.onError();
+            stop();
           })
           .finally(() => {
             if (!active) handlers.onSpeakingChange?.(false);
@@ -182,14 +244,15 @@ export function startVoiceConversation(handlers: VoiceConversationHandlers): Voi
       },
       onError: () => {
         if (!active || seq !== turnSeq) return;
-        recoverListeningWindow();
+        recoverListeningWindow("recognizer_error");
       },
       onEnd: () => {
         if (!active || seq !== turnSeq) return;
-        recoverListeningWindow();
+        recoverListeningWindow("ended");
       },
       onNeedsFallback: () => {
         if (!active || seq !== turnSeq) return;
+        timer.finish("fallback");
         handlers.onNeedsFallback();
         stop();
       },
@@ -203,11 +266,11 @@ export function startVoiceConversation(handlers: VoiceConversationHandlers): Voi
       .finally(() => {
         handlers.onSpeakingChange?.(false);
         setTimeout(() => {
-          if (active) listen();
+          if (active) listen(silenceTimeoutMs);
         }, 350);
       });
   } else {
-    listen();
+    listen(silenceTimeoutMs);
   }
 
   return { stop, isActive: () => active };
@@ -238,6 +301,8 @@ type AudioRecorderLike = {
   prepareToRecordAsync: () => Promise<void>;
   record: () => void;
   stop: () => Promise<void>;
+  getStatus?: () => { metering?: number };
+  release?: () => void;
 };
 
 type AudioStreamLike = {
@@ -246,7 +311,7 @@ type AudioStreamLike = {
   addListener: (event: "audioStreamBuffer", listener: (buffer: AudioStreamBuffer) => void) => { remove: () => void };
 };
 
-const AudioRecorderCtor = (AudioModule as unknown as { AudioRecorder: new (options: typeof RecordingPresets.HIGH_QUALITY) => AudioRecorderLike })
+const AudioRecorderCtor = (AudioModule as unknown as { AudioRecorder: new (options: typeof RecordingPresets.HIGH_QUALITY & { isMeteringEnabled?: boolean }) => AudioRecorderLike })
   .AudioRecorder;
 const AudioStreamCtor = (AudioModule as unknown as {
   AudioStream?: new (options: { sampleRate: number; channels: number; encoding: "int16" }) => AudioStreamLike;
@@ -286,9 +351,20 @@ function startSpeechRecognitionVoiceSession(handlers: VoiceSessionHandlers, reco
     handlers.onVolume(0);
   }
 
+  // The native recognizer subscribes these on a global emitter; leaving them
+  // set leaks ~4 listeners per turn that keep firing on later sessions.
+  function detach() {
+    recognition.onstart = null;
+    recognition.onresult = null;
+    recognition.onerror = null;
+    recognition.onend = null;
+  }
+
   function stop() {
+    if (stopped) return;
     stopped = true;
     cleanup();
+    detach();
     try {
       recognition.abort?.();
     } catch {
@@ -370,7 +446,7 @@ function startNativeSpeechRecognitionVoiceSession(handlers: VoiceSessionHandlers
   try {
     return startSpeechRecognitionVoiceSession(handlers, new ExpoWebSpeechRecognition() as unknown as SpeechRecognitionLike);
   } catch {
-    return startDeepgramStreamingVoiceSession(handlers);
+    return isVoiceStreamingEnabled() ? startDeepgramStreamingVoiceSession(handlers) : startDeepgramVoiceSession(handlers);
   }
 }
 
@@ -465,7 +541,7 @@ function startDeepgramStreamingVoiceSession(handlers: VoiceSessionHandlers): Voi
   }
 
   function failToBatch() {
-    if (stopped || settled) return;
+    if (stopped || settled || fallback) return;
     cleanup();
     fallback = startDeepgramVoiceSession(handlers);
   }
@@ -523,6 +599,8 @@ function startDeepgramStreamingVoiceSession(handlers: VoiceSessionHandlers): Voi
           try {
             if (stopped || !socket || socket.readyState !== WebSocket.OPEN) return;
             await setAudioModeAsync({ allowsRecording: true, playsInSilentMode: true });
+            // Stopped while the audio session was switching: don't open the mic.
+            if (stopped || !socket || socket.readyState !== WebSocket.OPEN) return;
             const nextStream = new AudioStreamCtor({ sampleRate: 16000, channels: 1, encoding: "int16" });
             stream = nextStream;
             bufferSub = nextStream.addListener("audioStreamBuffer", (buffer) => {
@@ -531,6 +609,10 @@ function startDeepgramStreamingVoiceSession(handlers: VoiceSessionHandlers): Voi
               socket.send(buffer.data);
             });
             await nextStream.start();
+            if (stopped) {
+              cleanup();
+              return;
+            }
             started = true;
             handlers.onListeningChange(true);
           } catch {
@@ -539,7 +621,7 @@ function startDeepgramStreamingVoiceSession(handlers: VoiceSessionHandlers): Voi
         })();
       };
     } catch {
-      if (!stopped) fallback = startDeepgramVoiceSession(handlers);
+      if (!stopped && !fallback) fallback = startDeepgramVoiceSession(handlers);
     }
   })();
 
@@ -553,19 +635,21 @@ function startDeepgramStreamingVoiceSession(handlers: VoiceSessionHandlers): Voi
   };
 }
 
+/** Maps a dBFS meter reading to the 0..1 level the UI glow expects. */
+function levelFromDb(db: number | undefined): number {
+  if (typeof db !== "number") return 0;
+  return Math.max(0, Math.min(1, (db + 60) / 50));
+}
+
 function startDeepgramVoiceSession(handlers: VoiceSessionHandlers): VoiceSessionHandle {
   let stopped = false;
   let finished = false;
-  let startedRecording = false;
   let recorder: AudioRecorderLike | null = null;
-  let timer: ReturnType<typeof setTimeout> | null = null;
-  let pulseTimer: ReturnType<typeof setInterval> | null = null;
+  let meterTimer: ReturnType<typeof setInterval> | null = null;
 
   function clearTimers() {
-    if (timer) clearTimeout(timer);
-    timer = null;
-    if (pulseTimer) clearInterval(pulseTimer);
-    pulseTimer = null;
+    if (meterTimer) clearInterval(meterTimer);
+    meterTimer = null;
   }
 
   function setDone() {
@@ -574,7 +658,15 @@ function startDeepgramVoiceSession(handlers: VoiceSessionHandlers): VoiceSession
     handlers.onVolume(0);
   }
 
-  async function finish(shouldTranscribe: boolean, allowStoppedTranscribe = false) {
+  function release(activeRecorder: AudioRecorderLike) {
+    try {
+      activeRecorder.release?.();
+    } catch {
+      // already released
+    }
+  }
+
+  async function finish(shouldTranscribe: boolean) {
     if (finished) return;
     finished = true;
     const activeRecorder = recorder;
@@ -585,20 +677,23 @@ function startDeepgramVoiceSession(handlers: VoiceSessionHandlers): VoiceSession
     try {
       if (activeRecorder.isRecording) await activeRecorder.stop();
     } catch {
+      release(activeRecorder);
       if (shouldTranscribe && !stopped) handlers.onError();
       return;
     }
 
-    if (!shouldTranscribe || (stopped && !allowStoppedTranscribe)) return;
     const uri = activeRecorder.uri;
+    release(activeRecorder);
+    if (!shouldTranscribe || stopped) return;
     if (!uri) {
       handlers.onError();
       return;
     }
     try {
       const transcript = await transcribeWithDeepgram(uri);
-      handlers.onResult(transcript);
+      if (!stopped) handlers.onResult(transcript);
     } catch (err) {
+      if (stopped) return;
       if (err instanceof VoiceTranscriptionError && err.systemic) handlers.onNeedsFallback();
       else handlers.onError();
     }
@@ -614,25 +709,40 @@ function startDeepgramVoiceSession(handlers: VoiceSessionHandlers): VoiceSession
       }
 
       await setAudioModeAsync({ allowsRecording: true, playsInSilentMode: true });
-      const nextRecorder = new AudioRecorderCtor(RecordingPresets.HIGH_QUALITY);
+      if (stopped) return;
+      const nextRecorder = new AudioRecorderCtor({ ...RecordingPresets.HIGH_QUALITY, isMeteringEnabled: true });
       recorder = nextRecorder;
       await nextRecorder.prepareToRecordAsync();
       if (stopped) {
-        await finish(false);
+        // Stopped while preparing: release the prepared recorder so the mic is freed.
+        recorder = null;
+        release(nextRecorder);
         return;
       }
 
       nextRecorder.record();
-      startedRecording = true;
       handlers.onListeningChange(true);
-      let pulse = 0.18;
-      pulseTimer = setInterval(() => {
-        pulse = pulse > 0.34 ? 0.18 : pulse + 0.04;
-        handlers.onVolume(pulse);
+      // End of speech from the recorder's real input level, so the user
+      // never has to tap (or wait out a fixed timer) to send a command.
+      let endpoint: BatchEndpointState = { heardSpeech: false, lastSpeechAt: 0, startedAt: Date.now() };
+      meterTimer = setInterval(() => {
+        if (stopped || finished) return;
+        let db: number | undefined;
+        try {
+          db = nextRecorder.getStatus?.().metering;
+        } catch {
+          db = undefined;
+        }
+        handlers.onVolume(levelFromDb(db));
+        const result = batchEndpoint(endpoint, db, Date.now());
+        endpoint = result.state;
+        if (result.decision === "send") void finish(true);
+        else if (result.decision === "no_speech" || result.decision === "max") {
+          void finish(false).then(() => {
+            if (!stopped) handlers.onEnd?.();
+          });
+        }
       }, 120);
-      timer = setTimeout(() => {
-        void finish(true);
-      }, 60000);
     } catch {
       if (!stopped) handlers.onNeedsFallback();
     }
@@ -640,8 +750,9 @@ function startDeepgramVoiceSession(handlers: VoiceSessionHandlers): VoiceSession
 
   return {
     stop: () => {
+      // A stop is the user cancelling: release the mic, don't upload.
       stopped = true;
-      void finish(startedRecording, true);
+      void finish(false);
     },
   };
 }

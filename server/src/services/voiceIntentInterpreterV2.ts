@@ -234,6 +234,29 @@ export function sanitizeModelOutput(raw: unknown): SanitizedTurn {
   };
 }
 
+/** Why the model could not classify a turn (logged; never shown to the athlete verbatim). */
+export type VoiceInterpreterFailure = "timeout" | "rate_limited" | "upstream_error" | "network" | "empty_response" | "bad_json";
+
+export class VoiceInterpreterError extends Error {
+  constructor(
+    readonly reason: VoiceInterpreterFailure,
+    readonly status?: number
+  ) {
+    super(`voice_interpreter_${reason}${status ? `_${status}` : ""}`);
+  }
+}
+
+/** Hard cap on one Gemini attempt. A turn must never hang on the model. */
+export const GEMINI_VOICE_ATTEMPT_TIMEOUT_MS = 6000;
+/** A retry is only attempted if the first attempt failed fast (rate limit / 5xx / network), within this budget. */
+const GEMINI_VOICE_RETRY_WINDOW_MS = 2500;
+const GEMINI_VOICE_RETRY_DELAY_MS = 300;
+
+function isTimeout(err: unknown): boolean {
+  const name = (err as { name?: string })?.name;
+  return name === "TimeoutError" || name === "AbortError";
+}
+
 export class GeminiVoiceIntentInterpreterV2 implements VoiceIntentInterpreterV2 {
   constructor(
     private readonly apiKey: string,
@@ -241,6 +264,19 @@ export class GeminiVoiceIntentInterpreterV2 implements VoiceIntentInterpreterV2 
   ) {}
 
   async interpret(input: VoiceInterpretInputV2): Promise<SanitizedTurn> {
+    const startedAt = Date.now();
+    try {
+      return await this.attempt(input);
+    } catch (err) {
+      const retryable =
+        err instanceof VoiceInterpreterError && (err.reason === "rate_limited" || err.reason === "upstream_error" || err.reason === "network");
+      if (!retryable || Date.now() - startedAt > GEMINI_VOICE_RETRY_WINDOW_MS) throw err;
+      await new Promise((resolve) => setTimeout(resolve, GEMINI_VOICE_RETRY_DELAY_MS));
+      return this.attempt(input);
+    }
+  }
+
+  private async attempt(input: VoiceInterpretInputV2): Promise<SanitizedTurn> {
     const body = {
       systemInstruction: { parts: [{ text: SYSTEM_PROMPT_V2 }] },
       contents: [{ parts: [{ text: buildUserPrompt(input) }] }],
@@ -251,26 +287,36 @@ export class GeminiVoiceIntentInterpreterV2 implements VoiceIntentInterpreterV2 
       },
     };
 
-    const url = `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(
-      this.model
-    )}:generateContent?key=${encodeURIComponent(this.apiKey)}`;
+    const url = `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(this.model)}:generateContent`;
 
-    const res = await fetch(url, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(body),
-    });
-    if (!res.ok) throw new Error(`gemini_http_${res.status}`);
+    let res: Response;
+    try {
+      // Key in a header, not the URL, so it never lands in proxy/access logs.
+      res = await fetch(url, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", "x-goog-api-key": this.apiKey },
+        body: JSON.stringify(body),
+        signal: AbortSignal.timeout(GEMINI_VOICE_ATTEMPT_TIMEOUT_MS),
+      });
+    } catch (err) {
+      throw new VoiceInterpreterError(isTimeout(err) ? "timeout" : "network");
+    }
+    if (!res.ok) throw new VoiceInterpreterError(res.status === 429 ? "rate_limited" : "upstream_error", res.status);
 
-    const json = (await res.json()) as { candidates?: { content?: { parts?: { text?: string }[] } }[] };
+    let json: { candidates?: { content?: { parts?: { text?: string }[] } }[] };
+    try {
+      json = (await res.json()) as typeof json;
+    } catch (err) {
+      throw new VoiceInterpreterError(isTimeout(err) ? "timeout" : "bad_json");
+    }
     const text = json.candidates?.[0]?.content?.parts?.[0]?.text;
-    if (!text) throw new Error("gemini_empty_response");
+    if (!text) throw new VoiceInterpreterError("empty_response");
 
     let parsed: unknown;
     try {
       parsed = JSON.parse(text);
     } catch {
-      throw new Error("gemini_bad_json");
+      throw new VoiceInterpreterError("bad_json");
     }
     return sanitizeModelOutput(parsed);
   }

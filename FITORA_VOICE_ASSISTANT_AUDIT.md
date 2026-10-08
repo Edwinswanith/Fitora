@@ -6,6 +6,10 @@ Supersedes the parts of `FITORA_VOICE_ASSISTANT_CURRENT_BASELINE.md` it contradi
 
 ---
 
+## Progress
+
+- **2026-10-08: Phase 0 (instrumentation) and Phase 1 (P0-1 to P0-10) implemented.** Per-turn timings on mobile (`[voice:turn]`) and server (`[voice:interpret]` with `interpreterMs`, `latencyMs`, `failureReason`). Next: collect real timings, then Phase 2 (fast path, Gemini config, TTS).
+
 ## Executive summary
 
 **Verdict: 🔴 Critical problems.** The core design is sound (the model only classifies; a deterministic, unit-tested policy decides what to do). The problems are in the plumbing around it:

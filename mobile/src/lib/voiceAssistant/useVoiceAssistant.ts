@@ -2,6 +2,7 @@ import { useCallback, useEffect, useReducer, useRef } from "react";
 import * as Crypto from "expo-crypto";
 import { speakAgentReply } from "../agentSpeech";
 import { apiJson } from "../api";
+import { actionKey, turnFailureMessage } from "./turnRules";
 import { initialVoiceAssistantState, voiceAssistantReducer } from "./state";
 import { executeVoiceAction, fetchAssignedCoaches } from "./actionDispatch";
 import { fetchAnswerFor } from "./answerFetchers";
@@ -32,7 +33,10 @@ export type UseVoiceAssistantOptions = {
  */
 export function useVoiceAssistant(options: UseVoiceAssistantOptions = {}) {
   const [state, dispatch] = useReducer(voiceAssistantReducer, initialVoiceAssistantState);
-  const clientActionIdRef = useRef<string | null>(null);
+  const clientActionIdRef = useRef<{ key: string; id: string } | null>(null);
+  // One turn at a time across every entry point (voice, typed, confirmation
+  // card): a spoken "yes" and a tapped Save must not both execute.
+  const turnInFlightRef = useRef(false);
   const resolvedCoachIdRef = useRef<string | null>(null);
   const currentScreenRef = useRef<string | undefined>(options.currentScreen);
   useEffect(() => {
@@ -49,12 +53,15 @@ export function useVoiceAssistant(options: UseVoiceAssistantOptions = {}) {
   const performExecute = useCallback(
     async (intent: VoiceIntentNameV2, entities: Record<string, unknown>): Promise<string> => {
       dispatch({ type: "EXECUTING" });
-      const clientActionId = clientActionIdRef.current ?? Crypto.randomUUID();
-      clientActionIdRef.current = null;
+      const key = actionKey(intent, entities);
+      const clientActionId = clientActionIdRef.current?.key === key ? clientActionIdRef.current.id : Crypto.randomUUID();
+      // Kept until the save succeeds, so retrying the same command reuses it.
+      clientActionIdRef.current = { key, id: clientActionId };
       const coachId = intent === "send_coach_note" ? resolvedCoachIdRef.current ?? undefined : undefined;
       resolvedCoachIdRef.current = null;
       try {
         const { message, response } = await executeVoiceAction(intent, entities, { clientActionId, coachId });
+        clientActionIdRef.current = null;
         dispatch({ type: "EXECUTED", message });
         options.onExecuted?.(intent, entities, response);
         return message;
@@ -97,9 +104,7 @@ export function useVoiceAssistant(options: UseVoiceAssistantOptions = {}) {
         }
       }
 
-      const newClientActionId = res.action === "ready_to_confirm" && !clientActionIdRef.current ? Crypto.randomUUID() : null;
-      if (newClientActionId) clientActionIdRef.current = newClientActionId;
-      dispatch({ type: "TURN", payload: res, clientActionId: newClientActionId });
+      dispatch({ type: "TURN", payload: res, clientActionId: null });
 
       if (res.action === "ready_to_confirm" && res.intent === "send_coach_note") {
         try {
@@ -130,14 +135,20 @@ export function useVoiceAssistant(options: UseVoiceAssistantOptions = {}) {
 
   const runTurn = useCallback(
     async (transcript: string): Promise<string> => {
+      // Another turn is still running (e.g. Save tapped while a spoken "yes"
+      // is processing): drop this one rather than run both.
+      if (turnInFlightRef.current) return "";
+      turnInFlightRef.current = true;
       dispatch({ type: "PROCESSING", transcript });
       try {
         const res = await interpret(transcript);
         return await handleTurn(res);
-      } catch {
-        const message = "Sorry, I couldn't reach the server. Please try again.";
+      } catch (err) {
+        const message = turnFailureMessage(err);
         dispatch({ type: "ERROR", message });
         return message;
+      } finally {
+        turnInFlightRef.current = false;
       }
     },
     [interpret, handleTurn]
@@ -153,19 +164,19 @@ export function useVoiceAssistant(options: UseVoiceAssistantOptions = {}) {
 
   const confirm = useCallback(async () => {
     const message = await runTurn("yes");
-    speakAgentReply(message);
+    if (message) void speakAgentReply(message).catch(() => undefined);
   }, [runTurn]);
 
   const cancel = useCallback(async () => {
     const message = await runTurn("no");
-    speakAgentReply(message);
+    if (message) void speakAgentReply(message).catch(() => undefined);
   }, [runTurn]);
 
   /** Tap-to-edit a field on the confirmation card — routes through the exact same server-validated update_field path a spoken correction would use. */
   const editField = useCallback(
     async (spokenFieldLabel: string, spokenValue: string) => {
       const message = await runTurn(`change ${spokenFieldLabel} to ${spokenValue}`);
-      speakAgentReply(message);
+      if (message) void speakAgentReply(message).catch(() => undefined);
     },
     [runTurn]
   );

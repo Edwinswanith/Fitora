@@ -347,8 +347,16 @@ function requiredMissingFields(intent: VoiceIntentNameV2, entities: Record<strin
       }
       return missing;
     }
-    case "log_rpe":
-      return typeof entities.rpe === "number" ? [] : ["rpe"];
+    case "log_rpe": {
+      // Same rule as log_session's rpe branch: the save endpoint
+      // (/voice/log-session) rejects an RPE without a training category and
+      // planned intensity, so ask for them instead of saying "saving" and failing.
+      const missing: string[] = [];
+      if (typeof entities.rpe !== "number") missing.push("rpe");
+      if (typeof entities.trainingCategory !== "string") missing.push("trainingCategory");
+      if (typeof entities.plannedIntensityPercent !== "number") missing.push("plannedIntensityPercent");
+      return missing;
+    }
     case "add_water":
       return typeof entities.amountMl === "number" ? [] : ["amountMl"];
     case "log_meal": {
@@ -449,6 +457,30 @@ function spokenResponseFor(
 }
 
 /**
+ * Re-asks for the in-progress workflow instead of discarding it (garbled,
+ * low-confidence or unrecognised turn, or the interpreter failing). The
+ * action matches where the workflow actually is, so a confirmation card
+ * stays a confirmation card.
+ */
+export function keepPendingWorkflow(pending: NonNullable<PolicyPendingState>, prefix = "I didn't catch that."): PolicyResult {
+  const requiresConfirmation = CONFIRMATION_REQUIRED_INTENTS.includes(pending.intent);
+  const missingFields = requiredMissingFields(pending.intent, pending.entities);
+  const action: VoiceAction = missingFields.length > 0 ? "collect_fields" : requiresConfirmation ? "ready_to_confirm" : "collect_fields";
+  const followUp =
+    action === "ready_to_confirm"
+      ? "Say yes to send it, or no to cancel."
+      : spokenResponseFor(pending.intent, "collect_fields", pending.entities, missingFields);
+  return {
+    effectiveIntent: pending.intent,
+    entities: pending.entities,
+    missingFields,
+    action,
+    requiresConfirmation,
+    spokenResponse: `${prefix} ${followUp}`,
+  };
+}
+
+/**
  * The single entry point. Given a sanitized model turn and any pending
  * workflow state, derives everything downstream of intent+entities.
  */
@@ -459,19 +491,10 @@ export function derivePolicy(turn: SanitizedTurn, pending: PolicyPendingState): 
   // on — better to ask the athlete to repeat themselves than execute (or
   // start collecting fields for) a guess. Meta-intents (yes/no/correction)
   // are short, unambiguous utterances by nature and are exempt; unknown_intent
-  // already gets its own redirect below. If a workflow was already in
-  // progress, its state is preserved rather than discarded on a garbled turn.
+  // gets the same treatment below. If a workflow was already in progress,
+  // its state is preserved rather than discarded on a garbled turn.
   if (!isMeta && turn.intent !== "unknown_intent" && turn.confidence < LOW_CONFIDENCE_THRESHOLD) {
-    if (pending) {
-      return {
-        effectiveIntent: pending.intent,
-        entities: pending.entities,
-        missingFields: pending.missingFields,
-        action: "collect_fields",
-        requiresConfirmation: CONFIRMATION_REQUIRED_INTENTS.includes(pending.intent),
-        spokenResponse: "I didn't catch that. Could you say it again?",
-      };
-    }
+    if (pending) return keepPendingWorkflow(pending);
     return {
       effectiveIntent: "unknown_intent",
       entities: {},
@@ -555,6 +578,9 @@ export function derivePolicy(turn: SanitizedTurn, pending: PolicyPendingState): 
   const entities = sanitizeEntities(turn.intent, filterToIntentKeys(turn.intent, turn.entities));
 
   if (turn.intent === "unknown_intent") {
+    // Mid-workflow, an unrecognised turn re-asks instead of throwing away
+    // what the athlete has already dictated.
+    if (pending) return keepPendingWorkflow(pending);
     return {
       effectiveIntent: "unknown_intent",
       entities: {},

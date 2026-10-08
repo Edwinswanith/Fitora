@@ -20,7 +20,12 @@ export async function stopAgentSpeech(): Promise<void> {
   await Speech.stop().catch(() => undefined);
 }
 
-async function speakWithDeepgram(message: string): Promise<void> {
+export type SpeakOptions = {
+  /** Called once when audio actually starts playing (for latency timing). */
+  onStart?: () => void;
+};
+
+async function speakWithDeepgram(message: string, onStart?: () => void): Promise<void> {
   const token = getAccessToken();
   const player = createAudioPlayer(
     {
@@ -55,6 +60,7 @@ async function speakWithDeepgram(message: string): Promise<void> {
         return;
       }
       const status = player.currentStatus;
+      if (status.playing) onStart?.();
       if (status.didJustFinish || (!status.playing && status.currentTime > 0.05)) {
         subscription.remove();
         clearInterval(timer);
@@ -77,7 +83,7 @@ async function speakWithDeepgram(message: string): Promise<void> {
   });
 }
 
-async function speakWithExpo(message: string): Promise<void> {
+async function speakWithExpo(message: string, onStart?: () => void): Promise<void> {
   await new Promise<void>((resolve) => {
     let settled = false;
     const done = () => {
@@ -89,6 +95,7 @@ async function speakWithExpo(message: string): Promise<void> {
       language: getVoiceSpeechLanguage(),
       rate: 0.92,
       pitch: 1,
+      onStart: () => onStart?.(),
       onDone: done,
       onStopped: done,
       onError: done,
@@ -96,13 +103,19 @@ async function speakWithExpo(message: string): Promise<void> {
   });
 }
 
-export async function speakAgentReply(text: string): Promise<void> {
+export async function speakAgentReply(text: string, options: SpeakOptions = {}): Promise<void> {
+  let started = false;
+  const onStart = () => {
+    if (started) return;
+    started = true;
+    options.onStart?.();
+  };
   const message = await localizeAgentSpeech(text.trim()).catch(() => text.trim());
   if (!message) return;
   await stopAgentSpeech();
   if (Platform.OS === "web" || !isEnglishVoiceLanguage()) {
-    await speakWithExpo(message);
+    await speakWithExpo(message, onStart);
     return;
   }
-  await speakWithDeepgram(message).catch(() => speakWithExpo(message));
+  await speakWithDeepgram(message, onStart).catch(() => speakWithExpo(message, onStart));
 }
