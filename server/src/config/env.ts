@@ -140,6 +140,13 @@ export const env = {
   gemini: {
     apiKey: process.env.GEMINI_API_KEY ?? "",
     model: process.env.GEMINI_MODEL ?? "gemini-3.6-flash",
+    // Ask Agent intent classification only: a small, fast model with thinking
+    // kept minimal. Benchmarked 2026-10-08 on the real voice prompt: ~0.9 s
+    // and 35/35 correct vs ~1.9 s for gemini-3.6-flash with default thinking
+    // (see FITORA_VOICE_ASSISTANT_AUDIT.md). GEMINI_VOICE_THINKING: minimal |
+    // low | medium | high, or "default" to send no thinking setting.
+    voiceModel: (process.env.GEMINI_VOICE_MODEL ?? "").trim() || "gemini-3.1-flash-lite",
+    voiceThinking: (process.env.GEMINI_VOICE_THINKING ?? "").trim() || "minimal",
   },
   // Push delivery (Firebase Cloud Messaging, HTTP v1). Empty values keep push
   // in no-op mode, while in-app notifications and decision rows still work.

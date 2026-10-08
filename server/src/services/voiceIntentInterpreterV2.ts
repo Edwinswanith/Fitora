@@ -129,6 +129,90 @@ const RESPONSE_SCHEMA_V2 = {
   required: ["intent", "entities", "confidence"],
 };
 
+type EntityFieldSpec = { type: string; description?: string; enum?: readonly string[]; items?: { enum?: readonly string[] } };
+const ENTITY_FIELD_SPECS = RESPONSE_SCHEMA_V2.properties.entities.properties as Record<string, EntityFieldSpec>;
+const ENTITY_FIELD_NAMES = Object.keys(ENTITY_FIELD_SPECS);
+
+/**
+ * What is actually sent to Gemini: entities as a list of {field, value}
+ * pairs naming only what was said, instead of one object offering ~40
+ * optional fields. With the object form, models filled unspoken fields with
+ * placeholders (0, "", an invented 45 g protein) and misplaced values (food
+ * in workoutType): 24/34 details right with 22 junk values in a 2026-10-08
+ * benchmark, vs 34/34 with the pair form at the same speed.
+ */
+const RESPONSE_SCHEMA_V2_PAIRS = {
+  ...RESPONSE_SCHEMA_V2,
+  properties: {
+    ...RESPONSE_SCHEMA_V2.properties,
+    entities: {
+      type: "ARRAY",
+      description: "ONLY the fields the athlete actually said in this turn, one entry per field. Omit everything else; an empty list if none.",
+      items: {
+        type: "OBJECT",
+        properties: {
+          field: { type: "STRING", enum: ENTITY_FIELD_NAMES },
+          value: { type: "STRING", description: "The value as said; numbers as digits; a list as comma-separated items." },
+        },
+        required: ["field", "value"],
+      },
+    },
+  },
+};
+
+const ENTITY_FIELD_GUIDE =
+  "Entity fields. List only those the athlete actually said; never output placeholders such as 0, " +
+  "an empty string, or a guessed value. A numeric score must be a number the athlete said: never turn " +
+  "words like 'a bit tired' or 'feeling great' into a score.\n" +
+  ENTITY_FIELD_NAMES.map((name) => {
+    const spec = ENTITY_FIELD_SPECS[name];
+    const options = spec.enum ?? spec.items?.enum;
+    return `- ${name} (${spec.type.toLowerCase()}): ${spec.description ?? ""}${options ? ` One of: ${options.join(", ")}.` : ""}`;
+  }).join("\n");
+
+function coerceEntityValue(spec: EntityFieldSpec, raw: string): unknown {
+  const value = raw.trim();
+  if (!value) return undefined;
+  if (spec.type === "NUMBER") {
+    const n = Number(value.replace(/,/g, "").match(/-?\d+(?:\.\d+)?/)?.[0]);
+    return Number.isFinite(n) ? n : undefined;
+  }
+  if (spec.type === "BOOLEAN") {
+    if (/^(true|yes|on|enabled?)$/i.test(value)) return true;
+    if (/^(false|no|off|disabled?)$/i.test(value)) return false;
+    return undefined;
+  }
+  if (spec.type === "ARRAY") {
+    return value
+      .split(/\s*(?:,|;|\band\b)\s*/i)
+      .map((item) => item.trim().toLowerCase().replace(/\s+/g, "_"))
+      .filter(Boolean);
+  }
+  return value;
+}
+
+/**
+ * Turns the model's {field, value} list into the entities object the policy
+ * expects, typing each value by its declared field type. Unknown fields and
+ * untypable values are dropped. An object (mock interpreter, tests) passes
+ * through unchanged.
+ */
+export function entitiesFromPairs(raw: unknown): unknown {
+  if (!Array.isArray(raw)) return raw;
+  const out: Record<string, unknown> = {};
+  for (const item of raw) {
+    const field = (item as { field?: unknown })?.field;
+    const value = (item as { value?: unknown })?.value;
+    if (typeof field !== "string" || !(field in ENTITY_FIELD_SPECS)) continue;
+    const spec = ENTITY_FIELD_SPECS[field];
+    const typed = coerceEntityValue(spec, typeof value === "string" ? value : String(value ?? ""));
+    if (typed === undefined) continue;
+    if (spec.type === "ARRAY" && Array.isArray(out[field])) out[field] = [...(out[field] as unknown[]), ...(typed as unknown[])];
+    else out[field] = typed;
+  }
+  return out;
+}
+
 const SYSTEM_PROMPT_V2 =
   "You are the natural-language understanding layer for an athlete's voice assistant in a sports " +
   "coaching app. Your ONLY job is to classify the transcript into exactly one supported intent and " +
@@ -258,10 +342,17 @@ function isTimeout(err: unknown): boolean {
 }
 
 export class GeminiVoiceIntentInterpreterV2 implements VoiceIntentInterpreterV2 {
+  /** Turned off for this process if the model rejects the configured thinking level. */
+  private thinkingSupported: boolean;
+
   constructor(
     private readonly apiKey: string,
-    private readonly model: string
-  ) {}
+    private readonly model: string,
+    /** Gemini thinking level ("minimal", "low", ...); "default" or empty sends none. */
+    private readonly thinkingLevel: string = "default"
+  ) {
+    this.thinkingSupported = Boolean(thinkingLevel) && thinkingLevel !== "default";
+  }
 
   async interpret(input: VoiceInterpretInputV2): Promise<SanitizedTurn> {
     const startedAt = Date.now();
@@ -278,12 +369,14 @@ export class GeminiVoiceIntentInterpreterV2 implements VoiceIntentInterpreterV2 
 
   private async attempt(input: VoiceInterpretInputV2): Promise<SanitizedTurn> {
     const body = {
-      systemInstruction: { parts: [{ text: SYSTEM_PROMPT_V2 }] },
+      systemInstruction: { parts: [{ text: `${SYSTEM_PROMPT_V2}\n\n${ENTITY_FIELD_GUIDE}` }] },
       contents: [{ parts: [{ text: buildUserPrompt(input) }] }],
       generationConfig: {
         temperature: 0,
         responseMimeType: "application/json",
-        responseSchema: RESPONSE_SCHEMA_V2,
+        responseSchema: RESPONSE_SCHEMA_V2_PAIRS,
+        // Classification needs no reasoning: thinking adds ~1 s per turn.
+        ...(this.thinkingSupported ? { thinkingConfig: { thinkingLevel: this.thinkingLevel } } : {}),
       },
     };
 
@@ -301,6 +394,17 @@ export class GeminiVoiceIntentInterpreterV2 implements VoiceIntentInterpreterV2 
     } catch (err) {
       throw new VoiceInterpreterError(isTimeout(err) ? "timeout" : "network");
     }
+    if (res.status === 400 && this.thinkingSupported) {
+      // Some models reject a thinking level (e.g. "minimal" on 3.8 Flash):
+      // drop the setting for this process and retry once without it.
+      const detail = await res.text().catch(() => "");
+      if (/thinking/i.test(detail)) {
+        this.thinkingSupported = false;
+        console.warn(`[voice:interpret] ${this.model} rejected thinking level "${this.thinkingLevel}"; continuing without it`);
+        return this.attempt(input);
+      }
+      throw new VoiceInterpreterError("upstream_error", 400);
+    }
     if (!res.ok) throw new VoiceInterpreterError(res.status === 429 ? "rate_limited" : "upstream_error", res.status);
 
     let json: { candidates?: { content?: { parts?: { text?: string }[] } }[] };
@@ -312,13 +416,13 @@ export class GeminiVoiceIntentInterpreterV2 implements VoiceIntentInterpreterV2 
     const text = json.candidates?.[0]?.content?.parts?.[0]?.text;
     if (!text) throw new VoiceInterpreterError("empty_response");
 
-    let parsed: unknown;
+    let parsed: Record<string, unknown>;
     try {
-      parsed = JSON.parse(text);
+      parsed = JSON.parse(text) as Record<string, unknown>;
     } catch {
       throw new VoiceInterpreterError("bad_json");
     }
-    return sanitizeModelOutput(parsed);
+    return sanitizeModelOutput({ ...parsed, entities: entitiesFromPairs(parsed?.entities) });
   }
 }
 
@@ -663,7 +767,7 @@ let interpreterV2: VoiceIntentInterpreterV2 | null = null;
 export function getVoiceIntentInterpreterV2(): VoiceIntentInterpreterV2 {
   if (!interpreterV2) {
     interpreterV2 = env.gemini.apiKey
-      ? new GeminiVoiceIntentInterpreterV2(env.gemini.apiKey, env.gemini.model)
+      ? new GeminiVoiceIntentInterpreterV2(env.gemini.apiKey, env.gemini.voiceModel, env.gemini.voiceThinking)
       : new MockVoiceIntentInterpreterV2();
   }
   return interpreterV2;

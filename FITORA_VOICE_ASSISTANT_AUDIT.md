@@ -9,6 +9,7 @@ Supersedes the parts of `FITORA_VOICE_ASSISTANT_CURRENT_BASELINE.md` it contradi
 ## Progress
 
 - **2026-10-08: Phase 0 (instrumentation) and Phase 1 (P0-1 to P0-10) implemented.** Per-turn timings on mobile (`[voice:turn]`) and server (`[voice:interpret]` with `interpreterMs`, `latencyMs`, `failureReason`). Next: collect real timings, then Phase 2 (fast path, Gemini config, TTS).
+- **2026-10-08: P1-2 done (Gemini config).** Benchmarked on the real prompt: `gemini-3.1-flash-lite` with minimal thinking ~0.85 s p50 vs ~1.9 s for `gemini-3.6-flash` default, 15/15 intents. Switching entities to `{field, value}` pairs fixed extraction (24/34 → 34/34 details, no placeholder/invented values). Live check: 20/20 details. Remaining Phase 2: fast path (P1-1), streamed TTS (P1-4; `gemini-3.8-flash-lite-tts` streamed gave first audio in ~0.5-0.6 s vs 2.3-3.1 s unstreamed).
 
 ## Executive summary
 
