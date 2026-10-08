@@ -22,7 +22,7 @@ import {
 import { apiFetch, changePassword } from "../lib/api";
 import { useAuth } from "../lib/auth";
 import { PRIVACY_POLICY_URL, SUPPORT_URL, openExternal } from "../lib/links";
-import { colors, radius } from "../lib/theme";
+import { colors, radius, fonts } from "../lib/theme";
 import { useNotificationPreferences, type NotificationCategories } from "../lib/notificationPreferences";
 import {
   firstName,
@@ -457,7 +457,7 @@ function AthleteEditForm({
 
       {error ? <Text style={styles.errorText}>{error}</Text> : null}
       <Pressable onPress={save} disabled={saving} style={[styles.primaryButton, saving ? styles.disabled : null]}>
-        {saving ? <ActivityIndicator color="#fff" /> : <Text style={styles.primaryButtonText}>Save Changes</Text>}
+        {saving ? <ActivityIndicator color={colors.onPrimary} /> : <Text style={styles.primaryButtonText}>Save Changes</Text>}
       </Pressable>
     </AppCard>
   );
@@ -528,7 +528,7 @@ function CoachEditForm({
 
       {error ? <Text style={styles.errorText}>{error}</Text> : null}
       <Pressable onPress={save} disabled={saving} style={[styles.primaryButton, saving ? styles.disabled : null]}>
-        {saving ? <ActivityIndicator color="#fff" /> : <Text style={styles.primaryButtonText}>Save Changes</Text>}
+        {saving ? <ActivityIndicator color={colors.onPrimary} /> : <Text style={styles.primaryButtonText}>Save Changes</Text>}
       </Pressable>
     </AppCard>
   );
@@ -569,7 +569,7 @@ function NotificationCard() {
               disabled={disabled}
               onValueChange={(value) => update({ enabled: value || enabled, categories: { [row.key]: value } })}
               trackColor={{ true: colors.primarySoft }}
-              thumbColor={categories[row.key] ? colors.primary : "#f8fcfb"}
+              thumbColor={categories[row.key] ? colors.primary : colors.inkMuted}
             />
           </View>
           {index < NOTIFICATION_ROWS.length - 1 ? <Divider /> : null}
@@ -650,7 +650,7 @@ function SecurityCard() {
           {localError ? <Text style={styles.errorText}>{localError}</Text> : null}
           {message ? <Text style={message.kind === "ok" ? styles.successText : styles.errorText}>{message.text}</Text> : null}
           <Pressable onPress={save} disabled={saving} style={[styles.primaryButton, saving ? styles.disabled : null]}>
-            {saving ? <ActivityIndicator color="#fff" /> : <Text style={styles.primaryButtonText}>Update Password</Text>}
+            {saving ? <ActivityIndicator color={colors.onPrimary} /> : <Text style={styles.primaryButtonText}>Update Password</Text>}
           </Pressable>
         </KeyboardAvoidingView>
       ) : null}
@@ -736,7 +736,7 @@ function Divider() {
 const styles = StyleSheet.create({
   editText: { color: colors.primary, fontSize: 16, fontWeight: "800" },
   identityRow: { flexDirection: "row", alignItems: "center", gap: 15 },
-  identityName: { color: colors.ink, fontSize: 22, lineHeight: 28, fontWeight: "900" },
+  identityName: { fontFamily: fonts.display, textTransform: "uppercase", color: colors.ink, fontSize: 26, lineHeight: 30 },
   identityRole: { color: colors.inkMuted, fontSize: 16, lineHeight: 22, marginTop: 3 },
   muted: { color: colors.inkMuted, fontSize: 14, lineHeight: 19, marginTop: 3 },
   cardTitle: { color: colors.ink, fontSize: 18, lineHeight: 23, fontWeight: "900" },
@@ -769,7 +769,7 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "center",
   },
-  primaryButtonText: { color: "#fff", fontSize: 15, fontWeight: "900" },
+  primaryButtonText: { color: colors.onPrimary, fontSize: 15, fontWeight: "900" },
   logout: {
     minHeight: 52,
     borderRadius: 16,

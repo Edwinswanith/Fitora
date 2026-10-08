@@ -8,7 +8,7 @@ import * as Notifications from "expo-notifications";
 import { apiFetch, apiJson } from "../../lib/api";
 import { celebrate, errorFeedback } from "../../lib/feedback";
 import { todayKey, updateCachedData, type AthleteDashboardData } from "../../lib/fitoraData";
-import { colors, radius } from "../../lib/theme";
+import { colors, radius, fonts } from "../../lib/theme";
 import {
   AppCard,
   BackHeader,
@@ -20,8 +20,8 @@ import {
 // Water keeps its own blue for the ring, chart and drop icons (blue reads as
 // water everywhere). Buttons and selections use the app's teal like every
 // other screen; WATER_INK is the text-safe (>= 4.5:1) water shade.
-const WATER = "#2f7df6";
-const WATER_INK = "#1f5fc8";
+const WATER = "#5aa9ff";
+const WATER_INK = "#7dbbff";
 const OK = colors.ok;
 
 // Local calendar day, same as the rest of the app (toISOString() is UTC, which
@@ -422,7 +422,7 @@ export default function Water() {
                 </Text>
               </View>
               <Pressable onPress={toggleReminders} style={[styles.toggle, remindersEnabled ? { backgroundColor: colors.primary, borderColor: colors.primary } : null]}>
-                <Text style={[styles.toggleText, remindersEnabled ? { color: "#fff" } : null]}>
+                <Text style={[styles.toggleText, remindersEnabled ? { color: colors.onPrimary } : null]}>
                   {remindersEnabled ? "On" : "Enable"}
                 </Text>
               </Pressable>
@@ -521,7 +521,7 @@ const styles = StyleSheet.create({
   cardTitleRow: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", marginBottom: 8 },
   mutedSmall: { fontSize: 12, color: colors.inkMuted },
   // Ring
-  ringPct: { position: "absolute", fontSize: 34, fontWeight: "800", color: colors.ink },
+  ringPct: { fontFamily: fonts.display, textTransform: "uppercase", position: "absolute", fontSize: 38, color: colors.ink },
   ringLabel: { position: "absolute", marginTop: 44, fontSize: 12, fontWeight: "700" },
   // Tiles
   tileRow: { flexDirection: "row", gap: 8, width: "100%" },
@@ -543,7 +543,7 @@ const styles = StyleSheet.create({
   inlineRow: { flexDirection: "row", gap: 8, marginTop: 12 },
   input: { flex: 1, height: 46, borderRadius: radius.sm, borderWidth: 1, borderColor: colors.line, backgroundColor: colors.surfaceInset, paddingHorizontal: 12, color: colors.ink, fontSize: 14 },
   primaryBtn: { height: 46, borderRadius: radius.sm, paddingHorizontal: 18, alignItems: "center", justifyContent: "center" },
-  primaryBtnText: { color: "#fff", fontSize: 14, fontWeight: "800" },
+  primaryBtnText: { color: colors.onPrimary, fontSize: 14, fontWeight: "800" },
   errText: { marginTop: 8, fontSize: 12, fontWeight: "700", color: colors.bad },
   // Quick add
   quickRow: { flexDirection: "row", gap: 8, marginTop: 10 },
@@ -560,7 +560,7 @@ const styles = StyleSheet.create({
   segBtn: { paddingHorizontal: 12, paddingVertical: 6, borderRadius: radius.sm - 2 },
   segBtnOn: { backgroundColor: colors.primary },
   segText: { fontSize: 12, fontWeight: "800", color: colors.inkMuted },
-  segTextOn: { color: "#fff" },
+  segTextOn: { color: colors.onPrimary },
   chartAxis: { flexDirection: "row", justifyContent: "space-between", marginTop: 8 },
   axisText: { fontSize: 12, color: colors.inkFaint, fontWeight: "600" },
   // History

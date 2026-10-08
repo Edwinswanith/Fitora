@@ -7,7 +7,8 @@
     "orientation": "portrait",
     "icon": "./assets/images/icon.png",
     "scheme": "fitora",
-    "userInterfaceStyle": "automatic",
+    "backgroundColor": "#0a0d12",
+    "userInterfaceStyle": "dark",
     "ios": {
       "icon": "./assets/images/icon.png",
       "bundleIdentifier": "app.fitora.coaching",
@@ -50,7 +51,7 @@
       [
         "expo-splash-screen",
         {
-          "backgroundColor": "#ffffff",
+          "backgroundColor": "#0a0d12",
           "android": {
             "image": "./assets/images/splash-icon.png",
             "imageWidth": 160

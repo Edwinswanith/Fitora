@@ -9,7 +9,7 @@ import {
   ScreenContainer,
 } from "../../components/fitora";
 import { apiJson } from "../../lib/api";
-import { colors } from "../../lib/theme";
+import { colors, fonts } from "../../lib/theme";
 
 type Point = {
   date: string;
@@ -127,7 +127,7 @@ const styles = StyleSheet.create({
   statRow: { flexDirection: "row", gap: 10 },
   stat: { flex: 1, padding: 12 },
   statLabel: { fontSize: 12, color: colors.inkMuted, fontWeight: "700" },
-  statValue: { fontSize: 24, fontWeight: "800", color: colors.ink, marginTop: 4 },
+  statValue: { fontFamily: fonts.display, textTransform: "uppercase", fontSize: 28, color: colors.ink, marginTop: 4 },
   cardLabel: { fontSize: 12, fontWeight: "800", color: colors.inkMuted, textTransform: "uppercase", letterSpacing: 1 },
   bars: { flexDirection: "row", alignItems: "flex-end", gap: 4, height: 124, marginTop: 12 },
   barCol: { flex: 1, alignItems: "center", justifyContent: "flex-end" },

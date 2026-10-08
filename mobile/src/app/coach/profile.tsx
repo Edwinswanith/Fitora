@@ -26,7 +26,7 @@ import { apiFetch } from "../../lib/api";
 import { PAYMENTS_ENABLED } from "../../lib/features";
 import { PRIVACY_POLICY_URL, SUPPORT_URL, openExternal } from "../../lib/links";
 import { useAuth } from "../../lib/auth";
-import { colors } from "../../lib/theme";
+import { colors, fonts } from "../../lib/theme";
 import {
   formatCurrency,
   loadCoachProfileData,
@@ -226,7 +226,7 @@ export default function CoachProfile() {
               value={Boolean(profile?.active)}
               onValueChange={toggleMarketplace}
               trackColor={{ true: colors.primarySoft }}
-              thumbColor={profile?.active ? colors.primary : "#f8fcfb"}
+              thumbColor={profile?.active ? colors.primary : colors.inkMuted}
             />
           )}
         </View>
@@ -602,7 +602,7 @@ function PricingEditor({
         <ActionButton label="Cancel" onPress={onCancel} />
         {plan ? <ActionButton label={plan.active === false ? "Activate" : "Deactivate"} onPress={toggleActive} /> : null}
         <Pressable onPress={save} disabled={saving} style={[styles.saveButton, saving ? styles.disabled : null]}>
-          {saving ? <ActivityIndicator color="#fff" /> : <Text style={styles.saveText}>Save</Text>}
+          {saving ? <ActivityIndicator color={colors.onPrimary} /> : <Text style={styles.saveText}>Save</Text>}
         </Pressable>
       </View>
     </View>
@@ -767,7 +767,7 @@ function AvailabilityEditor({ rules, onSaved }: { rules: CoachAvailabilityRule[]
       {selectedDays.length === 0 ? <Text style={styles.warnText}>No days selected. Saving will hide all your bookable times.</Text> : null}
       {message ? <Text style={styles.errorText}>{message}</Text> : null}
       <Pressable onPress={save} disabled={saving} accessibilityRole="button" style={[styles.saveButton, styles.saveButtonTall, saving ? styles.disabled : null]}>
-        {saving ? <ActivityIndicator color="#fff" /> : <Text style={styles.saveText}>Save Availability</Text>}
+        {saving ? <ActivityIndicator color={colors.onPrimary} /> : <Text style={styles.saveText}>Save Availability</Text>}
       </Pressable>
     </View>
   );
@@ -978,7 +978,7 @@ function AvailabilityExceptionsEditor({
       <FormInput label="Reason (optional)" value={reason} onChangeText={setReason} />
       {message ? <Text style={styles.errorText}>{message}</Text> : null}
       <Pressable onPress={addException} disabled={saving} style={[styles.saveButton, saving ? styles.disabled : null]}>
-        {saving ? <ActivityIndicator color="#fff" /> : <Text style={styles.saveText}>Add Override</Text>}
+        {saving ? <ActivityIndicator color={colors.onPrimary} /> : <Text style={styles.saveText}>Add Override</Text>}
       </Pressable>
     </View>
   );
@@ -999,17 +999,17 @@ function Divider() {
 const styles = StyleSheet.create({
   profileRow: { flexDirection: "row", gap: 16, alignItems: "center", marginBottom: 16 },
   nameRow: { flexDirection: "row", alignItems: "center", gap: 8 },
-  name: { flex: 1, minWidth: 0, color: colors.ink, fontSize: 22, lineHeight: 28, fontWeight: "900" },
+  name: { fontFamily: fonts.display, textTransform: "uppercase", flex: 1, minWidth: 0, color: colors.ink, fontSize: 26, lineHeight: 30 },
   cardTitle: { color: colors.ink, fontSize: 18, lineHeight: 23, fontWeight: "900" },
   muted: { color: colors.inkMuted, fontSize: 14, lineHeight: 19 },
   ratingRow: { flexDirection: "row", alignItems: "center", gap: 7, marginTop: 7 },
-  star: { color: "#f6b100", fontSize: 17, fontWeight: "900" },
+  star: { color: "#ffc533", fontSize: 17, fontWeight: "900" },
   ratingText: { color: colors.ink, fontSize: 14, fontWeight: "800" },
   tagWrap: { flexDirection: "row", flexWrap: "wrap", gap: 7, marginTop: 8 },
   publishRow: { flexDirection: "row", alignItems: "center", gap: 12 },
   twoCol: { flexDirection: "row", gap: 12 },
   splitCard: { flex: 1, minWidth: 0 },
-  reviewScore: { color: colors.ink, fontSize: 30, lineHeight: 36, fontWeight: "900", marginTop: 7 },
+  reviewScore: { fontFamily: fonts.display, textTransform: "uppercase", color: colors.ink, fontSize: 34, lineHeight: 38, marginTop: 7 },
   reviewItem: { gap: 5, marginTop: 9 },
   reviewBody: { color: colors.ink, fontSize: 13, lineHeight: 19, marginTop: 10 },
   availabilityRow: { minHeight: 31, flexDirection: "row", alignItems: "center", gap: 8, borderBottomWidth: 1, borderBottomColor: colors.line },
@@ -1039,7 +1039,7 @@ const styles = StyleSheet.create({
   toggleChipTextActive: { color: colors.primary },
   editorActions: { flexDirection: "row", gap: 8 },
   saveButton: { flex: 1, minHeight: 34, borderRadius: 12, backgroundColor: colors.primary, alignItems: "center", justifyContent: "center", paddingHorizontal: 10 },
-  saveText: { color: "#fff", fontSize: 13, fontWeight: "900" },
+  saveText: { color: colors.onPrimary, fontSize: 13, fontWeight: "900" },
   errorText: { color: colors.bad, fontSize: 12, fontWeight: "800" },
   successText: { color: colors.ok, fontSize: 13, fontWeight: "900" },
   disabled: { opacity: 0.55 },

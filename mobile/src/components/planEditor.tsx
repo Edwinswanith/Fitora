@@ -150,7 +150,7 @@ export function PrimaryButton({ label, onPress, disabled, busy, tone = "primary"
 }
 
 export const editorStyles = StyleSheet.create({
-  card: { backgroundColor: colors.surfaceRaised, borderRadius: 10, borderWidth: 1, borderColor: "#e8f5f3", padding: 12, gap: 10 },
+  card: { backgroundColor: colors.surfaceRaised, borderRadius: 10, borderWidth: 1, borderColor: colors.line, padding: 12, gap: 10 },
   row: { flexDirection: "row", gap: 8 },
   flex1: { flex: 1, minWidth: 0 },
   cardHead: { flexDirection: "row", alignItems: "center", gap: 6 },
@@ -185,14 +185,14 @@ const styles = StyleSheet.create({
   chipText: { color: colors.inkMuted, fontSize: 12, fontWeight: "800" },
   chipTextOn: { color: colors.primary },
   iconButton: { width: 34, height: 34, borderRadius: 9, borderWidth: 1, borderColor: colors.line, alignItems: "center", justifyContent: "center", backgroundColor: colors.surfaceInset },
-  errorBox: { borderRadius: 10, borderWidth: 1, borderColor: "#fecaca", backgroundColor: colors.badSoft, padding: 11, gap: 4 },
+  errorBox: { borderRadius: 10, borderWidth: 1, borderColor: "#5a2229", backgroundColor: colors.badSoft, padding: 11, gap: 4 },
   errorHead: { flexDirection: "row", alignItems: "center", gap: 6 },
   errorTitle: { color: colors.bad, fontSize: 13, fontWeight: "900", flex: 1 },
   errorLine: { color: colors.ink, fontSize: 12, lineHeight: 17 },
   button: { minHeight: 46, borderRadius: 12, backgroundColor: colors.primary, alignItems: "center", justifyContent: "center", paddingHorizontal: 14 },
   buttonOutline: { backgroundColor: colors.surfaceRaised, borderWidth: 1, borderColor: colors.primary },
   buttonDanger: { backgroundColor: colors.surfaceRaised, borderWidth: 1, borderColor: colors.bad },
-  buttonText: { color: "#fff", fontSize: 14, fontWeight: "900" },
+  buttonText: { color: colors.onPrimary, fontSize: 14, fontWeight: "900" },
   buttonTextOutline: { color: colors.primary },
   buttonTextDanger: { color: colors.bad },
   disabled: { opacity: 0.5 },

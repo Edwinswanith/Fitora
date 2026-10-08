@@ -77,7 +77,7 @@ export function FeedbackHost() {
             <View style={styles.bigIconWrap}>
               <Animated.View style={[styles.ring, { opacity: ringOpacity, transform: [{ scale: ringScale }] }]} />
               <View style={styles.bigIcon}>
-                <Ionicons name="trophy" size={34} color="#fff" />
+                <Ionicons name="trophy" size={34} color={colors.onPrimary} />
               </View>
             </View>
             <Text style={styles.bigTitle}>{current.title}</Text>
@@ -95,7 +95,7 @@ export function FeedbackHost() {
       <Pressable onPress={dismiss} accessibilityRole="alert">
         <Animated.View style={[styles.toast, { opacity: progress, transform: [{ translateY }] }]}>
           <Animated.View style={[styles.toastIcon, current.tone === "error" ? styles.toastIconError : null, { transform: [{ scale: iconScale }] }]}>
-            <Ionicons name={current.tone === "error" ? "alert" : "checkmark"} size={18} color="#fff" />
+            <Ionicons name={current.tone === "error" ? "alert" : "checkmark"} size={18} color={colors.onPrimary} />
           </Animated.View>
           <View style={styles.toastCopy}>
             <Text style={styles.toastTitle} numberOfLines={1}>{current.title}</Text>
@@ -118,7 +118,9 @@ const styles = StyleSheet.create({
     paddingVertical: 11,
     paddingHorizontal: 14,
     borderRadius: 16,
-    backgroundColor: colors.ink,
+    backgroundColor: colors.surfaceInset,
+    borderWidth: 1,
+    borderColor: colors.lineStrong,
     shadowColor: "#000",
     shadowOpacity: 0.18,
     shadowRadius: 14,
@@ -128,8 +130,8 @@ const styles = StyleSheet.create({
   toastIcon: { width: 28, height: 28, borderRadius: 14, alignItems: "center", justifyContent: "center", backgroundColor: colors.ok },
   toastIconError: { backgroundColor: colors.bad },
   toastCopy: { flexShrink: 1 },
-  toastTitle: { color: "#fff", fontSize: 15, fontWeight: "800" },
-  toastBody: { color: "#cbe1de", fontSize: 13, lineHeight: 18, marginTop: 1 },
+  toastTitle: { color: colors.ink, fontSize: 15, fontWeight: "800" },
+  toastBody: { color: colors.inkMuted, fontSize: 13, lineHeight: 18, marginTop: 1 },
   bigWrap: { position: "absolute", top: 0, right: 0, bottom: 0, left: 0, alignItems: "center", justifyContent: "center", zIndex: 1000, elevation: 1000, padding: 24 },
   bigCard: {
     alignItems: "center",

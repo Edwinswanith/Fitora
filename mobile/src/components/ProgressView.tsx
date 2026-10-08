@@ -12,7 +12,7 @@ import Svg, { Circle, Line, Path, Rect, Text as SvgText } from "react-native-svg
 import { Text } from "./AppText";
 import { AppCard, HeroCard, IconTile, PrimaryAppBar, SectionLabel } from "./fitora";
 import { apiJson } from "../lib/api";
-import { colors, metricColors, type MetricKey } from "../lib/theme";
+import { colors, metricColors, type MetricKey, fonts } from "../lib/theme";
 import { localDayOf, type JudgedTone } from "../lib/progressWindow";
 import {
   checkInStreak,
@@ -408,12 +408,12 @@ function TrendChart({
                 <Line key={`g${g}`} x1={left} x2={left + chartW} y1={yAt(g)} y2={yAt(g)} stroke={colors.line} strokeWidth={1} strokeDasharray="3 4" />
               ))}
               {(gridLines ?? []).map((g) => (
-                <SvgText key={`gl${g}`} x={0} y={yAt(g) + 4} fontSize={12} fontFamily="Inter_500Medium" fill={colors.inkMuted}>{g}</SvgText>
+                <SvgText key={`gl${g}`} x={0} y={yAt(g) + 4} fontSize={12} fontFamily="Manrope_600SemiBold" fill={colors.inkMuted}>{g}</SvgText>
               ))}
               {target ? (
                 <>
                   <Line x1={left} x2={left + chartW} y1={yAt(target)} y2={yAt(target)} stroke={colors.inkMuted} strokeWidth={1} strokeDasharray="5 4" />
-                  <SvgText x={left + chartW} y={yAt(target) - 4} fontSize={12} fontFamily="Inter_500Medium" fill={colors.inkMuted} textAnchor="end">Target</SvgText>
+                  <SvgText x={left + chartW} y={yAt(target) - 4} fontSize={12} fontFamily="Manrope_600SemiBold" fill={colors.inkMuted} textAnchor="end">Target</SvgText>
                 </>
               ) : null}
               {kind === "bar"
@@ -434,14 +434,14 @@ function TrendChart({
                     <Line x1={xAt(active)} x2={xAt(active)} y1={top} y2={top + chartH} stroke={color} strokeOpacity={0.25} strokeWidth={1} />
                     <Path d={linePath} stroke={color} strokeWidth={2.2} fill="none" strokeLinecap="round" strokeLinejoin="round" />
                     {points.map((p, i) => (
-                      <Circle key={`c${i}`} cx={xAt(i)} cy={yAt(p.value)} r={i === active ? 6 : 3.5} fill={i === active ? color : "#ffffff"} stroke={color} strokeWidth={2.2} />
+                      <Circle key={`c${i}`} cx={xAt(i)} cy={yAt(p.value)} r={i === active ? 6 : 3.5} fill={i === active ? color : colors.surfaceRaised} stroke={color} strokeWidth={2.2} />
                     ))}
                   </>
                 )}
               <Line x1={left} x2={left + chartW} y1={top + chartH} y2={top + chartH} stroke={colors.lineStrong} strokeWidth={1} />
               {points.map((p, i) =>
                 i % labelEvery === (points.length - 1) % labelEvery ? (
-                  <SvgText key={`x${i}`} x={xAt(i)} y={CHART_HEIGHT - 6} fontSize={12} fontFamily={i === active ? "Inter_700Bold" : "Inter_500Medium"} fill={i === active ? colors.ink : colors.inkMuted} textAnchor="middle">
+                  <SvgText key={`x${i}`} x={xAt(i)} y={CHART_HEIGHT - 6} fontSize={12} fontFamily={i === active ? "Manrope_800ExtraBold" : "Manrope_600SemiBold"} fill={i === active ? colors.ink : colors.inkMuted} textAnchor="middle">
                     {p.label}
                   </SvgText>
                 ) : null
@@ -464,7 +464,7 @@ const styles = StyleSheet.create({
   rangeTab: { flex: 1, minHeight: 36, borderRadius: 9, alignItems: "center", justifyContent: "center" },
   rangeTabActive: { backgroundColor: colors.primary },
   rangeText: { color: colors.ink, fontSize: 13, lineHeight: 18, fontWeight: "800" },
-  rangeTextActive: { color: "#ffffff", fontWeight: "900" },
+  rangeTextActive: { color: colors.onPrimary, fontWeight: "900" },
   tiles: { flexDirection: "row", gap: 8 },
   tile: {
     flex: 1,
@@ -480,7 +480,7 @@ const styles = StyleSheet.create({
   tileSelected: { borderColor: colors.primary, backgroundColor: colors.primarySoft },
   tileHead: { flexDirection: "row", alignItems: "center", gap: 5 },
   tileTitle: { flex: 1, color: colors.ink, fontSize: 12, lineHeight: 16, fontWeight: "800" },
-  tileValue: { fontSize: 22, lineHeight: 27, fontWeight: "900" },
+  tileValue: { fontFamily: fonts.display, textTransform: "uppercase", fontSize: 26, lineHeight: 29 },
   tileBasis: { color: colors.inkMuted, fontSize: 12, lineHeight: 16, fontWeight: "600" },
   detailCard: { gap: 12 },
   detailTitle: { color: colors.ink, fontSize: 16, lineHeight: 21, fontWeight: "900" },

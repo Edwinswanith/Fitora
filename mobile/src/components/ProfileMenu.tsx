@@ -124,7 +124,7 @@ const styles = StyleSheet.create({
   },
   backdrop: {
     flex: 1,
-    backgroundColor: "rgba(28,26,22,0.14)",
+    backgroundColor: colors.overlay,
   },
   menu: {
     position: "absolute",

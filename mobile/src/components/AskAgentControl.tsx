@@ -10,8 +10,8 @@ import { speakAgentReply } from "../lib/agentSpeech";
 import { startVoiceConversation, type VoiceConversationHandle } from "../lib/voiceSession";
 
 export function AskAgentControl({
-  accent = "#ffad45",
-  accentInk = "#1a0c00",
+  accent = colors.primary,
+  accentInk = colors.onPrimary,
   labeled = false,
   hidden = false,
   onCommand,
@@ -204,7 +204,7 @@ export function AskAgentControl({
               accessibilityRole="button"
               accessibilityLabel="Execute command"
             >
-              <Ionicons name="flash-outline" size={20} color="#ffffff" />
+              <Ionicons name="flash-outline" size={20} color={colors.onPrimary} />
             </Pressable>
           </Animated.View>
           <Pressable
@@ -232,7 +232,7 @@ export function AskAgentControl({
             {labeled ? (
               <>
                 <View style={[compactLabeled ? styles.fabLabeledIconCompact : styles.fabLabeledIcon, { backgroundColor: modeColor }]}>
-                  <Ionicons name={speaking ? "volume-high-outline" : active || listening ? "stop-outline" : "sparkles-outline"} size={compactLabeled ? 19 : 22} color="#ffffff" />
+                  <Ionicons name={speaking ? "volume-high-outline" : active || listening ? "stop-outline" : "sparkles-outline"} size={compactLabeled ? 19 : 22} color={colors.onPrimary} />
                 </View>
                 <Text style={compactLabeled ? styles.fabLabeledTextCompact : styles.fabLabeledText}>Ask{"\n"}Agent</Text>
               </>

@@ -730,7 +730,7 @@ export function CoachAskAgentOverlay() {
       {chatVisible ? <AgentChatLog entries={chatLog} onClose={() => setChatVisible(false)} /> : null}
       <AskAgentControl
         accent={accent}
-        accentInk="#fff"
+        accentInk={colors.onPrimary}
         hidden={isAskAgentHiddenOn(pathname)}
         onCommand={handleCommand}
         onInputOpenChange={setInputOpen}
@@ -789,8 +789,8 @@ const styles = StyleSheet.create({
     padding: 10,
     borderRadius: 10,
     borderWidth: 1,
-    borderColor: "#9bcfbe",
-    backgroundColor: "#eaf7f1",
+    borderColor: colors.line,
+    backgroundColor: colors.surfaceInset,
     flexDirection: "row",
     alignItems: "center",
     gap: 8,
@@ -812,7 +812,7 @@ const styles = StyleSheet.create({
     alignItems: "center",
     gap: 8,
   },
-  rowAction: { backgroundColor: "#f8faf7" },
+  rowAction: { backgroundColor: colors.surfaceInset },
   iconBox: { width: 34, height: 34, borderRadius: 12, borderWidth: 1, alignItems: "center", justifyContent: "center" },
   mainCell: { flex: 1, minWidth: 0 },
   rowLabel: { color: colors.ink, fontSize: 13, fontWeight: "900" },

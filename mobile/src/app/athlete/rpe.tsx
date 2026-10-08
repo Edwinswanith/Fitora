@@ -11,7 +11,7 @@ import {
 } from "../../components/fitora";
 import { apiFetch, apiJson } from "../../lib/api";
 import { celebrate, errorFeedback, selectionFeedback } from "../../lib/feedback";
-import { colors, radius } from "../../lib/theme";
+import { colors, radius, fonts } from "../../lib/theme";
 import { todayKey, type DailyCard } from "../../lib/fitoraData";
 
 const SESSIONS = ["AM", "AFT", "PM"] as const;
@@ -333,12 +333,12 @@ const styles = StyleSheet.create({
   segBtn: { flex: 1, height: 44, borderRadius: radius.md, alignItems: "center", justifyContent: "center", backgroundColor: colors.surfaceInset },
   segBtnActive: { backgroundColor: colors.primary },
   segText: { fontSize: 15, fontWeight: "700", color: colors.inkMuted },
-  segTextActive: { color: "#fff" },
+  segTextActive: { color: colors.onPrimary },
   rpeGrid: { flexDirection: "row", flexWrap: "wrap", gap: 8 },
   rpeDot: { height: 42, width: 42, borderRadius: 21, borderWidth: 1, borderColor: colors.lineStrong, alignItems: "center", justifyContent: "center", backgroundColor: colors.surfaceInset },
   rpeDotActive: { borderColor: colors.primary, backgroundColor: colors.primary },
   rpeDotText: { fontSize: 16, fontWeight: "800", color: colors.ink },
-  rpeDotTextActive: { color: "#fff" },
+  rpeDotTextActive: { color: colors.onPrimary },
   feelingRow: { flexDirection: "row", gap: 8 },
   feelingBtn: { flex: 1, height: 52, borderRadius: radius.md, borderWidth: 1, borderColor: colors.lineStrong, alignItems: "center", justifyContent: "center", backgroundColor: colors.surfaceInset },
   feelingBtnActive: { borderColor: colors.primary, backgroundColor: colors.primarySoft },
@@ -375,7 +375,7 @@ const styles = StyleSheet.create({
   },
   scalePillActive: { borderColor: colors.primary, backgroundColor: colors.primary },
   scalePillText: { fontSize: 16, fontWeight: "800", color: colors.inkMuted },
-  scalePillTextActive: { color: "#fff" },
+  scalePillTextActive: { color: colors.onPrimary },
   hintRow: { flexDirection: "row", justifyContent: "space-between" },
   hint: { fontSize: 12, color: colors.inkFaint, fontWeight: "600" },
   stepperRow: { flexDirection: "row", alignItems: "center", justifyContent: "space-between" },
@@ -389,6 +389,6 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     backgroundColor: colors.surfaceInset,
   },
-  stepValue: { fontSize: 24, fontWeight: "800", color: colors.ink },
+  stepValue: { fontFamily: fonts.display, textTransform: "uppercase", fontSize: 28, color: colors.ink },
   stepUnit: { fontSize: 14, fontWeight: "700", color: colors.inkMuted },
 });

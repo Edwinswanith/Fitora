@@ -12,7 +12,7 @@ import {
 import { apiFetch } from "../../lib/api";
 import { celebrate, errorFeedback, selectionFeedback } from "../../lib/feedback";
 import { loadAthleteDashboardData, todayKey, updateCachedData, type AthleteDashboardData } from "../../lib/fitoraData";
-import { colors, radius } from "../../lib/theme";
+import { colors, radius, fonts } from "../../lib/theme";
 
 export default function CheckIn() {
   const [sleepHours, setSleepHours] = useState(7.5);
@@ -297,7 +297,7 @@ const styles = StyleSheet.create({
   },
   scalePillActive: { borderColor: colors.primary, backgroundColor: colors.primary },
   scalePillText: { fontSize: 16, fontWeight: "800", color: colors.inkMuted },
-  scalePillTextActive: { color: "#fff" },
+  scalePillTextActive: { color: colors.onPrimary },
   hintRow: { flexDirection: "row", justifyContent: "space-between" },
   hint: { fontSize: 12, color: colors.inkFaint, fontWeight: "600" },
   stepperRow: { flexDirection: "row", alignItems: "center", justifyContent: "space-between" },
@@ -311,6 +311,6 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     backgroundColor: colors.surfaceInset,
   },
-  stepValue: { fontSize: 24, fontWeight: "800", color: colors.ink },
+  stepValue: { fontFamily: fonts.display, textTransform: "uppercase", fontSize: 28, color: colors.ink },
   stepUnit: { fontSize: 14, fontWeight: "700", color: colors.inkMuted },
 });

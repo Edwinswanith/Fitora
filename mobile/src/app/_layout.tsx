@@ -4,15 +4,8 @@ import { Stack, useRouter, useSegments } from "expo-router";
 import { StatusBar } from "expo-status-bar";
 import { SafeAreaProvider } from "react-native-safe-area-context";
 import * as SplashScreen from "expo-splash-screen";
-import {
-  useFonts,
-  Inter_400Regular,
-  Inter_500Medium,
-  Inter_600SemiBold,
-  Inter_700Bold,
-  Inter_800ExtraBold,
-  Inter_900Black,
-} from "@expo-google-fonts/inter";
+import { useFonts, Manrope_500Medium, Manrope_600SemiBold, Manrope_700Bold, Manrope_800ExtraBold } from "@expo-google-fonts/manrope";
+import { BarlowCondensed_700Bold, BarlowCondensed_800ExtraBold } from "@expo-google-fonts/barlow-condensed";
 import { AuthProvider, useAuth } from "../lib/auth";
 import { AthleteAskAgentOverlay, CoachAskAgentOverlay } from "../components/RoleAskAgentOverlays";
 import { FeedbackHost } from "../components/FeedbackHost";
@@ -129,12 +122,12 @@ function TourRootBoundary({ children }: { children: ReactNode }) {
 
 export default function RootLayout() {
   const [fontsLoaded] = useFonts({
-    Inter_400Regular,
-    Inter_500Medium,
-    Inter_600SemiBold,
-    Inter_700Bold,
-    Inter_800ExtraBold,
-    Inter_900Black,
+    Manrope_500Medium,
+    Manrope_600SemiBold,
+    Manrope_700Bold,
+    Manrope_800ExtraBold,
+    BarlowCondensed_700Bold,
+    BarlowCondensed_800ExtraBold,
   });
 
   const onLayoutRootView = useCallback(async () => {
@@ -148,7 +141,7 @@ export default function RootLayout() {
       <AuthProvider>
         <MobileTourProvider>
           <TourRootBoundary>
-            <StatusBar style="dark" />
+            <StatusBar style="light" />
             <Gate />
           </TourRootBoundary>
         </MobileTourProvider>

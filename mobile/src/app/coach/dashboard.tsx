@@ -36,7 +36,7 @@ import {
   firstName,
   timeOfDayGreeting,
   loadCoachHomeData,
-  longDate,
+  headerDate,
   nextFutureSession,
   titleCase,
   useAsyncData,
@@ -285,7 +285,7 @@ function CoachHomeView({
     <>
       <PrimaryAppBar
         greeting={`${timeOfDayGreeting()}, ${firstName(user?.name, "Coach")}`}
-        title={longDate(data.date)}
+        title={headerDate(data.date)}
       />
 
       {joinRequests.length ? (
@@ -830,7 +830,7 @@ const styles = StyleSheet.create({
     marginTop: 5,
     borderRadius: 8,
     backgroundColor: colors.warnSoft,
-    color: "#b45309",
+    color: colors.warn,
     fontSize: 12,
     lineHeight: 16,
     fontWeight: "800",

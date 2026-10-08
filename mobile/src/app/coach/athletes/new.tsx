@@ -4,7 +4,7 @@ import { Text } from "../../../components/AppText";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { useRouter } from "expo-router";
 import { apiFetch } from "../../../lib/api";
-import { ROLE_THEMES, colors, radius } from "../../../lib/theme";
+import { ROLE_THEMES, colors, radius, fonts } from "../../../lib/theme";
 import { updateCachedData, type CoachHomeData } from "../../../lib/fitoraData";
 import { Banner, Card, Label, Muted, PrimaryButton, TextField } from "../../../components/ui";
 import { BackHeader } from "../../../components/fitora";
@@ -211,12 +211,12 @@ function Secret({ label, value }: { label: string; value: string }) {
 const styles = StyleSheet.create({
   safe: { flex: 1, backgroundColor: colors.surface },
   content: { padding: 20, paddingTop: 12, paddingBottom: 32 },
-  title: { fontSize: 26, fontWeight: "800", color: colors.ink, letterSpacing: -0.4 },
+  title: { fontFamily: fonts.display, textTransform: "uppercase", fontSize: 30, color: colors.ink },
   modeToggle: { flexDirection: "row", gap: 8, marginTop: 12, marginBottom: 16 },
   modeButton: { flex: 1, minHeight: 40, borderRadius: radius.md, alignItems: "center", justifyContent: "center", backgroundColor: colors.surfaceInset },
   modeButtonActive: { backgroundColor: colors.primary },
   modeButtonText: { fontSize: 13, fontWeight: "800", color: colors.inkMuted },
-  modeButtonTextActive: { color: "#fff" },
+  modeButtonTextActive: { color: colors.onPrimary },
   secret: { backgroundColor: colors.surfaceInset, borderRadius: radius.md, padding: 12 },
   secretLabel: { fontSize: 12, fontWeight: "700", color: colors.inkMuted, textTransform: "uppercase", letterSpacing: 1 },
   secretValue: { fontSize: 17, fontWeight: "700", color: colors.ink, marginTop: 4, fontFamily: Platform.OS === "ios" ? "Menlo" : "monospace" },

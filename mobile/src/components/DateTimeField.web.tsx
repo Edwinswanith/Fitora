@@ -150,7 +150,7 @@ function inputStyle({
     paddingLeft: num(box.paddingHorizontal, 12),
     paddingRight: num(box.paddingHorizontal, 10),
     color: hasValue ? colors.ink : colors.inkFaint,
-    fontFamily: "Inter_700Bold, Inter, system-ui, -apple-system, sans-serif",
+    fontFamily: "Manrope_700Bold, Manrope, system-ui, -apple-system, sans-serif",
     fontSize: num(text.fontSize, 13),
     outline: "none",
     // Replaces the removed default outline so keyboard focus stays visible.

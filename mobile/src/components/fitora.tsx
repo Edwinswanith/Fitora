@@ -18,28 +18,26 @@ import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context"
 import { useRouter } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
 import Svg, { Circle, Defs, LinearGradient as SvgGradient, Polyline, Stop } from "react-native-svg";
-import { LinearGradient } from "expo-linear-gradient";
 import { Text } from "./AppText";
 import { Avatar } from "./Avatar";
 import { apiJson } from "../lib/api";
 import { useAuth } from "../lib/auth";
-import { ROLE_THEMES, colors, layout, metricColors, radius, type MetricKey } from "../lib/theme";
+import { ROLE_THEMES, colors, fonts, layout, metricColors, radius, type MetricKey } from "../lib/theme";
 
 export type IconName = keyof typeof Ionicons.glyphMap;
 export type Tone = "neutral" | "primary" | "success" | "warning" | "danger" | "energy";
 
 const toneColor: Record<Tone, { text: string; bg: string; border: string }> = {
   neutral: { text: colors.inkMuted, bg: colors.surfaceInset, border: colors.line },
-  primary: { text: colors.primary, bg: colors.primarySoft, border: "#d4f2ee" },
-  success: { text: colors.ok, bg: colors.okSoft, border: "#bfe8c9" },
-  warning: { text: colors.warn, bg: colors.warnSoft, border: "#fedb99" },
-  danger: { text: colors.bad, bg: colors.badSoft, border: "#fecaca" },
-  // Coral: streaks, achievements, celebrations. Never warnings.
-  energy: { text: colors.energyInk, bg: colors.energySoft, border: "#f9cfc5" },
+  primary: { text: colors.primary, bg: colors.primarySoft, border: "#33461a" },
+  success: { text: colors.ok, bg: colors.okSoft, border: "#1f4a2d" },
+  warning: { text: colors.warn, bg: colors.warnSoft, border: "#4d3b17" },
+  danger: { text: colors.bad, bg: colors.badSoft, border: "#5a2229" },
+  // Orange: streaks, achievements, celebrations. Never warnings.
+  energy: { text: colors.energyInk, bg: colors.energySoft, border: "#4a2c19" },
 };
 
 const sectionRadius = 10;
-const sectionBorder = "#e8f5f3";
 
 const VIDEO_THUMB_ASSETS: Record<string, ImageSourcePropType> = {
   squat: require("../../assets/fitora/video-squat.png"),
@@ -306,7 +304,7 @@ export function ProgressRing({
   return (
     <View style={{ width: size, height: size, alignItems: "center", justifyContent: "center" }}>
       <Svg width={size} height={size} viewBox={`0 0 ${size} ${size}`} style={[StyleSheet.absoluteFill, styles.ringSvg]}>
-        <Circle cx={size / 2} cy={size / 2} r={radiusValue} stroke="#e6f2f0" strokeWidth={stroke} fill="none" />
+        <Circle cx={size / 2} cy={size / 2} r={radiusValue} stroke={colors.surfaceInset} strokeWidth={stroke} fill="none" />
         <Circle
           cx={size / 2}
           cy={size / 2}
@@ -458,8 +456,9 @@ function SkeletonScreen({ label }: { label: string }) {
 
 /**
  * The one thing to do now on a screen. Every main screen opens with exactly
- * one hero (filled teal, white text, one clear action); everything below it is
- * a quieter AppCard. Text on the hero is >= 6:1 on primaryStrong.
+ * one hero (dark card, accent ring, uppercase display title, one lime
+ * action); everything below it is a quieter AppCard. `calm` drops the ring
+ * for all-good / informational states.
  */
 export function HeroCard({
   eyebrow,
@@ -490,7 +489,7 @@ export function HeroCard({
       <View style={styles.heroTop}>
         {icon ? (
           <View style={[styles.heroIcon, calm ? styles.heroIconCalm : null]}>
-            <Ionicons name={icon} size={24} color={calm ? colors.primary : "#ffffff"} />
+            <Ionicons name={icon} size={24} color={colors.primary} />
           </View>
         ) : null}
         <View style={styles.heroCopy}>
@@ -526,12 +525,11 @@ export function HeroCard({
     );
   }
   return (
-    <LinearGradient colors={["#0f766e", "#0b4f4a", "#0a3a37"]} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={styles.hero} accessibilityRole="summary">
-      {/* Soft coral glow in the corner (Fitora "Glow" style). */}
-      <View pointerEvents="none" style={styles.heroGlowOuter} />
-      <View pointerEvents="none" style={styles.heroGlowInner} />
+    <View style={styles.hero} accessibilityRole="summary">
+      {/* Accent ring in the corner (Fitora Dark). */}
+      <View pointerEvents="none" style={styles.heroRing} />
       {content}
-    </LinearGradient>
+    </View>
   );
 }
 
@@ -742,7 +740,7 @@ export function SegmentedControl<T extends string>({
             onPress={() => onChange(option.value)}
             style={({ pressed }) => [styles.segment, active ? styles.segmentActive : null, pressed ? styles.pressed : null]}
           >
-            {option.icon ? <Ionicons name={option.icon} size={15} color={active ? colors.primary : colors.inkMuted} /> : null}
+            {option.icon ? <Ionicons name={option.icon} size={15} color={active ? colors.onPrimary : colors.inkMuted} /> : null}
             <Text style={[styles.segmentText, active ? styles.segmentTextActive : null]}>{option.label}</Text>
           </Pressable>
         );
@@ -770,7 +768,7 @@ export function ActionButton({
 }) {
   const filled = variant === "filled";
   const isDisabled = disabled || !onPress;
-  const iconColor = isDisabled ? colors.inkFaint : filled ? "#fff" : colors.primary;
+  const iconColor = isDisabled ? colors.inkFaint : filled ? colors.onPrimary : colors.primary;
   return (
     <Pressable
       onPress={onPress}
@@ -832,7 +830,7 @@ export function VideoThumb({
       {resolvedImage ? (
         <Image source={resolvedImage} style={styles.videoImage} resizeMode="stretch" />
       ) : (
-        <Ionicons name="play-circle" size={mini ? 30 : compact ? 34 : 46} color="#fff" />
+        <Ionicons name="play-circle" size={mini ? 30 : compact ? 34 : 46} color={colors.ink} />
       )}
       {!resolvedImage && duration ? (
         <View style={styles.durationBadge}>
@@ -947,33 +945,28 @@ const styles = StyleSheet.create({
   card: {
     backgroundColor: colors.surfaceRaised,
     borderWidth: 1,
-    borderColor: "#e1ece9",
+    borderColor: colors.line,
     borderRadius: layout.cardRadius,
     padding: layout.cardPadding,
     gap: 10,
-    shadowColor: "#0b3f3b",
-    shadowOpacity: 0.05,
-    shadowRadius: 12,
-    shadowOffset: { width: 0, height: 3 },
-    elevation: 1,
   },
   appBar: { minHeight: 48, flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: 8 },
   appBarToday: { minHeight: 60, alignItems: "flex-start", paddingTop: 0, marginBottom: 2 },
   appBarText: { flex: 1, minWidth: 0 },
   greeting: { fontSize: 12, lineHeight: 16, color: colors.inkMuted, marginBottom: 1 },
-  greetingToday: { fontSize: 14, lineHeight: 18, color: "#53647e", marginBottom: 1 },
-  appTitle: { fontSize: 18, lineHeight: 23, color: colors.ink, fontWeight: "900", letterSpacing: 0 },
-  appTitleToday: { fontSize: 24, lineHeight: 30, color: "#0a1614", fontWeight: "900" },
+  greetingToday: { fontSize: 13, lineHeight: 18, color: colors.inkMuted, fontWeight: "600", marginBottom: 1 },
+  appTitle: { fontFamily: fonts.display, fontSize: 32, lineHeight: 36, color: colors.ink, textTransform: "uppercase", letterSpacing: 0.3 },
+  appTitleToday: { fontSize: 32, lineHeight: 36 },
   appSubtitle: { fontSize: 12, lineHeight: 16, color: colors.inkMuted, marginTop: 1 },
   appSubtitleToday: { fontSize: 14, lineHeight: 18 },
   appActions: { flexDirection: "row", alignItems: "center", gap: 8 },
-  iconButton: { height: 32, width: 32, borderRadius: 16, alignItems: "center", justifyContent: "center" },
-  iconButtonToday: { height: 40, width: 40, borderRadius: 20, marginTop: 4 },
+  iconButton: { height: 44, width: 44, borderRadius: 14, alignItems: "center", justifyContent: "center", backgroundColor: colors.surfaceRaised, borderWidth: 1, borderColor: colors.line },
+  iconButtonToday: { marginTop: 2 },
   iconButtonDisabled: { opacity: 0.55 },
-  avatarButton: { height: 34, width: 34, borderRadius: 17, alignItems: "center", justifyContent: "center" },
-  avatarButtonToday: { height: 40, width: 40, borderRadius: 20, marginTop: 4 },
-  unreadDot: { position: "absolute", right: 6, top: 4, height: 9, width: 9, borderRadius: 5, backgroundColor: colors.primary },
-  unreadDotToday: { right: 7, top: 5, backgroundColor: colors.bad },
+  avatarButton: { height: 44, width: 44, borderRadius: 22, alignItems: "center", justifyContent: "center", borderWidth: 2, borderColor: colors.primary },
+  avatarButtonToday: { marginTop: 2 },
+  unreadDot: { position: "absolute", right: 10, top: 9, height: 8, width: 8, borderRadius: 4, backgroundColor: colors.primary },
+  unreadDotToday: {},
   textAction: { minHeight: 36, alignItems: "center", justifyContent: "center", paddingHorizontal: 4 },
   textActionLabel: { color: colors.primary, fontSize: 15, fontWeight: "800" },
   bottomNav: {
@@ -982,23 +975,18 @@ const styles = StyleSheet.create({
     right: 0,
     bottom: 0,
     minHeight: 82,
-    paddingTop: 8,
+    paddingTop: 10,
     paddingHorizontal: 6,
     flexDirection: "row",
-    backgroundColor: colors.surfaceRaised,
+    backgroundColor: "#0e1217",
     borderTopWidth: 1,
-    borderTopColor: sectionBorder,
-    shadowColor: "#10201e",
-    shadowOpacity: 0.035,
-    shadowRadius: 6,
-    shadowOffset: { width: 0, height: -2 },
-    elevation: 2,
+    borderTopColor: "#1e2630",
   },
   bottomItem: { flex: 1, alignItems: "center", justifyContent: "flex-start", gap: 4 },
-  bottomLabel: { fontSize: 12, lineHeight: 16, color: colors.inkMuted, fontWeight: "600" },
+  bottomLabel: { fontSize: 12, lineHeight: 16, color: colors.inkFaint, fontWeight: "700" },
   bottomLabelActive: { color: colors.primary, fontWeight: "800" },
-  bottomIndicator: { height: 4, width: 34, borderRadius: 2, backgroundColor: "transparent", marginBottom: 1 },
-  bottomIndicatorActive: { backgroundColor: colors.primary },
+  bottomIndicator: { display: "none" },
+  bottomIndicatorActive: {},
   sectionHeader: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: 12, marginTop: 2 },
   sectionTitle: { color: colors.ink, fontSize: 16, fontWeight: "800", lineHeight: 22 },
   sectionAction: { color: colors.primary, fontSize: 12, fontWeight: "800" },
@@ -1013,10 +1001,10 @@ const styles = StyleSheet.create({
     alignSelf: "flex-start",
   },
   chipText: { fontSize: 12, lineHeight: 16, fontWeight: "800" },
-  progressTrack: { width: "100%", backgroundColor: "#e6f2f0", overflow: "hidden" },
+  progressTrack: { width: "100%", backgroundColor: colors.line, overflow: "hidden" },
   progressFill: { height: "100%" },
   ringSvg: { transform: [{ rotate: "-90deg" }] },
-  ringLabel: { fontSize: 20, lineHeight: 23, color: colors.ink, fontWeight: "900" },
+  ringLabel: { fontFamily: fonts.display, fontSize: 22, lineHeight: 25, color: colors.ink },
   ringSub: { marginTop: 1, color: colors.inkMuted, fontSize: 12, fontWeight: "700" },
   alert: {
     borderWidth: 1,
@@ -1039,67 +1027,58 @@ const styles = StyleSheet.create({
   loadingState: { flex: 1, minHeight: 420, alignItems: "center", justifyContent: "center", gap: 12 },
   loadingText: { color: colors.inkMuted, fontSize: 14, fontWeight: "700" },
   hero: {
-    borderRadius: 20,
+    borderRadius: 22,
     padding: 18,
     gap: 14,
     overflow: "hidden",
-    backgroundColor: colors.primaryStrong,
-    shadowColor: colors.primaryStrong,
-    shadowOpacity: 0.22,
-    shadowRadius: 16,
-    shadowOffset: { width: 0, height: 8 },
-    elevation: 4,
+    backgroundColor: colors.surfaceRaised,
+    borderWidth: 1,
+    borderColor: colors.line,
   },
-  heroGlowOuter: { position: "absolute", width: 220, height: 220, borderRadius: 110, right: -90, top: -110, backgroundColor: colors.energy, opacity: 0.16 },
-  heroGlowInner: { position: "absolute", width: 120, height: 120, borderRadius: 60, right: -40, top: -60, backgroundColor: colors.energy, opacity: 0.18 },
+  heroRing: { position: "absolute", width: 170, height: 170, borderRadius: 85, right: -40, top: -40, borderWidth: 22, borderColor: colors.primary, opacity: 0.12 },
   metricRow: { flexDirection: "row", gap: 10 },
   metricRingTile: {
     flex: 1,
     minWidth: 0,
     alignItems: "center",
     gap: 4,
-    paddingVertical: 12,
+    paddingVertical: 14,
     paddingHorizontal: 6,
-    borderRadius: layout.cardRadius,
+    borderRadius: 18,
     borderWidth: 1,
-    borderColor: "#e1ece9",
+    borderColor: colors.line,
     backgroundColor: colors.surfaceRaised,
-    shadowColor: "#0b3f3b",
-    shadowOpacity: 0.05,
-    shadowRadius: 12,
-    shadowOffset: { width: 0, height: 3 },
-    elevation: 1,
   },
-  metricRingLabel: { color: colors.inkFaint, fontSize: 12, fontWeight: "700", marginTop: 4 },
-  metricRingValue: { fontSize: 16, fontWeight: "900" },
-  metricRingSub: { color: colors.inkFaint, fontSize: 12, fontWeight: "600" },
+  metricRingLabel: { color: colors.inkMuted, fontSize: 12, fontWeight: "700", marginTop: 4 },
+  metricRingValue: { fontFamily: fonts.display, fontSize: 22, lineHeight: 26 },
+  metricRingSub: { color: colors.inkMuted, fontSize: 12, fontWeight: "700" },
   backHeader: { flexDirection: "row", alignItems: "center", gap: 12, minHeight: 56, paddingTop: 4 },
-  backButton: { width: 40, height: 40, borderRadius: 20, alignItems: "center", justifyContent: "center", backgroundColor: colors.surfaceRaised, borderWidth: 1, borderColor: "#e1ece9" },
+  backButton: { width: 44, height: 44, borderRadius: 14, alignItems: "center", justifyContent: "center", backgroundColor: colors.surfaceRaised, borderWidth: 1, borderColor: colors.line },
   backHeaderText: { flex: 1, minWidth: 0 },
-  backHeaderTitle: { color: colors.ink, fontSize: 22, lineHeight: 28, fontWeight: "900" },
+  backHeaderTitle: { fontFamily: fonts.display, color: colors.ink, fontSize: 28, lineHeight: 32, textTransform: "uppercase", letterSpacing: 0.3 },
   backHeaderSubtitle: { color: colors.inkMuted, fontSize: 13, lineHeight: 18, marginTop: 1 },
   backHeaderAction: { color: colors.primary, fontSize: 15, fontWeight: "800" },
-  heroCalm: { backgroundColor: colors.primarySoft, shadowOpacity: 0, elevation: 0, borderWidth: 1, borderColor: "#c4e8e1" },
+  heroCalm: {},
   heroTop: { flexDirection: "row", alignItems: "flex-start", gap: 12 },
-  heroIcon: { width: 46, height: 46, borderRadius: 14, alignItems: "center", justifyContent: "center", backgroundColor: "rgba(255,255,255,0.14)" },
-  heroIconCalm: { backgroundColor: colors.surfaceRaised },
+  heroIcon: { width: 48, height: 48, borderRadius: 14, alignItems: "center", justifyContent: "center", backgroundColor: colors.primarySoft },
+  heroIconCalm: {},
   heroCopy: { flex: 1, minWidth: 0, gap: 3 },
-  heroEyebrow: { color: "#c9efe8", fontSize: 12, fontWeight: "800", letterSpacing: 0.8 },
-  heroEyebrowCalm: { color: colors.primary },
-  heroTitle: { color: "#ffffff", fontSize: 22, lineHeight: 27, fontWeight: "900" },
-  heroTitleCalm: { color: colors.ink },
-  heroBody: { color: "#e6f7f4", fontSize: 14, lineHeight: 20, fontWeight: "500" },
-  heroBodyCalm: { color: colors.inkMuted },
+  heroEyebrow: { color: colors.primary, fontSize: 11, fontWeight: "800", letterSpacing: 1.6 },
+  heroEyebrowCalm: {},
+  heroTitle: { fontFamily: fonts.display, color: colors.ink, fontSize: 30, lineHeight: 33, textTransform: "uppercase", letterSpacing: 0.3 },
+  heroTitleCalm: { fontSize: 26, lineHeight: 30 },
+  heroBody: { color: colors.inkMuted, fontSize: 14, lineHeight: 20, fontWeight: "600" },
+  heroBodyCalm: {},
   heroActions: { flexDirection: "row", alignItems: "center", gap: 14, flexWrap: "wrap" },
-  heroButton: { flexGrow: 1, minHeight: 48, borderRadius: 14, alignItems: "center", justifyContent: "center", paddingHorizontal: 18, backgroundColor: "#ffffff" },
-  heroButtonCalm: { backgroundColor: colors.primary },
-  heroButtonText: { color: colors.primaryStrong, fontSize: 16, fontWeight: "900" },
-  heroButtonTextCalm: { color: "#ffffff" },
+  heroButton: { flexGrow: 1, minHeight: 52, borderRadius: 14, alignItems: "center", justifyContent: "center", paddingHorizontal: 18, backgroundColor: colors.primary },
+  heroButtonCalm: {},
+  heroButtonText: { color: colors.onPrimary, fontSize: 16, fontWeight: "800" },
+  heroButtonTextCalm: {},
   heroSecondary: { minHeight: 48, justifyContent: "center", paddingHorizontal: 4 },
-  heroSecondaryText: { color: "#e6f7f4", fontSize: 14, fontWeight: "800" },
+  heroSecondaryText: { color: colors.primary, fontSize: 14, fontWeight: "800" },
   heroSecondaryTextCalm: { color: colors.primary },
   sectionLabelRow: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", marginTop: 10, marginBottom: -2, paddingHorizontal: 2 },
-  sectionLabel: { color: colors.inkFaint, fontSize: 12, fontWeight: "800", letterSpacing: 1 },
+  sectionLabel: { color: colors.inkMuted, fontSize: 12, fontWeight: "800", letterSpacing: 1.6 },
   sectionLabelAction: { color: colors.primary, fontSize: 13, fontWeight: "800" },
   staleNotice: { flexDirection: "row", alignItems: "center", gap: 8, paddingVertical: 8, paddingHorizontal: 12, borderRadius: radius.md, backgroundColor: colors.surfaceInset },
   staleText: { color: colors.inkMuted, fontSize: 13, fontWeight: "700" },
@@ -1125,44 +1104,44 @@ const styles = StyleSheet.create({
   rowSubtitle: { marginTop: 1, color: colors.inkMuted, fontSize: 12, lineHeight: 16 },
   rowRight: { flexDirection: "row", alignItems: "center", gap: 6, maxWidth: "48%" },
   rowValue: { color: colors.ink, fontSize: 12, fontWeight: "800" },
-  segmented: { minHeight: 38, flexDirection: "row", padding: 3, borderRadius: sectionRadius, borderWidth: 1, borderColor: sectionBorder, backgroundColor: "#fdfffe" },
-  segment: { flex: 1, borderRadius: 8, alignItems: "center", justifyContent: "center", flexDirection: "row", gap: 7 },
-  segmentActive: { backgroundColor: colors.primarySoft, borderWidth: 1, borderColor: colors.primary },
-  segmentText: { color: colors.ink, fontSize: 12, fontWeight: "700" },
-  segmentTextActive: { color: colors.primary, fontWeight: "900" },
+  segmented: { minHeight: 46, flexDirection: "row", padding: 4, gap: 4, borderRadius: 14, borderWidth: 1, borderColor: colors.line, backgroundColor: colors.surfaceRaised },
+  segment: { flex: 1, minHeight: 38, borderRadius: 10, alignItems: "center", justifyContent: "center", flexDirection: "row", gap: 7 },
+  segmentActive: { backgroundColor: colors.primary },
+  segmentText: { color: colors.inkMuted, fontSize: 13, fontWeight: "800" },
+  segmentTextActive: { color: colors.onPrimary },
   actionButton: {
-    minHeight: 34,
+    minHeight: 40,
     flex: 1,
-    borderRadius: sectionRadius,
+    borderRadius: 12,
     borderWidth: 1,
     borderColor: colors.primary,
     alignItems: "center",
     justifyContent: "center",
     flexDirection: "row",
     gap: 6,
-    paddingHorizontal: 9,
+    paddingHorizontal: 12,
   },
   actionButtonFilled: { backgroundColor: colors.primary, borderColor: colors.primary },
-  actionButtonDisabled: { borderColor: colors.lineStrong, backgroundColor: colors.surfaceInset },
-  actionButtonText: { color: colors.primary, fontSize: 12, lineHeight: 16, fontWeight: "900" },
-  actionButtonTextFilled: { color: "#fff" },
+  actionButtonDisabled: { borderColor: colors.line, backgroundColor: colors.surfaceInset },
+  actionButtonText: { color: colors.primary, fontSize: 13, lineHeight: 17, fontWeight: "800" },
+  actionButtonTextFilled: { color: colors.onPrimary },
   disabledText: { color: colors.inkFaint },
   metricTile: { flex: 1, alignItems: "center", gap: 5, paddingHorizontal: 3 },
-  metricValue: { color: colors.ink, fontSize: 16, lineHeight: 20, fontWeight: "900" },
+  metricValue: { fontFamily: fonts.display, color: colors.ink, fontSize: 22, lineHeight: 26 },
   metricLabel: { color: colors.inkMuted, fontSize: 12, lineHeight: 16, textAlign: "center" },
   videoThumb: {
     height: 106,
     borderRadius: sectionRadius,
     overflow: "hidden",
-    backgroundColor: "#1b2e2b",
+    backgroundColor: colors.surfaceInset,
     alignItems: "center",
     justifyContent: "center",
   },
   videoThumbCompact: { width: 118, height: 72 },
   videoThumbMini: { width: 98, height: 60 },
   videoImage: { position: "absolute", top: 0, right: 0, bottom: 0, left: 0, width: "100%", height: "100%" },
-  durationBadge: { position: "absolute", right: 8, bottom: 8, borderRadius: 8, paddingHorizontal: 7, paddingVertical: 3, backgroundColor: "rgba(15,23,42,0.82)" },
-  durationText: { color: "#fff", fontSize: 12, fontWeight: "800" },
+  durationBadge: { position: "absolute", right: 8, bottom: 8, borderRadius: 8, paddingHorizontal: 7, paddingVertical: 3, backgroundColor: "rgba(0,0,0,0.75)" },
+  durationText: { color: colors.ink, fontSize: 12, fontWeight: "800" },
   emptyChart: { alignItems: "center", justifyContent: "center", backgroundColor: colors.surfaceInset, borderRadius: sectionRadius },
   emptyChartText: { color: colors.inkMuted, fontSize: 13, fontWeight: "700" },
   barChart: { height: 118, flexDirection: "row", alignItems: "flex-end", justifyContent: "space-between", gap: 8 },

@@ -66,8 +66,8 @@ export default function LoginScreen() {
             <Ionicons name="chevron-back" size={22} color={colors.ink} />
           </Pressable>
 
-          <LinearGradient colors={["#0f766e", "#0b4f4a"]} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={styles.brandTile}>
-            <Ionicons name={`${theme.icon}` as never} size={26} color="#ffffff" />
+          <LinearGradient colors={[colors.primary, colors.primaryStrong]} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={styles.brandTile}>
+            <Ionicons name={`${theme.icon}` as never} size={26} color={colors.onPrimary} />
           </LinearGradient>
 
           <View style={[styles.chip, { backgroundColor: theme.accentSoft }]}>
@@ -136,9 +136,9 @@ export default function LoginScreen() {
 const styles = StyleSheet.create({
   safe: { flex: 1, backgroundColor: colors.surface },
   content: { paddingHorizontal: 20, paddingTop: 8, paddingBottom: 36 },
-  back: { width: 40, height: 40, borderRadius: 20, alignItems: "center", justifyContent: "center", backgroundColor: colors.surfaceRaised, borderWidth: 1, borderColor: "#e1ece9", marginBottom: 20 },
+  back: { width: 40, height: 40, borderRadius: 20, alignItems: "center", justifyContent: "center", backgroundColor: colors.surfaceRaised, borderWidth: 1, borderColor: colors.line, marginBottom: 20 },
   brandTile: { width: 56, height: 56, borderRadius: 18, alignItems: "center", justifyContent: "center", marginBottom: 14 },
-  form: { marginTop: 24, gap: 16, padding: 16, borderRadius: 16, backgroundColor: colors.surfaceRaised, borderWidth: 1, borderColor: "#e1ece9" },
+  form: { marginTop: 24, gap: 16, padding: 16, borderRadius: 16, backgroundColor: colors.surfaceRaised, borderWidth: 1, borderColor: colors.line },
   chip: {
     flexDirection: "row",
     alignItems: "center",

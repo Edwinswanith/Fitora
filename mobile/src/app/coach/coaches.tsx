@@ -102,7 +102,7 @@ export default function Coaches() {
                   hitSlop={8}
                   accessibilityLabel={adding ? "Cancel add coach" : "Add coach"}
                 >
-                  <Ionicons name={adding ? "close" : "add"} size={20} color="#fff" />
+                  <Ionicons name={adding ? "close" : "add"} size={20} color={colors.onPrimary} />
                   <Text style={styles.addBtnLabel}>{adding ? "Cancel" : "Add coach"}</Text>
                 </Pressable>
           ) : null}
@@ -190,7 +190,7 @@ const styles = StyleSheet.create({
   safe: { flex: 1, backgroundColor: colors.surface },
   content: { padding: 20, paddingTop: 12, paddingBottom: 32 },
   addBtn: { alignSelf: "flex-start", flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 6, height: 40, paddingHorizontal: 14, borderRadius: 12 },
-  addBtnLabel: { color: "#fff", fontWeight: "800", fontSize: 13 },
+  addBtnLabel: { color: colors.onPrimary, fontWeight: "800", fontSize: 13 },
   row: { flexDirection: "row", alignItems: "center", gap: 14 },
   avatar: { height: 40, width: 40, borderRadius: 20, alignItems: "center", justifyContent: "center" },
   name: { fontSize: 16, fontWeight: "700", color: colors.ink },
