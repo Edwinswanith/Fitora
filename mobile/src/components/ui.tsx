@@ -2,7 +2,7 @@ import { ReactNode, useEffect, useRef, useState } from "react";
 import { ActivityIndicator, Pressable, StyleProp, StyleSheet, TextInput, TextInputProps, View, ViewStyle } from "react-native";
 import { Text } from "./AppText";
 import { Ionicons } from "@expo/vector-icons";
-import { colors } from "../lib/theme";
+import { colors, fonts } from "../lib/theme";
 
 export function Card({ children, style }: { children: ReactNode; style?: StyleProp<ViewStyle> }) {
   return <View style={[styles.card, style]}>{children}</View>;
@@ -32,7 +32,7 @@ export function PrimaryButton({
   loading,
   disabled,
   accent = colors.primary,
-  accentInk = "#fff",
+  accentInk = colors.onPrimary,
   successLabel,
   successDurationMs = 1600,
   icon,
@@ -89,8 +89,8 @@ export function PrimaryButton({
         <ActivityIndicator color={accentInk} />
       ) : phase === "done" ? (
         <View style={styles.btnRow}>
-          <Ionicons name="checkmark-circle" size={18} color="#fff" />
-          <Text style={[styles.btnText, { color: "#fff" }]}>{successLabel}</Text>
+          <Ionicons name="checkmark-circle" size={18} color={colors.onPrimary} />
+          <Text style={[styles.btnText, { color: colors.onPrimary }]}>{successLabel}</Text>
         </View>
       ) : icon ? (
         <View style={styles.btnRow}>
@@ -148,7 +148,7 @@ const styles = StyleSheet.create({
     backgroundColor: colors.surfaceRaised,
     borderRadius: 16,
     borderWidth: 1,
-    borderColor: "#e1ece9",
+    borderColor: colors.line,
     padding: 14,
     shadowColor: "#0b3a36",
     shadowOpacity: 0.05,
@@ -157,7 +157,7 @@ const styles = StyleSheet.create({
     elevation: 1,
   },
   label: { fontSize: 13, fontWeight: "700", color: colors.inkMuted },
-  h1: { fontSize: 28, lineHeight: 34, fontWeight: "900", color: colors.ink },
+  h1: { fontFamily: fonts.display, fontSize: 34, lineHeight: 37, color: colors.ink, textTransform: "uppercase", letterSpacing: 0.3 },
   muted: { fontSize: 14, color: colors.inkMuted, lineHeight: 20 },
   btn: {
     height: 52,
@@ -174,11 +174,11 @@ const styles = StyleSheet.create({
     borderRadius: 12,
     borderWidth: 1,
     borderColor: colors.line,
-    backgroundColor: colors.surfaceRaised,
+    backgroundColor: colors.surfaceInset,
     paddingHorizontal: 14,
     fontSize: 16,
     color: colors.ink,
-    fontFamily: "Inter_400Regular",
+    fontFamily: "Manrope_500Medium",
     fontWeight: "normal",
     includeFontPadding: false,
   },

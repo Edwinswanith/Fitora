@@ -260,7 +260,7 @@ const styles = StyleSheet.create({
   value: { flex: 1, minWidth: 0, color: colors.ink, fontSize: 13, fontWeight: "800" },
   placeholder: { color: colors.inkFaint, fontWeight: "600" },
   modalRoot: { flex: 1, justifyContent: "flex-end" },
-  backdrop: { position: "absolute", top: 0, right: 0, bottom: 0, left: 0, backgroundColor: "rgba(15,23,42,0.35)" },
+  backdrop: { position: "absolute", top: 0, right: 0, bottom: 0, left: 0, backgroundColor: colors.overlay },
   sheet: {
     borderTopLeftRadius: radius.xl,
     borderTopRightRadius: radius.xl,
@@ -277,5 +277,5 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "center",
   },
-  doneText: { color: "#fff", fontSize: 14, fontWeight: "900" },
+  doneText: { color: colors.onPrimary, fontSize: 14, fontWeight: "900" },
 });

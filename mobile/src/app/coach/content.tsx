@@ -542,7 +542,7 @@ function ContentActionCard({
 
       {message ? <Text style={message.startsWith("Video") ? styles.successText : styles.errorText}>{message}</Text> : null}
       <Pressable onPress={submit} disabled={saving || !assignableVideos.length || !data.roster.length} style={[styles.uploadButton, saving ? styles.disabled : null]}>
-        {saving ? <ActivityIndicator color="#fff" /> : <Text style={styles.uploadButtonText}>{action === "assign" ? "Assign Video" : "Create Workout Task"}</Text>}
+        {saving ? <ActivityIndicator color={colors.onPrimary} /> : <Text style={styles.uploadButtonText}>{action === "assign" ? "Assign Video" : "Create Workout Task"}</Text>}
       </Pressable>
     </AppCard>
   );
@@ -554,7 +554,7 @@ function ChoiceRow({ selected, title, subtitle, onPress, multi }: { selected: bo
     <Pressable onPress={onPress} style={[styles.choiceRow, selected ? styles.choiceRowActive : null]}>
       {multi ? (
         <View style={[styles.checkbox, selected ? styles.checkboxOn : null]}>
-          {selected ? <Ionicons name="checkmark" size={12} color="#fff" /> : null}
+          {selected ? <Ionicons name="checkmark" size={12} color={colors.onPrimary} /> : null}
         </View>
       ) : (
         <View style={[styles.radio, selected ? styles.radioOn : null]} />
@@ -627,7 +627,7 @@ function UploadCard({
       <View style={styles.actionRow}>
         <ActionButton label="Cancel" onPress={onCancel} />
         <Pressable onPress={onUpload} disabled={uploading || !draft.title.trim()} style={[styles.uploadButton, uploading ? styles.disabled : null]}>
-          {uploading ? <ActivityIndicator color="#fff" /> : <Text style={styles.uploadButtonText}>Save Video</Text>}
+          {uploading ? <ActivityIndicator color={colors.onPrimary} /> : <Text style={styles.uploadButtonText}>Save Video</Text>}
         </Pressable>
       </View>
     </AppCard>
@@ -790,7 +790,7 @@ function EditVideoCard({ video, onClose, onSaved }: { video: CoachVideo; onClose
       </View>
       {error ? <Text style={styles.errorText}>{error}</Text> : null}
       <Pressable onPress={save} disabled={saving || !title.trim()} style={[styles.uploadButton, saving ? styles.disabled : null]}>
-        {saving ? <ActivityIndicator color="#fff" /> : <Text style={styles.uploadButtonText}>Save Changes</Text>}
+        {saving ? <ActivityIndicator color={colors.onPrimary} /> : <Text style={styles.uploadButtonText}>Save Changes</Text>}
       </Pressable>
     </AppCard>
   );
@@ -841,7 +841,7 @@ const styles = StyleSheet.create({
   },
   filterChipActive: { backgroundColor: colors.primary, borderColor: colors.primary },
   filterText: { color: colors.ink, fontSize: 12, fontWeight: "800" },
-  filterTextActive: { color: "#fff" },
+  filterTextActive: { color: colors.onPrimary },
   uploadCard: { gap: 12 },
   uploadHeader: { flexDirection: "row", alignItems: "center", gap: 12 },
   closeText: { color: colors.primary, fontSize: 13, fontWeight: "900" },
@@ -898,7 +898,7 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     paddingHorizontal: 14,
   },
-  uploadButtonText: { color: "#fff", fontSize: 14, fontWeight: "900" },
+  uploadButtonText: { color: colors.onPrimary, fontSize: 14, fontWeight: "900" },
   metricBlock: { marginTop: 18, gap: 6 },
   successText: { color: colors.ok, fontSize: 14, fontWeight: "800" },
   errorText: { color: colors.bad, fontSize: 14, fontWeight: "800" },

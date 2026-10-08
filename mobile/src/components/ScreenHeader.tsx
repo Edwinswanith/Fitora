@@ -5,7 +5,7 @@ import { useRouter } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
 import { apiJson } from "../lib/api";
 import { useAuth } from "../lib/auth";
-import { ROLE_THEMES, colors, type RoleTheme } from "../lib/theme";
+import { ROLE_THEMES, colors, type RoleTheme, fonts } from "../lib/theme";
 import { ProfileMenu } from "./ProfileMenu";
 
 export function ScreenHeader({
@@ -94,7 +94,7 @@ const styles = StyleSheet.create({
   headerActions: { flexDirection: "row", flexWrap: "wrap", alignItems: "center", gap: 8 },
   headerActionsEnd: { justifyContent: "flex-end" },
   kicker: { fontSize: 12, fontWeight: "800", letterSpacing: 2, textTransform: "uppercase", marginBottom: 4 },
-  title: { fontSize: 22, fontWeight: "800", letterSpacing: 0 },
+  title: { fontFamily: fonts.display, textTransform: "uppercase", fontSize: 26 },
   subtitle: { marginTop: 2, color: colors.inkMuted, fontSize: 12, lineHeight: 17 },
   iconBtn: {
     height: 40,

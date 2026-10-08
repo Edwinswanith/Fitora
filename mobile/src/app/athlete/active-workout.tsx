@@ -19,7 +19,7 @@ import {
 import { VideoPlayerModal } from "../../components/VideoPlayerModal";
 import { apiFetch } from "../../lib/api";
 import { celebrate, showError, successFeedback } from "../../lib/feedback";
-import { colors } from "../../lib/theme";
+import { colors, fonts } from "../../lib/theme";
 import {
   loadAthleteDashboardData,
   loadWorkoutDetail,
@@ -331,7 +331,7 @@ function WorkoutTask({
           return (
             <View key={index} style={styles.setRow}>
               <View style={[styles.setIcon, setDone ? styles.setIconDone : null]}>
-                <Ionicons name={setDone ? "checkmark" : "ellipse-outline"} size={20} color={setDone ? "#fff" : colors.inkMuted} />
+                <Ionicons name={setDone ? "checkmark" : "ellipse-outline"} size={20} color={setDone ? colors.onPrimary : colors.inkMuted} />
               </View>
               <Text style={styles.setText}>Set {index + 1}</Text>
               <Text style={styles.setStatus}>
@@ -499,9 +499,9 @@ const styles = StyleSheet.create({
   // globally-mounted Ask Agent FAB (bottom-right on every screen).
   screenContent: { paddingBottom: 110 },
   eyebrow: { color: colors.primary, fontSize: 13, fontWeight: "900", textTransform: "uppercase" },
-  workoutTitle: { color: colors.ink, fontSize: 25, lineHeight: 31, fontWeight: "900", marginTop: 6 },
+  workoutTitle: { fontFamily: fonts.display, textTransform: "uppercase", color: colors.ink, fontSize: 29, lineHeight: 33, marginTop: 6 },
   currentLabel: { color: colors.ink, fontSize: 19, fontWeight: "900", marginBottom: 8 },
-  exerciseTitle: { color: colors.ink, fontSize: 27, lineHeight: 33, fontWeight: "900", marginBottom: 14 },
+  exerciseTitle: { fontFamily: fonts.display, textTransform: "uppercase", color: colors.ink, fontSize: 31, lineHeight: 35, marginBottom: 14 },
   exerciseMeta: { flexDirection: "row", flexWrap: "wrap", gap: 8, marginTop: 14 },
   coachInstruction: { flexDirection: "row", alignItems: "center", gap: 12, marginTop: 16, padding: 12, borderRadius: 14, backgroundColor: colors.surfaceInset },
   instructionLabel: { color: colors.inkMuted, fontSize: 13, fontWeight: "800" },
@@ -534,7 +534,7 @@ const styles = StyleSheet.create({
   rpeDot: { height: 34, width: 34, borderRadius: 17, borderWidth: 1, borderColor: colors.lineStrong, alignItems: "center", justifyContent: "center" },
   rpeDotActive: { borderColor: colors.primary, backgroundColor: colors.primary },
   rpeText: { color: colors.ink, fontSize: 14, fontWeight: "800" },
-  rpeTextActive: { color: "#fff" },
+  rpeTextActive: { color: colors.onPrimary },
   savingText: { color: colors.inkMuted, textAlign: "center", marginTop: 8, fontSize: 13 },
   restBox: { marginTop: 16, marginBottom: 4, padding: 12, borderRadius: 14, backgroundColor: colors.primarySoft, gap: 10 },
   restHeadRow: { flexDirection: "row", alignItems: "center", gap: 8 },

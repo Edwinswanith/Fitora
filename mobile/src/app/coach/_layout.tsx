@@ -20,8 +20,8 @@ export default function CoachLayout() {
           height: 84 + insets.bottom,
           paddingTop: 9,
           paddingBottom: Math.max(14, insets.bottom + 10),
-          backgroundColor: colors.surfaceRaised,
-          borderTopColor: colors.line,
+          backgroundColor: "#0e1217",
+          borderTopColor: "#1e2630",
         },
         tabBarItemStyle: { paddingVertical: 3 },
         sceneStyle: { backgroundColor: colors.surface },
@@ -104,7 +104,7 @@ function TabIcon({
 const styles = StyleSheet.create({
   tabIcon: { minWidth: 62, alignItems: "center", justifyContent: "center", gap: 4 },
   indicator: { height: 3, width: 34, borderRadius: 2, backgroundColor: "transparent", marginBottom: 3 },
-  indicatorOn: { backgroundColor: colors.primary },
+  indicatorOn: {},
   tabLabel: { height: 16, fontSize: 12, lineHeight: 16, fontWeight: "600" },
   tabLabelOn: { fontWeight: "800" },
 });

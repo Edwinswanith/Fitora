@@ -16,7 +16,7 @@ import {
 } from "../../../components/fitora";
 import { Avatar } from "../../../components/Avatar";
 import { planVisual, workoutVisual, type FitoraIconName, type FitoraTone } from "../../../lib/fitoraIcons";
-import { colors, metricColors } from "../../../lib/theme";
+import { colors, metricColors, fonts } from "../../../lib/theme";
 import {
   attentionRank,
   attentionReason,
@@ -265,9 +265,9 @@ function Divider() {
 
 const styles = StyleSheet.create({
   header: { minHeight: 58, flexDirection: "row", alignItems: "center", justifyContent: "space-between" },
-  pageTitle: { color: colors.ink, fontSize: 27, lineHeight: 33, fontWeight: "900" },
+  pageTitle: { fontFamily: fonts.display, textTransform: "uppercase", color: colors.ink, fontSize: 31, lineHeight: 35 },
   searchWrap: { minHeight: 48, borderRadius: 13, borderWidth: 1, borderColor: colors.lineStrong, backgroundColor: colors.surfaceRaised, paddingHorizontal: 13, flexDirection: "row", alignItems: "center", gap: 9 },
-  searchInput: { flex: 1, minWidth: 0, color: colors.ink, fontSize: 15, fontFamily: "Inter_400Regular" },
+  searchInput: { flex: 1, minWidth: 0, color: colors.ink, fontSize: 15, fontFamily: "Manrope_500Medium" },
   inviteLink: { minHeight: 38, flexDirection: "row", alignItems: "center", gap: 8, paddingHorizontal: 3 },
   inviteText: { color: colors.primary, fontSize: 15, fontWeight: "900" },
   clientRow: { minHeight: 104, flexDirection: "row", alignItems: "center", gap: 9, paddingVertical: 10 },

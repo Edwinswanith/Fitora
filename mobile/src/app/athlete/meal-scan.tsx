@@ -18,7 +18,7 @@ import {
 } from "../../components/fitora";
 import { apiFetch } from "../../lib/api";
 import { celebrate, errorFeedback } from "../../lib/feedback";
-import { colors, radius } from "../../lib/theme";
+import { colors, radius, fonts } from "../../lib/theme";
 import { todayKey, titleCase, updateCachedData, type AthleteDashboardData, type Meal } from "../../lib/fitoraData";
 
 type MealScan = {
@@ -391,17 +391,17 @@ function MiniField({
 
 const styles = StyleSheet.create({
   pickCard: { alignItems: "center", gap: 12, paddingVertical: 28 },
-  pickTitle: { color: colors.ink, fontSize: 22, fontWeight: "900" },
+  pickTitle: { fontFamily: fonts.display, textTransform: "uppercase", color: colors.ink, fontSize: 26 },
   pickBody: { color: colors.inkMuted, textAlign: "center", fontSize: 15, lineHeight: 21 },
-  errorCard: { backgroundColor: colors.badSoft, borderColor: "#fecaca" },
+  errorCard: { backgroundColor: colors.badSoft, borderColor: "#5a2229" },
   errorText: { color: colors.bad, fontSize: 15, fontWeight: "800" },
   issueCard: { alignItems: "center", gap: 10, paddingVertical: 28 },
   issueTitle: { color: colors.ink, fontSize: 20, fontWeight: "900" },
   issueBody: { color: colors.inkMuted, textAlign: "center", fontSize: 15, lineHeight: 21 },
   eyebrow: { color: colors.primary, fontSize: 13, fontWeight: "900", textTransform: "uppercase" },
-  mealTitle: { color: colors.ink, fontSize: 28, lineHeight: 34, fontWeight: "900", marginTop: 6 },
+  mealTitle: { fontFamily: fonts.display, textTransform: "uppercase", color: colors.ink, fontSize: 32, lineHeight: 36, marginTop: 6 },
   totalRow: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: 12, marginTop: 14 },
-  calories: { color: colors.ink, fontSize: 24, fontWeight: "900" },
+  calories: { fontFamily: fonts.display, textTransform: "uppercase", color: colors.ink, fontSize: 28 },
   macroRow: { flexDirection: "row", gap: 12, marginTop: 18 },
   macro: { flex: 1, padding: 12, borderRadius: 14, backgroundColor: colors.surfaceInset },
   macroValue: { color: colors.ink, fontSize: 18, fontWeight: "900" },

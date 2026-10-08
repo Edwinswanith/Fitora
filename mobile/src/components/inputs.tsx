@@ -1,7 +1,7 @@
 import { Pressable, StyleSheet, View } from "react-native";
 import { Text } from "./AppText";
 import { Ionicons } from "@expo/vector-icons";
-import { colors, radius } from "../lib/theme";
+import { colors, radius, fonts } from "../lib/theme";
 
 /** 1–5 rating selector. */
 export function Scale({
@@ -34,7 +34,7 @@ export function Scale({
                 { borderColor: on ? accent : colors.line, backgroundColor: on ? accent : colors.surfaceInset },
               ]}
             >
-              <Text style={[styles.pillText, { color: on ? "#fff" : colors.inkMuted }]}>{n}</Text>
+              <Text style={[styles.pillText, { color: on ? colors.onPrimary : colors.inkMuted }]}>{n}</Text>
             </Pressable>
           );
         })}
@@ -113,6 +113,6 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     backgroundColor: colors.surfaceInset,
   },
-  stepValue: { fontSize: 24, fontWeight: "800", color: colors.ink },
+  stepValue: { fontFamily: fonts.display, textTransform: "uppercase", fontSize: 28, color: colors.ink },
   unit: { fontSize: 14, fontWeight: "600", color: colors.inkMuted },
 });

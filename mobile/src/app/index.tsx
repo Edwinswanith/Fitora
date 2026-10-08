@@ -4,11 +4,10 @@ import { Text } from "../components/AppText";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { useRouter } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
-import { colors, metricColors } from "../lib/theme";
+import { colors, fonts, metricColors } from "../lib/theme";
 import type { Role } from "../lib/roles";
 
 const BRAND_MARK = require("../../assets/fitora/brand-mark.png");
-const DOT_WAVE = require("../../assets/fitora/landing-dot-wave-reference.png");
 
 type RoleOption = {
   role: Role;
@@ -85,8 +84,6 @@ export default function Landing() {
   return (
     <SafeAreaView style={styles.safe}>
       <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
-        <Image source={DOT_WAVE} style={styles.dotWave} resizeMode="contain" />
-
         <View style={styles.brandRow}>
           <Image source={BRAND_MARK} style={styles.brandMark} resizeMode="contain" />
           <Text style={styles.brandText}>FITORA</Text>
@@ -118,7 +115,7 @@ export default function Landing() {
                 <Text style={styles.roleTitle}>{option.label}</Text>
                 <Text style={styles.roleSub}>{option.sub}</Text>
                 <View style={[styles.selector, selected ? styles.selectorSelected : null]}>
-                  {selected ? <Ionicons name="checkmark" size={21} color="#fff" /> : null}
+                  {selected ? <Ionicons name="checkmark" size={21} color={colors.onPrimary} /> : null}
                 </View>
               </Pressable>
             );
@@ -127,7 +124,7 @@ export default function Landing() {
 
         <View style={styles.notice}>
           <View style={styles.noticeIcon}>
-            <Ionicons name="shield-checkmark-outline" size={17} color="#406e68" />
+            <Ionicons name="shield-checkmark-outline" size={17} color={colors.primary} />
           </View>
           <Text style={styles.noticeText}>
             Your role is set when you first sign up.
@@ -168,7 +165,7 @@ export default function Landing() {
 
         <Pressable onPress={continueToLogin} style={({ pressed }) => [styles.continueButton, pressed ? styles.pressed : null]}>
           <Text style={styles.continueText}>Continue</Text>
-          <Ionicons name="arrow-forward" size={20} color="#fff" />
+          <Ionicons name="arrow-forward" size={20} color={colors.onPrimary} />
         </Pressable>
 
         <View style={styles.footer}>
@@ -181,24 +178,17 @@ export default function Landing() {
 }
 
 const styles = StyleSheet.create({
-  safe: { flex: 1, backgroundColor: "#ffffff" },
+  safe: { flex: 1, backgroundColor: colors.surface },
   content: {
     minHeight: "100%",
     paddingHorizontal: 20,
     paddingTop: 8,
     paddingBottom: 11,
   },
-  dotWave: {
-    position: "absolute",
-    top: 8,
-    right: -3,
-    width: 167,
-    height: 91,
-  },
   brandRow: { flexDirection: "row", alignItems: "center", gap: 10 },
   brandMark: { width: 38, height: 38 },
   brandText: {
-    color: "#1c403b",
+    color: colors.ink,
     fontSize: 14,
     lineHeight: 18,
     fontWeight: "800",
@@ -206,16 +196,17 @@ const styles = StyleSheet.create({
   },
   hero: {
     marginTop: 18,
-    color: "#10201e",
-    fontSize: 36,
-    lineHeight: 43,
-    fontWeight: "900",
-    letterSpacing: 0,
+    color: colors.ink,
+    fontFamily: fonts.display,
+    fontSize: 44,
+    lineHeight: 46,
+    textTransform: "uppercase",
+    letterSpacing: 0.3,
   },
-  heroDot: { color: "#ff6437" },
+  heroDot: { color: colors.primary },
   subcopy: {
     marginTop: 8,
-    color: "#556276",
+    color: colors.inkMuted,
     fontSize: 17,
     lineHeight: 24,
     fontWeight: "500",
@@ -232,26 +223,26 @@ const styles = StyleSheet.create({
     alignItems: "center",
     borderRadius: 17,
     borderWidth: 1,
-    borderColor: "#dfefed",
-    backgroundColor: "#ffffff",
+    borderColor: colors.line,
+    backgroundColor: colors.surfaceRaised,
     paddingTop: 27,
   },
   roleCardSelected: {
     borderColor: colors.primary,
     borderWidth: 1.5,
-    backgroundColor: "#fcfefe",
+    backgroundColor: colors.primarySoft,
   },
   roleIconTile: {
     width: 59,
     height: 59,
     borderRadius: 19,
-    backgroundColor: "#f3fcfb",
+    backgroundColor: colors.primarySoft,
     alignItems: "center",
     justifyContent: "center",
   },
   roleTitle: {
     marginTop: 10,
-    color: "#10201e",
+    color: colors.ink,
     fontSize: 20,
     lineHeight: 25,
     fontWeight: "900",
@@ -259,7 +250,7 @@ const styles = StyleSheet.create({
   },
   roleSub: {
     marginTop: 5,
-    color: "#566174",
+    color: colors.inkMuted,
     fontSize: 14,
     lineHeight: 19,
     fontWeight: "500",
@@ -272,8 +263,8 @@ const styles = StyleSheet.create({
     height: 28,
     borderRadius: 14,
     borderWidth: 2,
-    borderColor: "#cfe5e2",
-    backgroundColor: "#ffffff",
+    borderColor: colors.lineStrong,
+    backgroundColor: colors.surfaceRaised,
     alignItems: "center",
     justifyContent: "center",
   },
@@ -286,8 +277,8 @@ const styles = StyleSheet.create({
     marginTop: 14,
     borderRadius: 16,
     borderWidth: 1,
-    borderColor: "#e3f0ee",
-    backgroundColor: "#ffffff",
+    borderColor: colors.line,
+    backgroundColor: colors.surfaceRaised,
     flexDirection: "row",
     alignItems: "center",
     gap: 12,
@@ -297,13 +288,13 @@ const styles = StyleSheet.create({
     width: 34,
     height: 34,
     borderRadius: 17,
-    backgroundColor: "#effaf9",
+    backgroundColor: colors.primarySoft,
     alignItems: "center",
     justifyContent: "center",
   },
   noticeText: {
     flex: 1,
-    color: "#556276",
+    color: colors.inkMuted,
     fontSize: 12,
     lineHeight: 16,
     fontWeight: "500",
@@ -318,7 +309,7 @@ const styles = StyleSheet.create({
   sectionLine: {
     flex: 1,
     height: 1,
-    backgroundColor: "#e6f5f3",
+    backgroundColor: colors.line,
   },
   diamond: {
     width: 6,
@@ -338,10 +329,10 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     flexWrap: "wrap",
     borderWidth: 1,
-    borderColor: "#e3f0ee",
+    borderColor: colors.line,
     borderRadius: 17,
     overflow: "hidden",
-    backgroundColor: "#ffffff",
+    backgroundColor: colors.surfaceRaised,
   },
   featureCell: {
     width: "50%",
@@ -349,7 +340,7 @@ const styles = StyleSheet.create({
     paddingTop: 14,
     paddingBottom: 14,
     paddingHorizontal: 14,
-    borderColor: "#e7f4f2",
+    borderColor: colors.line,
   },
   featureCellRight: {
     borderLeftWidth: 1,
@@ -366,7 +357,7 @@ const styles = StyleSheet.create({
   },
   featureTitle: {
     marginTop: 8,
-    color: "#10201e",
+    color: colors.ink,
     fontSize: 12,
     lineHeight: 16,
     fontWeight: "900",
@@ -374,7 +365,7 @@ const styles = StyleSheet.create({
   },
   featureSub: {
     marginTop: 5,
-    color: "#5b687c",
+    color: colors.inkMuted,
     fontSize: 12,
     lineHeight: 16,
     fontWeight: "500",
@@ -391,7 +382,7 @@ const styles = StyleSheet.create({
     gap: 10,
   },
   continueText: {
-    color: "#ffffff",
+    color: colors.onPrimary,
     fontSize: 16,
     lineHeight: 20,
     fontWeight: "800",
@@ -405,7 +396,7 @@ const styles = StyleSheet.create({
     gap: 8,
   },
   footerText: {
-    color: "#647084",
+    color: colors.inkMuted,
     fontSize: 12,
     lineHeight: 16,
     fontWeight: "500",

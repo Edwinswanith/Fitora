@@ -36,7 +36,7 @@ import { loadMyJoinRequest, type JoinRequest } from "../../lib/joinRequests";
 import { checkInStreak } from "../../lib/progressModel";
 import { ProgressView } from "../../components/ProgressView";
 import { exerciseVisual, mealVisual, workoutVisual, type FitoraVisual } from "../../lib/fitoraIcons";
-import { colors, metricColors, radius } from "../../lib/theme";
+import { colors, metricColors, radius, fonts } from "../../lib/theme";
 import {
   addDays,
   dateKey,
@@ -665,7 +665,7 @@ function ScheduleRow({
         {index > 0 ? <View style={[styles.timelineLine, styles.timelineLineTop]} /> : null}
         {index < total - 1 ? <View style={[styles.timelineLine, styles.timelineLineBottom]} /> : null}
         <View style={[styles.timelineDot, item.completed ? styles.timelineDotDone : null, !item.completed && index === 1 ? styles.timelineDotActive : null]}>
-          {item.completed ? <Ionicons name="checkmark" size={13} color="#ffffff" /> : null}
+          {item.completed ? <Ionicons name="checkmark" size={13} color={colors.onPrimary} /> : null}
         </View>
       </View>
       <View style={styles.scheduleIconBubble}>
@@ -2024,7 +2024,7 @@ function MealStatusList({
         const consumed = meals.find((meal) => meal.mealType === type);
         const planned = type === "snack" ? undefined : plannedMeals.find((meal) => meal.mealType === type);
         const source = consumed ?? planned;
-        const dotColor = consumed ? colors.ok : planned ? colors.primary : "#a8b0bd";
+        const dotColor = consumed ? colors.ok : planned ? colors.primary : colors.lineStrong;
         const saving = planned?.id === savingPlannedMealId;
         // A coach-prescribed meal and what the athlete actually ate are never
         // the same data — only show them as equivalent when the logged meal
@@ -2266,9 +2266,9 @@ function NutritionSummaryCardV2({
       </View>
 
       <View style={styles.nutritionMacroGrid}>
-        <MacroTileV2 icon="fitness-outline" label="Protein" value={data.mealTotals?.proteinG ?? 0} target={target.proteinG} color="#f56565" />
-        <MacroTileV2 icon="leaf-outline" label="Carbs" value={data.mealTotals?.carbsG ?? 0} target={target.carbsG} color="#f6b63b" />
-        <MacroTileV2 icon="water-outline" label="Fat" value={data.mealTotals?.fatG ?? 0} target={target.fatG} color="#25b56b" />
+        <MacroTileV2 icon="fitness-outline" label="Protein" value={data.mealTotals?.proteinG ?? 0} target={target.proteinG} color="#ff7a85" />
+        <MacroTileV2 icon="leaf-outline" label="Carbs" value={data.mealTotals?.carbsG ?? 0} target={target.carbsG} color="#ffc24d" />
+        <MacroTileV2 icon="water-outline" label="Fat" value={data.mealTotals?.fatG ?? 0} target={target.fatG} color="#4ade80" />
       </View>
 
       <Pressable
@@ -2449,7 +2449,7 @@ function NutritionMealListV2({
                 <View style={styles.nutritionMealRight}>
                   {typeof row.calories === "number" ? <Text style={styles.nutritionMealKcal}>{row.calories.toLocaleString()} kcal</Text> : null}
                   <View style={styles.nutritionLoggedBadge}>
-                    <Ionicons name="checkmark" size={13} color="#ffffff" />
+                    <Ionicons name="checkmark" size={13} color={colors.onPrimary} />
                     <Text style={styles.nutritionLoggedText}>Logged</Text>
                   </View>
                 </View>
@@ -2672,10 +2672,10 @@ function nutritionMealRowsV2(meals: Meal[], plannedMeals: PlannedMeal[]): Nutrit
 }
 
 function nutritionMealVisualV2(type: string): Pick<NutritionMealRowV2, "icon" | "color" | "background"> {
-  if (type === "breakfast") return { icon: "sunny-outline", color: "#f5a300", background: "#fff4d9" };
-  if (type === "lunch") return { icon: "restaurant-outline", color: colors.primary, background: "#effaf9" };
-  if (type === "snack") return { icon: "nutrition-outline", color: "#7c3aed", background: "#f1e9ff" };
-  if (type === "dinner") return { icon: "moon-outline", color: "#0d9488", background: "#effaf9" };
+  if (type === "breakfast") return { icon: "sunny-outline", color: "#ffc24d", background: "#2e2412" };
+  if (type === "lunch") return { icon: "restaurant-outline", color: colors.primary, background: colors.primarySoft };
+  if (type === "snack") return { icon: "nutrition-outline", color: "#c4b5fd", background: "#211b33" };
+  if (type === "dinner") return { icon: "moon-outline", color: "#5eead4", background: "#12302d" };
   const visual = mealVisual(type);
   return { icon: visual.icon, color: visual.color, background: `${visual.color}16` };
 }
@@ -2987,7 +2987,7 @@ function CoachHeroCard({
   return (
     <AppCard style={styles.coachHeroCard}>
       <View style={styles.coachHeroWash} />
-      <Ionicons name="barbell-outline" size={37} color="#8ad4ca" style={styles.coachHeroMark} />
+      <Ionicons name="barbell-outline" size={37} color={colors.primary} style={styles.coachHeroMark} />
       <View style={styles.coachHeroIdentity}>
         <Avatar
           avatar={profile?.avatar}
@@ -3736,10 +3736,10 @@ const styles = StyleSheet.create({
   scheduleCard: { paddingHorizontal: 12, paddingVertical: 10 },
   scheduleRow: { minHeight: 42, flexDirection: "row", alignItems: "center", gap: 8, paddingVertical: 1 },
   timelineCell: { width: 20, alignSelf: "stretch", alignItems: "center", justifyContent: "center", position: "relative" },
-  timelineLine: { position: "absolute", width: 2, backgroundColor: "#dceeec", borderRadius: 1 },
+  timelineLine: { position: "absolute", width: 2, backgroundColor: colors.line, borderRadius: 1 },
   timelineLineTop: { top: -4, bottom: "50%" },
   timelineLineBottom: { top: "50%", bottom: -4 },
-  timelineDot: { width: 18, height: 18, borderRadius: 9, borderWidth: 2, borderColor: colors.lineStrong, backgroundColor: "#ffffff", alignItems: "center", justifyContent: "center", zIndex: 2 },
+  timelineDot: { width: 18, height: 18, borderRadius: 9, borderWidth: 2, borderColor: colors.lineStrong, backgroundColor: colors.surfaceRaised, alignItems: "center", justifyContent: "center", zIndex: 2 },
   timelineDotActive: { borderColor: colors.primary },
   timelineDotDone: { backgroundColor: colors.ok, borderColor: colors.ok },
   scheduleIconBubble: { width: 32, height: 32, borderRadius: 16, backgroundColor: colors.surfaceInset, alignItems: "center", justifyContent: "center" },
@@ -3754,7 +3754,7 @@ const styles = StyleSheet.create({
   coachUpdateCard: { paddingHorizontal: 13, paddingVertical: 9, gap: 8 },
   coachUpdateRow: { flexDirection: "row", alignItems: "flex-start", gap: 10 },
   coachUpdateAvatarWrap: { position: "relative" },
-  coachUnreadDot: { position: "absolute", right: -1, top: -1, width: 10, height: 10, borderRadius: 5, backgroundColor: colors.primary, borderWidth: 2, borderColor: "#ffffff" },
+  coachUnreadDot: { position: "absolute", right: -1, top: -1, width: 10, height: 10, borderRadius: 5, backgroundColor: colors.primary, borderWidth: 2, borderColor: colors.surfaceRaised },
   coachUpdateCopy: { flex: 1, minWidth: 0 },
   coachUpdateTitleRow: { minHeight: 18, flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: 8 },
   coachUpdateTitle: { color: colors.ink, fontSize: 16, lineHeight: 20, fontWeight: "900" },
@@ -3787,7 +3787,9 @@ const styles = StyleSheet.create({
   workoutScreenTitle: {
     marginTop: 12,
     color: colors.ink,
-    fontSize: 28,
+    fontSize: 32,
+    fontFamily: fonts.display,
+    textTransform: "uppercase",
     lineHeight: 34,
     fontWeight: "900",
     letterSpacing: 0,
@@ -3809,13 +3811,13 @@ const styles = StyleSheet.create({
   trainingStatusText: { fontSize: 12, lineHeight: 15, fontWeight: "900" },
   trainingHeroBody: { minHeight: 78, flexDirection: "row", alignItems: "flex-start", gap: 10 },
   trainingHeroCopy: { flex: 1, minWidth: 0, zIndex: 1 },
-  trainingHeroTitle: { color: colors.ink, fontSize: 23, lineHeight: 28, fontWeight: "900", letterSpacing: 0, marginTop: 1 },
+  trainingHeroTitle: { fontFamily: fonts.display, textTransform: "uppercase", color: colors.ink, fontSize: 27, lineHeight: 30, marginTop: 1 },
   trainingHeroMeta: { color: colors.inkMuted, fontSize: 14, lineHeight: 19, fontWeight: "800", marginTop: 3 },
   trainingAssignedRow: { minHeight: 36, flexDirection: "row", alignItems: "center", gap: 9, marginTop: 10 },
   trainingCoachIcon: { width: 32, height: 32, borderRadius: 16, backgroundColor: colors.primarySoft, alignItems: "center", justifyContent: "center" },
   trainingAssignedText: { flex: 1, minWidth: 0, color: colors.inkMuted, fontSize: 13, lineHeight: 17, fontWeight: "700" },
   trainingHeroVisual: { width: 92, height: 86, alignItems: "center", justifyContent: "center", marginTop: 6, opacity: 0.78 },
-  trainingCoachNote: { minHeight: 46, borderRadius: 10, backgroundColor: "#f2fbfa", paddingHorizontal: 10, paddingVertical: 8, flexDirection: "row", alignItems: "center", gap: 9, marginTop: 8, zIndex: 1 },
+  trainingCoachNote: { minHeight: 46, borderRadius: 10, backgroundColor: colors.surfaceInset, paddingHorizontal: 10, paddingVertical: 8, flexDirection: "row", alignItems: "center", gap: 9, marginTop: 8, zIndex: 1 },
   trainingCoachNoteText: { flex: 1, minWidth: 0, color: colors.inkMuted, fontSize: 12.5, lineHeight: 17, fontWeight: "600" },
   trainingProgressRow: { flexDirection: "row", alignItems: "center", gap: 10, marginTop: 8, zIndex: 1 },
   trainingProgressBar: { flex: 1 },
@@ -3835,7 +3837,7 @@ const styles = StyleSheet.create({
   trainingVideoBadge: { width: 22, height: 18, borderRadius: 5, borderWidth: 1, borderColor: colors.lineStrong, alignItems: "center", justifyContent: "center" },
   trainingExerciseRight: { maxWidth: 96, alignItems: "flex-end", justifyContent: "center" },
   trainingUpNextCard: { minHeight: 104, paddingHorizontal: 13, paddingVertical: 12, overflow: "hidden", position: "relative" },
-  trainingUpNextWash: { position: "absolute", right: -18, bottom: -28, width: 160, height: 96, borderTopLeftRadius: 110, backgroundColor: "#f2fbfa" },
+  trainingUpNextWash: { position: "absolute", right: -18, bottom: -28, width: 160, height: 96, borderTopLeftRadius: 110, backgroundColor: colors.surfaceInset },
   trainingUpNextRow: { minHeight: 58, flexDirection: "row", alignItems: "center", gap: 12, zIndex: 1 },
   trainingUpNextIcon: { width: 44, height: 44, borderRadius: 13, backgroundColor: colors.primarySoft, alignItems: "center", justifyContent: "center" },
   trainingUpNextCopy: { flex: 1, minWidth: 0 },
@@ -3853,8 +3855,8 @@ const styles = StyleSheet.create({
     padding: 4,
     borderRadius: 12,
     borderWidth: 1,
-    borderColor: "#d9ebe9",
-    backgroundColor: "#fdfffe",
+    borderColor: colors.line,
+    backgroundColor: colors.surfaceInset,
   },
   workoutSegment: { flex: 1, minHeight: 36, borderRadius: 9, alignItems: "center", justifyContent: "center" },
   workoutSegmentActive: {
@@ -3866,16 +3868,16 @@ const styles = StyleSheet.create({
     elevation: 1,
   },
   workoutSegmentText: { color: colors.ink, fontSize: 14, lineHeight: 18, fontWeight: "700" },
-  workoutSegmentTextActive: { color: "#ffffff", fontWeight: "900" },
+  workoutSegmentTextActive: { color: colors.onPrimary, fontWeight: "900" },
   workoutSegmentDivider: { width: 1, height: 28, backgroundColor: colors.line },
   weekStrip: { flexDirection: "row", justifyContent: "space-between", paddingTop: 7, paddingBottom: 10 },
   weekDay: { width: 43, minHeight: 54, alignItems: "center", gap: 4, paddingVertical: 7, borderRadius: 11, borderWidth: 1, borderColor: "transparent" },
   weekDayToday: { borderColor: colors.primary, backgroundColor: colors.primarySoft },
   weekDaySelected: { backgroundColor: colors.primary, borderColor: colors.primary },
   weekDayLabel: { color: colors.inkFaint, fontSize: 12, lineHeight: 16, fontWeight: "800", letterSpacing: 0.3 },
-  weekDayLabelSelected: { color: "#edfaf8" },
+  weekDayLabelSelected: { color: colors.onPrimary },
   weekDayNumber: { color: colors.ink, fontSize: 18, lineHeight: 22, fontWeight: "900" },
-  weekDayNumberSelected: { color: "#fff" },
+  weekDayNumberSelected: { color: colors.onPrimary },
   weekDayDot: { width: 5, height: 5, borderRadius: 3 },
   workoutHeroCard: { paddingHorizontal: 12, paddingVertical: 8 },
   workoutHeroChipsRow: { flexDirection: "row", flexWrap: "wrap", alignItems: "center", gap: 6, marginBottom: 6 },
@@ -3924,8 +3926,8 @@ const styles = StyleSheet.create({
     alignItems: "center",
     gap: 4,
   },
-  workoutStatusPillSuccess: { backgroundColor: colors.okSoft, borderColor: "#bfe8c9" },
-  workoutStatusPillPrimary: { backgroundColor: colors.primarySoft, borderColor: "#d4f2ee" },
+  workoutStatusPillSuccess: { backgroundColor: colors.okSoft, borderColor: "#1f4a2d" },
+  workoutStatusPillPrimary: { backgroundColor: colors.primarySoft, borderColor: "#33461a" },
   workoutStatusPillNeutral: { backgroundColor: colors.surfaceInset, borderColor: colors.line },
   workoutStatusPillText: { color: colors.inkMuted, fontSize: 12, lineHeight: 16, fontWeight: "800" },
   workoutStatusPillTextSuccess: { color: colors.ok },
@@ -3935,7 +3937,7 @@ const styles = StyleSheet.create({
   nutritionTargetRow: { minHeight: 74, flexDirection: "row", alignItems: "center", gap: 18 },
   nutritionTargetCopy: { flex: 1, alignItems: "center", gap: 10 },
   targetRemaining: { color: colors.ink, fontSize: 13, lineHeight: 17, fontWeight: "800" },
-  nutritionGoalBadge: { alignSelf: "center", borderRadius: radius.pill, backgroundColor: "#fff1e5", paddingHorizontal: 11, paddingVertical: 4 },
+  nutritionGoalBadge: { alignSelf: "center", borderRadius: radius.pill, backgroundColor: colors.surfaceInset, paddingHorizontal: 11, paddingVertical: 4 },
   nutritionGoalDisplayText: { color: colors.warn, fontSize: 12, lineHeight: 16, fontWeight: "900" },
   nutritionGoalText: { display: "none" },
   actionRow: { flexDirection: "row", gap: 10 },
@@ -3962,7 +3964,7 @@ const styles = StyleSheet.create({
   nutritionSummaryCopy: { flex: 1, minWidth: 0 },
   nutritionEyebrow: { color: colors.inkMuted, fontSize: 12, lineHeight: 16, fontWeight: "900", letterSpacing: 1.8 },
   nutritionCaloriesRow: { flexDirection: "row", alignItems: "baseline", flexWrap: "wrap", marginTop: 9 },
-  nutritionCaloriesValue: { color: colors.ink, fontSize: 30, lineHeight: 36, fontWeight: "900", letterSpacing: 0 },
+  nutritionCaloriesValue: { fontFamily: fonts.display, textTransform: "uppercase", color: colors.ink, fontSize: 34, lineHeight: 38 },
   nutritionCaloriesTarget: { color: colors.inkMuted, fontSize: 17, lineHeight: 26, fontWeight: "800" },
   nutritionStatusPill: { alignSelf: "flex-start", marginTop: 6, minHeight: 28, borderRadius: 15, paddingHorizontal: 11, flexDirection: "row", alignItems: "center", gap: 8 },
   nutritionStatusDot: { width: 8, height: 8, borderRadius: 4 },
@@ -3986,7 +3988,7 @@ const styles = StyleSheet.create({
   nutritionMealRight: { minWidth: 92, alignItems: "flex-end", gap: 6 },
   nutritionMealKcal: { color: colors.inkMuted, fontSize: 13, lineHeight: 17, fontWeight: "800", textAlign: "right" },
   nutritionLoggedBadge: { minHeight: 26, borderRadius: 13, backgroundColor: colors.ok, paddingHorizontal: 9, flexDirection: "row", alignItems: "center", gap: 5 },
-  nutritionLoggedText: { color: "#ffffff", fontSize: 12, lineHeight: 15, fontWeight: "900" },
+  nutritionLoggedText: { color: colors.onPrimary, fontSize: 12, lineHeight: 15, fontWeight: "900" },
   nutritionSmallButton: { minWidth: 82, minHeight: 36, borderRadius: 9, backgroundColor: colors.primarySoft, alignItems: "center", justifyContent: "center", paddingHorizontal: 11 },
   nutritionSmallButtonDisabled: { opacity: 0.58 },
   nutritionSmallButtonText: { color: colors.primary, fontSize: 13, lineHeight: 17, fontWeight: "900" },
@@ -4005,7 +4007,7 @@ const styles = StyleSheet.create({
   nutritionCoachSummary: { color: colors.inkMuted, fontSize: 12.5, lineHeight: 17, fontWeight: "700", marginTop: 2 },
   nutritionPlanButton: { minWidth: 104, minHeight: 38, borderRadius: 10, backgroundColor: colors.primarySoft, paddingHorizontal: 10, marginRight: 38, flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 3 },
   nutritionPlanButtonText: { color: colors.primary, fontSize: 13, lineHeight: 17, fontWeight: "900" },
-  nutritionPlanExpanded: { borderWidth: 1, borderColor: colors.line, borderRadius: 10, backgroundColor: "#ffffff", paddingHorizontal: 8 },
+  nutritionPlanExpanded: { borderWidth: 1, borderColor: colors.line, borderRadius: 10, backgroundColor: colors.surfaceRaised, paddingHorizontal: 8 },
   nutritionPlanActions: { minHeight: 36, borderTopWidth: 1, borderTopColor: colors.line, justifyContent: "center" },
   nutritionPlanTextAction: { alignSelf: "flex-start", minHeight: 32, flexDirection: "row", alignItems: "center", gap: 6 },
   nutritionPlanTextActionLabel: { color: colors.primary, fontSize: 12.5, lineHeight: 16, fontWeight: "900" },
@@ -4018,7 +4020,7 @@ const styles = StyleSheet.create({
     padding: 14,
     borderRadius: 16,
     borderWidth: 1,
-    borderColor: "#e1ece9",
+    borderColor: colors.line,
     backgroundColor: colors.surfaceRaised,
   },
   streakCopy: { flex: 1, minWidth: 0 },
@@ -4027,8 +4029,8 @@ const styles = StyleSheet.create({
   streakChipText: { color: colors.energyInk, fontSize: 13, fontWeight: "900" },
   sectionInline: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: 12 },
   rowIconTitle: { flexDirection: "row", alignItems: "center", gap: 10, flex: 1, minWidth: 0 },
-  coachMealCard: { padding: 8, backgroundColor: "#fafdfd" },
-  mealPlanInnerList: { marginTop: 6, borderWidth: 1, borderColor: colors.line, borderRadius: 9, overflow: "hidden", backgroundColor: "#ffffff", paddingHorizontal: 7 },
+  coachMealCard: { padding: 8, backgroundColor: colors.surfaceInset },
+  mealPlanInnerList: { marginTop: 6, borderWidth: 1, borderColor: colors.line, borderRadius: 9, overflow: "hidden", backgroundColor: colors.surfaceRaised, paddingHorizontal: 7 },
   mealPlanActions: { minHeight: 32, flexDirection: "row", alignItems: "center", borderTopWidth: 1, borderTopColor: colors.line },
   mealPlanAction: { flex: 1, minHeight: 32, alignItems: "center", justifyContent: "center", flexDirection: "row", gap: 5 },
   mealPlanActionText: { color: colors.primary, fontSize: 12, lineHeight: 16, fontWeight: "900" },
@@ -4038,7 +4040,7 @@ const styles = StyleSheet.create({
   nutritionMealMuted: { color: colors.inkMuted, fontSize: 12.5, lineHeight: 17, fontWeight: "600" },
   nutritionMealPlannedNote: { color: colors.primary, fontSize: 12, lineHeight: 16, fontWeight: "700", marginTop: 1 },
   nutritionMealValue: { color: colors.ink, fontSize: 12, lineHeight: 16, fontWeight: "800" },
-  consumedCard: { backgroundColor: "#f8fffa", borderColor: "#dbeee2", padding: 8 },
+  consumedCard: { backgroundColor: colors.surfaceInset, borderColor: colors.line, padding: 8 },
   consumedHeader: { flexDirection: "row", alignItems: "flex-start", gap: 10 },
   consumedList: { marginTop: 6, gap: 3 },
   consumedMealRow: { minHeight: 25, flexDirection: "row", alignItems: "center", gap: 7 },
@@ -4050,7 +4052,7 @@ const styles = StyleSheet.create({
   waterProgress: { marginTop: 1, maxWidth: 150 },
   waterButton: { flex: 0, width: 76, minHeight: 27, borderRadius: 7 },
   coachHeroCard: { minHeight: 174, paddingHorizontal: 13, paddingVertical: 11, overflow: "hidden", position: "relative", gap: 8 },
-  coachHeroWash: { position: "absolute", right: -28, top: -8, bottom: -6, width: 160, borderTopLeftRadius: 116, borderBottomLeftRadius: 70, backgroundColor: "#f2fbfa" },
+  coachHeroWash: { position: "absolute", right: -28, top: -8, bottom: -6, width: 160, borderTopLeftRadius: 116, borderBottomLeftRadius: 70, backgroundColor: colors.surfaceInset },
   coachHeroMark: { position: "absolute", right: 34, top: 34, opacity: 0.9 },
   coachHeroIdentity: { flexDirection: "row", alignItems: "center", gap: 12, paddingRight: 92, zIndex: 1 },
   coachHeroCopy: { flex: 1, minWidth: 0 },
@@ -4059,7 +4061,7 @@ const styles = StyleSheet.create({
   coachHeroSubtitle: { color: colors.inkMuted, fontSize: 12.5, lineHeight: 16, fontWeight: "700", marginTop: 1 },
   coachHeroRating: { color: colors.ink, fontSize: 12.5, lineHeight: 16, fontWeight: "900", marginTop: 4 },
   coachHeroChips: { flexDirection: "row", flexWrap: "wrap", gap: 6, zIndex: 1 },
-  coachSpecialtyChip: { maxWidth: "48%", minHeight: 27, borderRadius: 9, borderWidth: 1, borderColor: "#d5f3ef", backgroundColor: colors.primarySoft, paddingHorizontal: 9, alignItems: "center", justifyContent: "center" },
+  coachSpecialtyChip: { maxWidth: "48%", minHeight: 27, borderRadius: 9, borderWidth: 1, borderColor: "#33461a", backgroundColor: colors.primarySoft, paddingHorizontal: 9, alignItems: "center", justifyContent: "center" },
   coachSpecialtyText: { color: colors.primary, fontSize: 12, lineHeight: 16, fontWeight: "900" },
   coachHeroActions: { flexDirection: "row", gap: 10, zIndex: 1 },
   coachHeroAction: { flex: 1, minHeight: 40, borderRadius: 10 },
@@ -4071,10 +4073,10 @@ const styles = StyleSheet.create({
   coachBubbleMine: { alignSelf: "flex-end", backgroundColor: colors.primary },
   coachBubbleTheirs: { alignSelf: "flex-start", backgroundColor: colors.surfaceInset },
   coachBubbleText: { color: colors.ink, fontSize: 12.5, lineHeight: 17, fontWeight: "600" },
-  coachBubbleTextMine: { color: "#ffffff" },
+  coachBubbleTextMine: { color: colors.onPrimary },
   coachBubbleTime: { color: colors.inkFaint, fontSize: 12, lineHeight: 16, fontWeight: "700", marginTop: 3 },
-  coachBubbleTimeMine: { color: "#e3f7f4" },
-  coachComposer: { minHeight: 70, borderRadius: 10, borderWidth: 1, borderColor: colors.lineStrong, backgroundColor: "#ffffff", color: colors.ink, fontSize: 13, lineHeight: 18, paddingHorizontal: 11, paddingVertical: 9, textAlignVertical: "top" },
+  coachBubbleTimeMine: { color: "#2b3a12" },
+  coachComposer: { minHeight: 70, borderRadius: 10, borderWidth: 1, borderColor: colors.lineStrong, backgroundColor: colors.surfaceRaised, color: colors.ink, fontSize: 13, lineHeight: 18, paddingHorizontal: 11, paddingVertical: 9, textAlignVertical: "top" },
   coachSendButton: { minHeight: 40, borderRadius: 9 },
   nextCoachSessionCard: { paddingHorizontal: 13, paddingVertical: 11, gap: 7 },
   nextCoachSessionBody: { minHeight: 62, flexDirection: "row", alignItems: "center", gap: 12 },

@@ -225,7 +225,7 @@ function CoachCard({ coach, onPress }: { coach: MarketplaceCoach; onPress: () =>
           </View>
           <View style={styles.cta}>
             <Text style={styles.ctaText}>View Coach</Text>
-            <Ionicons name="chevron-forward" size={16} color="#fff" />
+            <Ionicons name="chevron-forward" size={16} color={colors.onPrimary} />
           </View>
         </View>
       </AppCard>
@@ -259,7 +259,7 @@ const styles = StyleSheet.create({
   },
   filterChipActive: { backgroundColor: colors.primary, borderColor: colors.primary },
   filterText: { color: colors.ink, fontSize: 13, fontWeight: "800" },
-  filterTextActive: { color: "#fff" },
+  filterTextActive: { color: colors.onPrimary },
   specChip: {
     minHeight: 32,
     borderRadius: radius.pill,
@@ -288,5 +288,5 @@ const styles = StyleSheet.create({
   bottomRow: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", marginTop: 13 },
   price: { color: colors.ink, fontSize: 16, lineHeight: 20, fontWeight: "900" },
   cta: { flexDirection: "row", alignItems: "center", gap: 4, minHeight: 38, borderRadius: radius.md, backgroundColor: colors.primary, paddingHorizontal: 14 },
-  ctaText: { color: "#fff", fontSize: 13, fontWeight: "900" },
+  ctaText: { color: colors.onPrimary, fontSize: 13, fontWeight: "900" },
 });

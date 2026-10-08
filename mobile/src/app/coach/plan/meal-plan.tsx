@@ -17,6 +17,7 @@ import {
 } from "../../../components/planEditor";
 import { requestJson } from "../../../lib/planApi";
 import { celebrate, errorFeedback } from "../../../lib/feedback";
+import { colors } from "../../../lib/theme";
 import {
   MEAL_LIMITS,
   MEAL_PLAN_DURATIONS,
@@ -474,6 +475,6 @@ function FoodBlock({ food, index, onChange, onRemove }: { food: FoodDraft; index
 }
 
 const styles = StyleSheet.create({
-  meal: { gap: 8, borderTopWidth: 1, borderTopColor: "#e8f5f3", paddingTop: 10 },
-  food: { gap: 6, borderRadius: 10, borderWidth: 1, borderColor: "#e8f5f3", backgroundColor: "#f8fdfc", padding: 8 },
+  meal: { gap: 8, borderTopWidth: 1, borderTopColor: colors.line, paddingTop: 10 },
+  food: { gap: 6, borderRadius: 10, borderWidth: 1, borderColor: colors.line, backgroundColor: colors.surfaceInset, padding: 8 },
 });

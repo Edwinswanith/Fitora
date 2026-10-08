@@ -38,11 +38,11 @@ type Athlete = {
 };
 
 const AVATAR_PALETTE = [
-  { bg: "#e3f5ea", fg: "#188a4e" },
-  { bg: "#ecfaf8", fg: "#0f766e" },
-  { bg: "#fdf3e3", fg: "#b2790a" },
-  { bg: "#f2eafb", fg: "#7c4fd6" },
-  { bg: "#fdecec", fg: "#c2382f" },
+  { bg: "#12291a", fg: "#4ade80" },
+  { bg: "#12302d", fg: "#5eead4" },
+  { bg: "#2e2412", fg: "#ffb547" },
+  { bg: "#211b33", fg: "#c4b5fd" },
+  { bg: "#331418", fg: "#ff8a95" },
 ];
 
 function paletteFor(id: string): { bg: string; fg: string } {
@@ -544,9 +544,9 @@ export default function CoachMessages() {
               accessibilityLabel={pending ? "Send image" : "Send"}
             >
               {sending || (mediaBusy && pending) ? (
-                <ActivityIndicator color="#fff" />
+                <ActivityIndicator color={colors.onPrimary} />
               ) : (
-                <Ionicons name="send" size={18} color="#fff" />
+                <Ionicons name="send" size={18} color={colors.onPrimary} />
               )}
             </Pressable>
           </View>
@@ -884,7 +884,7 @@ const styles = StyleSheet.create({
   homeFilterChipActive: { backgroundColor: theme.accentSoft, borderColor: theme.accent + "55" },
   homeFilterText: { color: colors.inkMuted, fontSize: 12, fontWeight: "700" },
   homeFilterBadge: { minWidth: 18, height: 18, borderRadius: 9, backgroundColor: theme.accent, alignItems: "center", justifyContent: "center", paddingHorizontal: 4 },
-  homeFilterBadgeText: { color: "#fff", fontSize: 12, fontWeight: "900" },
+  homeFilterBadgeText: { color: colors.onPrimary, fontSize: 12, fontWeight: "900" },
   sectionHeaderRow: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", marginBottom: 8 },
   sectionHeaderLabel: { color: colors.inkMuted, fontSize: 12, fontWeight: "900", letterSpacing: 1.6, textTransform: "uppercase" },
   sectionHeaderRight: { flexDirection: "row", alignItems: "center", gap: 4 },
@@ -909,7 +909,7 @@ const styles = StyleSheet.create({
   threadTime: { color: colors.inkFaint, fontSize: 12, fontWeight: "700" },
   threadPreview: { marginTop: 2, color: colors.inkMuted, fontSize: 12 },
   unreadBadge: { minWidth: 22, height: 22, borderRadius: 11, backgroundColor: theme.accent, alignItems: "center", justifyContent: "center", paddingHorizontal: 6 },
-  unreadText: { color: "#fff", fontSize: 12, fontWeight: "900" },
+  unreadText: { color: colors.onPrimary, fontSize: 12, fontWeight: "900" },
   starterRow: { gap: 10, paddingRight: 2 },
   starterCard: {
     width: 108,

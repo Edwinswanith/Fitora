@@ -722,7 +722,7 @@ function PlanComposer({
         <AlertBanner tone="warning" title="Review before clients start" body={outcome.warnings.join("\n")} />
       ) : null}
       <Pressable onPress={submit} disabled={saving || !data.roster.length} style={[styles.submitButton, saving || !data.roster.length ? styles.disabled : null]}>
-        {saving ? <ActivityIndicator color="#fff" /> : <Text style={styles.submitText}>Assign to {selectedAthleteIds.length} client{selectedAthleteIds.length === 1 ? "" : "s"}</Text>}
+        {saving ? <ActivityIndicator color={colors.onPrimary} /> : <Text style={styles.submitText}>Assign to {selectedAthleteIds.length} client{selectedAthleteIds.length === 1 ? "" : "s"}</Text>}
       </Pressable>
     </AppCard>
   );
@@ -740,7 +740,7 @@ function ChoiceRow({ selected, title, subtitle, onPress, multi }: { selected: bo
     <Pressable onPress={onPress} style={[styles.choiceRow, selected ? styles.choiceRowActive : null]}>
       {multi ? (
         <View style={[styles.checkbox, selected ? styles.checkboxOn : null]}>
-          {selected ? <Ionicons name="checkmark" size={12} color="#fff" /> : null}
+          {selected ? <Ionicons name="checkmark" size={12} color={colors.onPrimary} /> : null}
         </View>
       ) : (
         <View style={[styles.radio, selected ? styles.radioOn : null]} />
@@ -823,7 +823,7 @@ const styles = StyleSheet.create({
   choiceTitle: { color: colors.ink, fontSize: 13, lineHeight: 17, fontWeight: "900" },
   choiceSub: { color: colors.inkMuted, fontSize: 12, lineHeight: 16 },
   submitButton: { minHeight: 42, borderRadius: 12, backgroundColor: colors.primary, alignItems: "center", justifyContent: "center" },
-  submitText: { color: "#fff", fontSize: 14, fontWeight: "900" },
+  submitText: { color: colors.onPrimary, fontSize: 14, fontWeight: "900" },
   errorText: { color: colors.bad, fontSize: 12, fontWeight: "800" },
   disabled: { opacity: 0.55 },
   muted: { color: colors.inkMuted, fontSize: 15, lineHeight: 21 },

@@ -111,8 +111,8 @@ export function mealVisual(type?: string | null): FitoraVisual {
 
   if (text.includes("breakfast")) return visual("sunny-outline", "warning", colors.warn);
   if (text.includes("lunch")) return visual("partly-sunny-outline", "success", colors.ok);
-  if (text.includes("snack")) return visual("cafe-outline", "primary", "#6d5dfc");
-  if (text.includes("dinner")) return visual("restaurant-outline", "warning", "#f97316");
+  if (text.includes("snack")) return visual("cafe-outline", "primary", "#c4b5fd");
+  if (text.includes("dinner")) return visual("restaurant-outline", "warning", "#ff9f5e");
 
   return visual("restaurant-outline", "success", colors.ok);
 }
