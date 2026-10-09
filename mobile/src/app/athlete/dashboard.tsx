@@ -1,5 +1,5 @@
 import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Alert, Pressable, StyleSheet, TextInput, View } from "react-native";
+import { Pressable, StyleSheet, TextInput, View } from "react-native";
 import { useFocusEffect, useLocalSearchParams, useRouter } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
 import { Text } from "../../components/AppText";
@@ -31,6 +31,8 @@ import { apiFetch, apiJson } from "../../lib/api";
 import { useAuth } from "../../lib/auth";
 import { PAYMENTS_ENABLED } from "../../lib/features";
 import { celebrate, showError } from "../../lib/feedback";
+import { confirmAction } from "../../lib/confirm";
+import { animateNextLayout } from "../../lib/motion";
 import { joinSessionCall } from "../../lib/videoCall";
 import { loadMyJoinRequest, type JoinRequest } from "../../lib/joinRequests";
 import { checkInStreak } from "../../lib/progressModel";
@@ -63,6 +65,7 @@ import {
   type PlannedMeal,
   type WorkoutAssignmentDetail,
   type WorkoutAssignmentSummary,
+  newestWaterEntryId,
 } from "../../lib/fitoraData";
 import { VideoPlayerModal } from "../../components/VideoPlayerModal";
 
@@ -226,13 +229,29 @@ export default function AthleteDashboard() {
         if (before < water.goalMl && water.totalMl >= water.goalMl) {
           celebrate({ title: "Water goal reached!", body: `${liters(water.totalMl)} L today. Nice work.`, big: true });
         } else {
-          celebrate({ title: `+${amountMl} ml logged`, body: `${liters(water.totalMl)} of ${liters(water.goalMl)} L today` });
+          const entryId = newestWaterEntryId(water);
+          celebrate({
+            title: `+${amountMl} ml logged`,
+            body: `${liters(water.totalMl)} of ${liters(water.goalMl)} L today`,
+            action: entryId ? { label: "Undo", onPress: () => void undoWater(entryId) } : undefined,
+          });
         }
       }
     } catch {
       showError("Couldn't log water", "Check your connection and try again.");
     } finally {
       setLoggingWater(false);
+    }
+  }
+
+  async function undoWater(entryId: string) {
+    try {
+      const res = await apiFetch(`/api/athlete/water/${entryId}`, { method: "DELETE" });
+      if (!res.ok) throw new Error();
+      const water = (await res.json().catch(() => null)) as AthleteDashboardData["water"];
+      if (water) state.setData((prev) => (prev ? { ...prev, water } : prev));
+    } catch {
+      showError("Couldn't undo", "Remove it from the Water screen instead.");
     }
   }
 
@@ -940,6 +959,7 @@ function SessionCard({
   const [internalExpanded, setInternalExpanded] = useState(false);
   const expanded = expandedProp ?? internalExpanded;
   const setExpanded = (next: boolean) => {
+    animateNextLayout();
     if (onExpandedChange) onExpandedChange(next);
     else setInternalExpanded(next);
   };
@@ -1293,7 +1313,7 @@ function TrainingExercisePreview({ detail }: { detail: WorkoutAssignmentDetail }
       <View style={styles.trainingSectionHeader}>
         <Text style={styles.trainingSectionTitle}>Exercise Preview</Text>
         {detail.exercises.length > 3 ? (
-          <Pressable onPress={() => setExpanded((value) => !value)} hitSlop={8} style={styles.trainingSectionAction}>
+          <Pressable onPress={() => { animateNextLayout(); setExpanded((value) => !value); }} hitSlop={8} style={styles.trainingSectionAction}>
             <Text style={styles.trainingSectionActionText}>{expanded ? "Show less" : "View all"}</Text>
             <Ionicons name={expanded ? "chevron-up" : "chevron-forward"} size={20} color={colors.primary} />
           </Pressable>
@@ -1905,7 +1925,7 @@ function NutritionView({
               </Fragment>
             ))}
             <View style={styles.mealPlanActions}>
-              <Pressable style={styles.mealPlanAction} onPress={() => setExpandedPlan((value) => !value)}>
+              <Pressable style={styles.mealPlanAction} onPress={() => { animateNextLayout(); setExpandedPlan((value) => !value); }}>
                 <Text style={styles.mealPlanActionText}>{expandedPlan ? "Hide Plan" : "View Full Plan"}</Text>
                 <Ionicons name="chevron-forward" size={17} color={colors.primary} />
               </Pressable>
@@ -1968,7 +1988,7 @@ function NutritionView({
             <Text style={styles.bigInline}>{((data.water?.totalMl ?? 0) / 1000).toFixed(1)} / {((data.water?.goalMl ?? 0) / 1000).toFixed(1)} L</Text>
             <ProgressBar value={progress(data.water?.totalMl ?? 0, data.water?.goalMl)} style={styles.waterProgress} />
           </View>
-          <ActionButton label={loggingWater ? "Logging..." : "+ 250 ml"} style={styles.waterButton} onPress={() => onLogWater()} />
+          <ActionButton label="+ 250 ml" busy={loggingWater} style={styles.waterButton} onPress={() => onLogWater()} />
         </View>
       </AppCard>
     </>
@@ -2217,7 +2237,7 @@ function NutritionViewV2({
           requestOpen={requestOpen}
           requestText={requestText}
           sendingRequest={sendingRequest}
-          onToggleExpanded={() => setExpandedPlan((value) => !value)}
+          onToggleExpanded={() => { animateNextLayout(); setExpandedPlan((value) => !value); }}
           onToggleRequest={() => setRequestOpen((value) => !value)}
           onRequestTextChange={setRequestText}
           onSendRequest={sendMealPlanRequest}
@@ -2272,7 +2292,7 @@ function NutritionSummaryCardV2({
       </View>
 
       <Pressable
-        onPress={() => setExplainOpen((open) => !open)}
+        onPress={() => { animateNextLayout(); setExplainOpen((open) => !open); }}
         hitSlop={8}
         accessibilityRole="button"
         accessibilityState={{ expanded: explainOpen }}
@@ -2505,7 +2525,7 @@ function HydrationCardV2({
         </View>
       </View>
       <View style={styles.nutritionHydrationActions}>
-        <ActionButton label="+ 250 ml" style={styles.nutritionHydrationButton} onPress={() => onLogWater(250)} disabled={loggingWater} />
+        <ActionButton label="+ 250 ml" busy={loggingWater} style={styles.nutritionHydrationButton} onPress={() => onLogWater(250)} />
         <ActionButton label="+ 500 ml" style={styles.nutritionHydrationButton} onPress={() => onLogWater(500)} disabled={loggingWater} />
         <ActionButton label="View" style={styles.nutritionHydrationButton} onPress={onView} />
       </View>
@@ -2796,16 +2816,14 @@ function CoachView({
   }
 
   function confirmLeaveCoach() {
-    Alert.alert(
-      `Leave ${coachName}?`,
-      PAYMENTS_ENABLED ? "You'll lose access to their workouts, meal plans, and sessions. Any active membership will be cancelled immediately." : "You'll lose access to their workouts, meal plans, and sessions.",
-      [
-        { text: "Cancel", style: "cancel" },
-        { text: "Leave Coach", style: "destructive", onPress: leaveCoach },
-      ]
-    );
+    void confirmAction({
+      title: `Leave ${coachName}?`,
+      body: PAYMENTS_ENABLED ? "You'll lose access to their workouts, meal plans, and sessions. Any active membership will be cancelled immediately." : "You'll lose access to their workouts, meal plans, and sessions.",
+      confirmLabel: "Leave Coach",
+      destructive: true,
+      onConfirm: leaveCoach,
+    });
   }
-
 
   async function sendCoachMessage() {
     const body = messageDraft.trim();
@@ -2858,15 +2876,13 @@ function CoachView({
     router.push({ pathname: "/athlete/coach-profile/[coachId]", params: { coachId } } as never);
   }
 
-  function confirmSwitchCoach() {
-    Alert.alert(
-      "Switch coach?",
-      "Choosing a new coach can end this active relationship after the new membership is confirmed.",
-      [
-        { text: "Cancel", style: "cancel" },
-        { text: "Find Coaches", onPress: () => router.push("/athlete/coach-discovery" as never) },
-      ]
-    );
+  async function confirmSwitchCoach() {
+    const go = await confirmAction({
+      title: "Switch coach?",
+      body: "Choosing a new coach can end this active relationship after the new membership is confirmed.",
+      confirmLabel: "Find Coaches",
+    });
+    if (go) router.push("/athlete/coach-discovery" as never);
   }
 
   if (justEnded) {
@@ -3119,7 +3135,7 @@ function NextCoachSessionCard({
             label={canJoin ? (joining ? "Opening..." : "Join Session") : "View Session"}
             variant="filled"
             style={styles.nextCoachSessionButton}
-            onPress={canJoin ? joinSession : () => setExpanded((value) => !value)}
+            onPress={canJoin ? joinSession : () => { animateNextLayout(); setExpanded((value) => !value); }}
           />
         </View>
       ) : (

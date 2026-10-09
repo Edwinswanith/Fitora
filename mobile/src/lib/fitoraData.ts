@@ -164,6 +164,15 @@ export type WaterDay = {
   entries: { id: string; amountMl: number; loggedAt: string }[];
 };
 
+/** The entry just logged (newest loggedAt), for an Undo right after a quick add. */
+export function newestWaterEntryId(day: Pick<WaterDay, "entries"> | null | undefined): string | null {
+  let newest: { id: string; loggedAt: string } | null = null;
+  for (const entry of day?.entries ?? []) {
+    if (!newest || entry.loggedAt >= newest.loggedAt) newest = entry;
+  }
+  return newest?.id ?? null;
+}
+
 export type AssignedCoach = { coachId: string; name: string };
 
 export type PricingPlanSnapshot = {

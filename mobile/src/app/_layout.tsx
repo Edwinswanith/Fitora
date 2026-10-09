@@ -9,6 +9,7 @@ import { BarlowCondensed_700Bold, BarlowCondensed_800ExtraBold } from "@expo-goo
 import { AuthProvider, useAuth } from "../lib/auth";
 import { AthleteAskAgentOverlay, CoachAskAgentOverlay } from "../components/RoleAskAgentOverlays";
 import { FeedbackHost } from "../components/FeedbackHost";
+import { ConfirmHost } from "../components/ConfirmHost";
 import { dashboardPathForRole } from "../lib/roles";
 import { colors } from "../lib/theme";
 import { MobileTourProvider, useTourRootView } from "../lib/tour/MobileTourProvider";
@@ -102,6 +103,7 @@ function Gate() {
       <Stack screenOptions={{ headerShown: false, contentStyle: { backgroundColor: colors.surface } }} />
       {status === "authed" && user?.role === "athlete" ? <AthleteAskAgentOverlay /> : null}
       {status === "authed" && user?.role === "coach" ? <CoachAskAgentOverlay /> : null}
+      <ConfirmHost />
       <FeedbackHost />
     </View>
   );

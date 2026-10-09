@@ -27,6 +27,7 @@ import { PAYMENTS_ENABLED } from "../../lib/features";
 import { PRIVACY_POLICY_URL, SUPPORT_URL, openExternal } from "../../lib/links";
 import { useAuth } from "../../lib/auth";
 import { colors, fonts } from "../../lib/theme";
+import { animateNextLayout } from "../../lib/motion";
 import {
   formatCurrency,
   loadCoachProfileData,
@@ -242,7 +243,7 @@ export default function CoachProfile() {
       </AppCard>
 
       <AppCard>
-        <SectionHeader title="Coaching Plans" action="Manage Pricing" onAction={() => { setPricingOpen((value) => !value); setEditingPlan(null); }} />
+        <SectionHeader title="Coaching Plans" action="Manage Pricing" onAction={() => { animateNextLayout(); setPricingOpen((value) => !value); setEditingPlan(null); }} />
         {pricingOpen ? (
           <PricingEditor
             plan={editingPlan}
@@ -279,9 +280,9 @@ export default function CoachProfile() {
 
       <View style={styles.twoCol}>
         <AppCard style={styles.splitCard}>
-          <SectionHeader title="Availability" action={availabilityOpen ? "Close" : "Manage"} onAction={() => setAvailabilityOpen((value) => !value)} />
+          <SectionHeader title="Availability" action={availabilityOpen ? "Close" : "Manage"} onAction={() => { animateNextLayout(); setAvailabilityOpen((value) => !value); }} />
           <AvailabilityList rules={data.availabilityRules} />
-          <Pressable onPress={() => setExceptionsOpen((value) => !value)} style={styles.exceptionsToggle}>
+          <Pressable onPress={() => { animateNextLayout(); setExceptionsOpen((value) => !value); }} style={styles.exceptionsToggle}>
             <Text style={styles.linkText}>{exceptionsOpen ? "Hide date overrides" : "Manage date overrides"}</Text>
           </Pressable>
         </AppCard>
@@ -289,7 +290,7 @@ export default function CoachProfile() {
           <SectionHeader
             title="Reviews"
             action={data.reviews.length ? (reviewsOpen ? "Hide" : `View ${Math.min(data.reviews.length, profile?.reviewCount ?? data.reviews.length)} of ${profile?.reviewCount ?? data.reviews.length}`) : undefined}
-            onAction={() => setReviewsOpen((value) => !value)}
+            onAction={() => { animateNextLayout(); setReviewsOpen((value) => !value); }}
           />
           <Text style={styles.reviewScore}>{profile?.avgRating ? profile.avgRating.toFixed(1) : "-"}</Text>
           <Text style={styles.muted}>{profile?.reviewCount ?? 0} reviews</Text>
