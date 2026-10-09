@@ -21,6 +21,7 @@ import Svg, { Circle, Defs, LinearGradient as SvgGradient, Polyline, Stop } from
 import { Text } from "./AppText";
 import { Avatar } from "./Avatar";
 import { apiJson } from "../lib/api";
+import { useAnimatedNumber } from "../lib/motion";
 import { useAuth } from "../lib/auth";
 import { ROLE_THEMES, colors, fonts, layout, metricColors, radius, type MetricKey } from "../lib/theme";
 
@@ -154,7 +155,7 @@ export function PrimaryAppBar({
           <Pressable
             onPress={onRightPress}
             disabled={!onRightPress}
-            style={({ pressed }) => [styles.iconButton, !onRightPress ? styles.iconButtonDisabled : null, pressed ? styles.pressed : null]}
+            style={({ pressed }) => [styles.iconButton, !onRightPress ? styles.iconButtonDisabled : null, pressed ? styles.pressedButton : null]}
           >
             <Ionicons name={rightIcon} size={21} color={colors.ink} />
           </Pressable>
@@ -162,7 +163,7 @@ export function PrimaryAppBar({
         {showNotifications ? (
           <Pressable
             onPress={() => router.push("/notifications" as never)}
-            style={({ pressed }) => [styles.iconButton, today ? styles.iconButtonToday : null, pressed ? styles.pressed : null]}
+            style={({ pressed }) => [styles.iconButton, today ? styles.iconButtonToday : null, pressed ? styles.pressedButton : null]}
             accessibilityLabel="Notifications"
           >
             <Ionicons name="notifications-outline" size={today ? 25 : 22} color={colors.ink} />
@@ -173,7 +174,7 @@ export function PrimaryAppBar({
           <Pressable
             onPress={() => router.push("/account" as never)}
             hitSlop={8}
-            style={({ pressed }) => [styles.avatarButton, today ? styles.avatarButtonToday : null, pressed ? styles.pressed : null]}
+            style={({ pressed }) => [styles.avatarButton, today ? styles.avatarButtonToday : null, pressed ? styles.pressedButton : null]}
             accessibilityLabel="Open profile"
           >
             <Avatar
@@ -274,7 +275,7 @@ export function ProgressBar({
   height?: number;
   style?: StyleProp<ViewStyle>;
 }) {
-  const pct = Number.isFinite(Number(value)) ? Math.max(0, Math.min(1, Number(value))) : 0;
+  const pct = useAnimatedNumber(Number.isFinite(Number(value)) ? Math.max(0, Math.min(1, Number(value))) : 0);
   return (
     <View style={[styles.progressTrack, { height, borderRadius: height / 2 }, style]}>
       <View style={[styles.progressFill, { width: `${pct * 100}%`, backgroundColor: color, borderRadius: height / 2 }]} />
@@ -298,7 +299,7 @@ export function ProgressRing({
   const stroke = 7;
   const radiusValue = (size - stroke) / 2;
   const circumference = 2 * Math.PI * radiusValue;
-  const pct = Number.isFinite(Number(value)) ? Math.max(0, Math.min(1, Number(value))) : 0;
+  const pct = useAnimatedNumber(Number.isFinite(Number(value)) ? Math.max(0, Math.min(1, Number(value))) : 0);
   const offset = circumference - pct * circumference;
 
   return (
@@ -372,7 +373,7 @@ export function ErrorState({ message, onRetry }: { message: string; onRetry: () 
       </View>
       <Text style={styles.stateTitle}>Could not load this view</Text>
       <Text style={styles.stateBody}>{message}</Text>
-      <Pressable onPress={onRetry} style={styles.retryButton}>
+      <Pressable onPress={onRetry} style={({ pressed }) => [styles.retryButton, pressed ? styles.pressedButton : null]}>
         <Text style={styles.retryText}>Retry</Text>
       </Pressable>
     </AppCard>
@@ -503,7 +504,7 @@ export function HeroCard({
         <View style={styles.heroActions}>
           <Pressable
             onPress={onAction}
-            style={({ pressed }) => [styles.heroButton, calm ? styles.heroButtonCalm : null, pressed ? styles.pressed : null]}
+            style={({ pressed }) => [styles.heroButton, calm ? styles.heroButtonCalm : null, pressed ? styles.pressedButton : null]}
             accessibilityRole="button"
           >
             <Text style={[styles.heroButtonText, calm ? styles.heroButtonTextCalm : null]} numberOfLines={1}>{actionLabel}</Text>
@@ -539,7 +540,7 @@ export function MetricRing({ metric, value, size = 56, stroke = 7, children }: {
   const palette = metricColors[metric];
   const r = (size - stroke) / 2;
   const c = 2 * Math.PI * r;
-  const pct = Math.max(0, Math.min(1, value ?? 0));
+  const pct = useAnimatedNumber(Math.max(0, Math.min(1, value ?? 0)));
   return (
     <View style={{ width: size, height: size, alignItems: "center", justifyContent: "center" }}>
       <Svg width={size} height={size} style={{ position: "absolute", transform: [{ rotate: "-90deg" }] }}>
@@ -550,7 +551,7 @@ export function MetricRing({ metric, value, size = 56, stroke = 7, children }: {
           </SvgGradient>
         </Defs>
         <Circle cx={size / 2} cy={size / 2} r={r} stroke={palette.track} strokeWidth={stroke} fill="none" />
-        {pct > 0 ? (
+        {pct > 0.002 ? (
           <Circle
             cx={size / 2}
             cy={size / 2}
@@ -591,7 +592,7 @@ export function MetricTileRing({
       disabled={!onPress}
       accessibilityRole={onPress ? "button" : undefined}
       accessibilityLabel={`${label}: ${value}${sub ? `, ${sub}` : ""}`}
-      style={({ pressed }) => [styles.metricRingTile, pressed ? styles.pressed : null]}
+      style={({ pressed }) => [styles.metricRingTile, pressed ? styles.pressedButton : null]}
     >
       <MetricRing metric={metric} value={progress} />
       <Text style={styles.metricRingLabel} numberOfLines={1}>{label}</Text>
@@ -629,7 +630,7 @@ export function BackHeader({
   const back = onBack ?? (() => (router.canGoBack() ? router.back() : router.replace("/" as never)));
   return (
     <View style={styles.backHeader}>
-      <Pressable onPress={back} hitSlop={10} accessibilityRole="button" accessibilityLabel="Back" style={({ pressed }) => [styles.backButton, pressed ? styles.pressed : null]}>
+      <Pressable onPress={back} hitSlop={10} accessibilityRole="button" accessibilityLabel="Back" style={({ pressed }) => [styles.backButton, pressed ? styles.pressedButton : null]}>
         <Ionicons name="chevron-back" size={22} color={colors.ink} />
       </Pressable>
       <View style={styles.backHeaderText}>
@@ -637,7 +638,7 @@ export function BackHeader({
         {subtitle ? <Text style={styles.backHeaderSubtitle} numberOfLines={2}>{subtitle}</Text> : null}
       </View>
       {actionIcon && onAction ? (
-        <Pressable onPress={onAction} hitSlop={10} accessibilityRole="button" accessibilityLabel={actionLabel} style={({ pressed }) => [styles.backButton, pressed ? styles.pressed : null]}>
+        <Pressable onPress={onAction} hitSlop={10} accessibilityRole="button" accessibilityLabel={actionLabel} style={({ pressed }) => [styles.backButton, pressed ? styles.pressedButton : null]}>
           <Ionicons name={actionIcon} size={21} color={colors.ink} />
         </Pressable>
       ) : actionLabel && onAction ? (
@@ -757,6 +758,7 @@ export function ActionButton({
   style,
   textStyle,
   disabled,
+  busy,
 }: {
   label: string;
   icon?: IconName;
@@ -765,6 +767,8 @@ export function ActionButton({
   style?: StyleProp<ViewStyle>;
   textStyle?: StyleProp<TextStyle>;
   disabled?: boolean;
+  /** The tap is being saved: spinner in place of the icon, taps ignored. */
+  busy?: boolean;
 }) {
   const filled = variant === "filled";
   const isDisabled = disabled || !onPress;
@@ -772,16 +776,18 @@ export function ActionButton({
   return (
     <Pressable
       onPress={onPress}
-      disabled={isDisabled}
+      disabled={isDisabled || busy}
+      accessibilityRole="button"
+      accessibilityState={{ disabled: isDisabled, busy: !!busy }}
       style={({ pressed }) => [
         styles.actionButton,
         filled ? styles.actionButtonFilled : null,
         isDisabled ? styles.actionButtonDisabled : null,
         style,
-        pressed ? styles.pressed : null,
+        pressed ? styles.pressedButton : null,
       ]}
     >
-      {icon ? <Ionicons name={icon} size={18} color={iconColor} /> : null}
+      {busy ? <ActivityIndicator size="small" color={filled ? colors.onPrimary : colors.primary} /> : icon ? <Ionicons name={icon} size={18} color={iconColor} /> : null}
       <Text style={[styles.actionButtonText, filled ? styles.actionButtonTextFilled : null, textStyle, isDisabled ? styles.disabledText : null]} numberOfLines={1}>
         {label}
       </Text>
@@ -1153,4 +1159,6 @@ const styles = StyleSheet.create({
   settingsLabel: { flex: 1, color: colors.ink, fontSize: 13, fontWeight: "700" },
   settingsValue: { maxWidth: 150, color: colors.inkMuted, fontSize: 12 },
   pressed: { opacity: 0.72 },
+  // Buttons and tiles: a small press-in so a tap is felt, not just seen.
+  pressedButton: { opacity: 0.88, transform: [{ scale: 0.97 }] },
 });

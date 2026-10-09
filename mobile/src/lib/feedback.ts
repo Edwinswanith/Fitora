@@ -32,6 +32,8 @@ export type CelebrationOptions = {
   big?: boolean;
   /** Set by showError(); renders the toast in the error style. */
   tone?: "success" | "error";
+  /** A button on the toast (e.g. Undo). The toast then stays up for 5 s. */
+  action?: { label: string; onPress: () => void };
 };
 
 type Listener = (options: CelebrationOptions) => void;

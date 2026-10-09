@@ -6,8 +6,9 @@ import Svg, { Circle, Defs, Line, LinearGradient, Path, Stop } from "react-nativ
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import * as Notifications from "expo-notifications";
 import { apiFetch, apiJson } from "../../lib/api";
+import { useAnimatedNumber } from "../../lib/motion";
 import { celebrate, errorFeedback } from "../../lib/feedback";
-import { todayKey, updateCachedData, type AthleteDashboardData } from "../../lib/fitoraData";
+import { newestWaterEntryId, todayKey, updateCachedData, type AthleteDashboardData } from "../../lib/fitoraData";
 import { colors, radius, fonts } from "../../lib/theme";
 import {
   AppCard,
@@ -41,7 +42,9 @@ const litres = (ml: number): string => (ml / 1000).toFixed(ml % 1000 === 0 ? 0 :
 const shortDate = (d: string) => d.split("-").slice(1).join("-");
 
 /** Circular progress ring (SVG) — the % of today's goal reached. */
-function WaterRing({ pct, reached }: { pct: number; reached: boolean }) {
+function WaterRing({ pct: targetPct, reached }: { pct: number; reached: boolean }) {
+  // The ring fills and the number counts up to each new total.
+  const pct = useAnimatedNumber(targetPct);
   const size = 176;
   const stroke = 16;
   const r = (size - stroke) / 2;
@@ -60,6 +63,7 @@ function WaterRing({ pct, reached }: { pct: number; reached: boolean }) {
           fill="none"
           strokeLinecap="round"
           strokeDasharray={`${dash} ${c}`}
+          opacity={dash > 0.5 ? 1 : 0}
         />
       </Svg>
       <Text style={styles.ringPct}>{Math.round(pct)}%</Text>
@@ -136,6 +140,8 @@ export default function Water() {
   const [history, setHistory] = useState<WaterSeries | null>(null);
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
+  // Which quick-add button is saving, so only that one shows a spinner.
+  const [pendingQuick, setPendingQuick] = useState<number | null>(null);
   const [goalDraft, setGoalDraft] = useState("");
   const [amountDraft, setAmountDraft] = useState("");
   const [goalError, setGoalError] = useState<string | null>(null);
@@ -222,7 +228,12 @@ export default function Water() {
     if (before < next.goalMl && next.totalMl >= next.goalMl) {
       celebrate({ title: "Water goal reached!", body: `${litres(next.totalMl)} L today. Nice work.`, big: true });
     } else {
-      celebrate({ title: `+${amountMl} ml logged`, body: `${litres(next.totalMl)} of ${litres(next.goalMl)} L today` });
+      const entryId = newestWaterEntryId(next);
+      celebrate({
+        title: `+${amountMl} ml logged`,
+        body: `${litres(next.totalMl)} of ${litres(next.goalMl)} L today`,
+        action: entryId ? { label: "Undo", onPress: () => void remove(entryId) } : undefined,
+      });
     }
     return true;
   }
@@ -389,8 +400,19 @@ export default function Water() {
             <Text style={styles.cardTitle}>Log water intake</Text>
             <View style={styles.quickRow}>
               {QUICK.map((q) => (
-                <Pressable key={q} disabled={busy} onPress={() => add(q)} style={styles.quick}>
-                  <Ionicons name="water" size={17} color={WATER} />
+                <Pressable
+                  key={q}
+                  disabled={busy}
+                  onPress={async () => {
+                    setPendingQuick(q);
+                    await add(q);
+                    setPendingQuick(null);
+                  }}
+                  accessibilityRole="button"
+                  accessibilityState={{ busy: pendingQuick === q, disabled: busy }}
+                  style={({ pressed }) => [styles.quick, busy && pendingQuick !== q ? styles.quickDim : null, pressed ? styles.quickPressed : null]}
+                >
+                  {pendingQuick === q ? <ActivityIndicator size="small" color={WATER} /> : <Ionicons name="water" size={17} color={WATER} />}
                   <Text style={styles.quickText}>+{q} ml</Text>
                 </Pressable>
               ))}
@@ -547,6 +569,8 @@ const styles = StyleSheet.create({
   errText: { marginTop: 8, fontSize: 12, fontWeight: "700", color: colors.bad },
   // Quick add
   quickRow: { flexDirection: "row", gap: 8, marginTop: 10 },
+  quickDim: { opacity: 0.5 },
+  quickPressed: { opacity: 0.88, transform: [{ scale: 0.96 }] },
   quick: { flex: 1, flexDirection: "row", gap: 6, alignItems: "center", justifyContent: "center", height: 48, borderRadius: radius.sm, borderWidth: 1, borderColor: colors.line, backgroundColor: colors.surfaceRaised },
   quickText: { fontSize: 13, fontWeight: "700", color: colors.ink },
   // Reminders

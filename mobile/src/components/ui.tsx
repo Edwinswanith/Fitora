@@ -82,6 +82,7 @@ export function PrimaryButton({
         {
           backgroundColor: phase === "done" ? colors.ok : accent,
           opacity: off && phase !== "done" ? 0.45 : pressed ? 0.9 : 1,
+          transform: [{ scale: pressed && !off ? 0.97 : 1 }],
         },
       ]}
     >

@@ -19,6 +19,7 @@ import {
 import { apiFetch } from "../../../lib/api";
 import { activityVisual, planVisual, workoutVisual, type FitoraIconName } from "../../../lib/fitoraIcons";
 import { colors } from "../../../lib/theme";
+import { animateNextLayout } from "../../../lib/motion";
 import {
   attentionRank,
   attentionReason,
@@ -248,7 +249,7 @@ function ClientDetailView({ data }: { data: CoachClientDetailData }) {
         <View style={styles.actionRow}>
           <ActionButton label="Assign" icon="add-outline" variant="filled" onPress={goAssignWorkout} />
           <ActionButton label="Message" icon="chatbubble-outline" onPress={goMessages} />
-          <ActionButton label="Add Note" icon="create-outline" onPress={() => setNoteOpen((value) => !value)} />
+          <ActionButton label="Add Note" icon="create-outline" onPress={() => { animateNextLayout(); setNoteOpen((value) => !value); }} />
         </View>
         {noteOpen ? (
           <View style={styles.notePanel}>

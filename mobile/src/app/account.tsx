@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { ActivityIndicator, Alert, KeyboardAvoidingView, Platform, Pressable, StyleSheet, Switch, TextInput, View } from "react-native";
+import { ActivityIndicator, KeyboardAvoidingView, Platform, Pressable, StyleSheet, Switch, TextInput, View } from "react-native";
 import { useRouter } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
 import { Text } from "../components/AppText";
@@ -21,6 +21,9 @@ import {
 } from "../components/fitora";
 import { apiFetch, changePassword } from "../lib/api";
 import { useAuth } from "../lib/auth";
+import { confirmAction } from "../lib/confirm";
+import { animateNextLayout } from "../lib/motion";
+import { showError } from "../lib/feedback";
 import { PRIVACY_POLICY_URL, SUPPORT_URL, openExternal } from "../lib/links";
 import { colors, radius, fonts } from "../lib/theme";
 import { useNotificationPreferences, type NotificationCategories } from "../lib/notificationPreferences";
@@ -637,7 +640,7 @@ function SecurityCard() {
 
   return (
     <AppCard>
-      <Pressable onPress={() => setExpanded((value) => !value)} style={styles.securityHeader}>
+      <Pressable onPress={() => { animateNextLayout(); setExpanded((value) => !value); }} style={styles.securityHeader}>
         <IconTile icon="lock-closed-outline" size={38} />
         <Text style={styles.cardTitle}>Account & Security</Text>
         <Ionicons name={expanded ? "chevron-up" : "chevron-down"} size={22} color={colors.ink} />
@@ -691,20 +694,19 @@ function DangerZone() {
   }
 
   function confirmDelete() {
-    Alert.alert("Delete account?", "This permanently deletes your account and associated personal data.", [
-      { text: "Cancel", style: "cancel" },
-      {
-        text: "Delete",
-        style: "destructive",
-        onPress: async () => {
-          setDeleting(true);
-          const result = await deleteAccount();
-          setDeleting(false);
-          if (result.ok) router.replace("/");
-          else Alert.alert("Could not delete account", "Please try again.");
-        },
+    void confirmAction({
+      title: "Delete account?",
+      body: "This permanently deletes your account and associated personal data.",
+      confirmLabel: "Delete",
+      destructive: true,
+      onConfirm: async () => {
+        setDeleting(true);
+        const result = await deleteAccount();
+        setDeleting(false);
+        if (result.ok) router.replace("/");
+        else showError("Could not delete account", "Please try again.");
       },
-    ]);
+    });
   }
 
   return (

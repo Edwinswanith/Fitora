@@ -8,6 +8,7 @@ import { setCelebrationListener, type CelebrationOptions } from "../lib/feedback
 
 const TOAST_MS = 2200;
 const BIG_MS = 2600;
+const ACTION_MS = 5000;
 
 /**
  * Renders celebrate() calls: a toast that slides in from the top for normal
@@ -21,6 +22,7 @@ export function FeedbackHost() {
   // during render, which React's compiler rules disallow for refs.
   const [progress] = useState(() => new Animated.Value(0));
   const [burst] = useState(() => new Animated.Value(0));
+  const [countdown] = useState(() => new Animated.Value(1));
   const hideTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => {
@@ -54,10 +56,15 @@ export function FeedbackHost() {
         ? Animated.timing(burst, { toValue: 1, duration: 0, useNativeDriver: true })
         : Animated.timing(burst, { toValue: 1, duration: 650, easing: Easing.out(Easing.cubic), useNativeDriver: true }),
     ]).start();
+    const visibleMs = current.big ? BIG_MS : current.action ? ACTION_MS : TOAST_MS;
+    countdown.setValue(1);
+    if (current.action) {
+      Animated.timing(countdown, { toValue: 0, duration: visibleMs, easing: Easing.linear, useNativeDriver: false }).start();
+    }
     hideTimer.current = setTimeout(() => {
       Animated.timing(progress, { toValue: 0, duration: 180, useNativeDriver: true }).start(() => setCurrent(null));
-    }, current.big ? BIG_MS : TOAST_MS);
-  }, [current, progress, burst, reduceMotion]);
+    }, visibleMs);
+  }, [current, progress, burst, countdown, reduceMotion]);
 
   if (!current) return null;
 
@@ -101,6 +108,26 @@ export function FeedbackHost() {
             <Text style={styles.toastTitle} numberOfLines={1}>{current.title}</Text>
             {current.body ? <Text style={styles.toastBody} numberOfLines={2}>{current.body}</Text> : null}
           </View>
+          {current.action ? (
+            <Pressable
+              onPress={() => {
+                const action = current.action;
+                dismiss();
+                action?.onPress();
+              }}
+              hitSlop={8}
+              accessibilityRole="button"
+              style={({ pressed }) => [styles.toastAction, pressed ? styles.toastActionPressed : null]}
+            >
+              <Text style={styles.toastActionText}>{current.action.label}</Text>
+            </Pressable>
+          ) : null}
+          {current.action ? (
+            <Animated.View
+              pointerEvents="none"
+              style={[styles.countdown, { width: countdown.interpolate({ inputRange: [0, 1], outputRange: ["0%", "100%"] }) }]}
+            />
+          ) : null}
         </Animated.View>
       </Pressable>
     </View>
@@ -110,6 +137,7 @@ export function FeedbackHost() {
 const styles = StyleSheet.create({
   toastWrap: { position: "absolute", left: 16, right: 16, alignItems: "center", zIndex: 1000, elevation: 1000 },
   toast: {
+    overflow: "hidden",
     flexDirection: "row",
     alignItems: "center",
     gap: 10,
@@ -129,7 +157,11 @@ const styles = StyleSheet.create({
   },
   toastIcon: { width: 28, height: 28, borderRadius: 14, alignItems: "center", justifyContent: "center", backgroundColor: colors.ok },
   toastIconError: { backgroundColor: colors.bad },
-  toastCopy: { flexShrink: 1 },
+  toastCopy: { flexShrink: 1, flexGrow: 1 },
+  toastAction: { paddingHorizontal: 14, paddingVertical: 8, borderRadius: 999, backgroundColor: colors.primary },
+  toastActionPressed: { opacity: 0.88, transform: [{ scale: 0.96 }] },
+  toastActionText: { color: colors.onPrimary, fontSize: 14, fontWeight: "800" },
+  countdown: { position: "absolute", left: 0, bottom: 0, height: 3, backgroundColor: colors.primary, opacity: 0.7 },
   toastTitle: { color: colors.ink, fontSize: 15, fontWeight: "800" },
   toastBody: { color: colors.inkMuted, fontSize: 13, lineHeight: 18, marginTop: 1 },
   bigWrap: { position: "absolute", top: 0, right: 0, bottom: 0, left: 0, alignItems: "center", justifyContent: "center", zIndex: 1000, elevation: 1000, padding: 24 },
