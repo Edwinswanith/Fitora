@@ -10,6 +10,8 @@ const HIDDEN_ROUTE_PREFIXES = [
   "/athlete/log-meal",
   "/athlete/meal-scan",
   "/athlete/book-session",
+  // Its quick-add row sat right under the floating button (+750 ml was covered).
+  "/athlete/water",
   "/athlete/active-workout",
   "/coach/plan/workout-template",
   "/coach/plan/meal-plan",

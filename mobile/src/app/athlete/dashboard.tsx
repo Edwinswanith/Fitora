@@ -3604,7 +3604,7 @@ function PostLeaveReview({ relationshipId, coachName, onDone }: { relationshipId
       <PrimaryAppBar title="My Coach" />
       <AppCard>
         <Text style={styles.cardTitle}>You&apos;ve left {coachName}</Text>
-        <Text style={styles.muted}>Your membership has been cancelled. You can find a new coach any time.</Text>
+        <Text style={styles.muted}>{PAYMENTS_ENABLED ? "Your membership has been cancelled. " : ""}You can find a new coach any time.</Text>
       </AppCard>
 
       <AppCard>
