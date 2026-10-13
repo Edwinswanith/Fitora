@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { ActivityIndicator, Pressable, StyleSheet, TextInput, View } from "react-native";
+import { ActivityIndicator, Pressable, StyleSheet, View } from "react-native";
 import { Text } from "../../components/AppText";
 import { Ionicons } from "@expo/vector-icons";
 import Svg, { Circle, Defs, Line, LinearGradient, Path, Stop } from "react-native-svg";
@@ -13,6 +13,7 @@ import { colors, radius, fonts } from "../../lib/theme";
 import {
   AppCard,
   BackHeader,
+  FormField,
   ScreenContainer,
 } from "../../components/fitora";
 
@@ -380,13 +381,16 @@ export default function Water() {
               ))}
             </View>
             <View style={styles.inlineRow}>
-              <TextInput
+              <FormField
                 value={goalDraft}
-                onChangeText={setGoalDraft}
+                onChangeText={(text) => {
+                  setGoalDraft(text);
+                  setGoalError(null);
+                }}
                 keyboardType="number-pad"
                 placeholder="ml"
-                placeholderTextColor={colors.inkFaint}
-                style={styles.input}
+                accessibilityLabel="Daily water goal in ml"
+                error={goalError}
               />
               <Pressable disabled={busy} onPress={() => saveGoal()} style={[styles.primaryBtn, { backgroundColor: colors.primary }]}>
                 <Text style={styles.primaryBtnText}>Save</Text>
@@ -418,13 +422,16 @@ export default function Water() {
               ))}
             </View>
             <View style={styles.inlineRow}>
-              <TextInput
+              <FormField
                 value={amountDraft}
-                onChangeText={setAmountDraft}
+                onChangeText={(text) => {
+                  setAmountDraft(text);
+                  setAmountError(null);
+                }}
                 keyboardType="number-pad"
                 placeholder="Custom ml"
-                placeholderTextColor={colors.inkFaint}
-                style={styles.input}
+                accessibilityLabel="Custom amount in ml"
+                error={amountError}
               />
               <Pressable disabled={busy || !amountDraft.trim()} onPress={addCustom} style={[styles.primaryBtn, { backgroundColor: colors.primary, opacity: !amountDraft.trim() ? 0.5 : 1 }]}>
                 <Text style={styles.primaryBtnText}>Add</Text>
@@ -563,7 +570,6 @@ const styles = StyleSheet.create({
   presetTextOn: { color: colors.primary },
   // Inline input + button
   inlineRow: { flexDirection: "row", gap: 8, marginTop: 12 },
-  input: { flex: 1, height: 46, borderRadius: radius.sm, borderWidth: 1, borderColor: colors.line, backgroundColor: colors.surfaceInset, paddingHorizontal: 12, color: colors.ink, fontSize: 14 },
   primaryBtn: { height: 46, borderRadius: radius.sm, paddingHorizontal: 18, alignItems: "center", justifyContent: "center" },
   primaryBtnText: { color: colors.onPrimary, fontSize: 14, fontWeight: "800" },
   errText: { marginTop: 8, fontSize: 12, fontWeight: "700", color: colors.bad },
