@@ -1,5 +1,6 @@
-import { useEffect, useMemo, useState } from "react";
-import { Pressable, StyleSheet, TextInput, View } from "react-native";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { Animated, Easing, Pressable, StyleSheet, TextInput, View } from "react-native";
+import Svg, { Circle } from "react-native-svg";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
 import { Text } from "../../components/AppText";
@@ -11,7 +12,6 @@ import {
   ErrorState,
   IconTile,
   LoadingState,
-  ProgressBar,
   ScreenContainer,
   StatusChip,
   VideoThumb,
@@ -20,6 +20,8 @@ import { VideoPlayerModal } from "../../components/VideoPlayerModal";
 import { apiFetch } from "../../lib/api";
 import { celebrate, showError, successFeedback } from "../../lib/feedback";
 import { colors, fonts } from "../../lib/theme";
+import { prefersReducedMotion, useAnimatedNumber } from "../../lib/motion";
+import { summarizeWorkout, workoutSetProgress } from "../../lib/workoutSummary";
 import {
   loadAthleteDashboardData,
   loadWorkoutDetail,
@@ -141,6 +143,8 @@ function WorkoutTask({
   const [done, setDone] = useState(false);
   const [selectedRpe, setSelectedRpe] = useState(6);
   const [restRemaining, setRestRemaining] = useState<number | null>(null);
+  // New key per rest, so each rest's ring starts full.
+  const [restKey, setRestKey] = useState(0);
   const [repsInput, setRepsInput] = useState(0);
   const [weightInput, setWeightInput] = useState(0);
   const [showSkipReasons, setShowSkipReasons] = useState(false);
@@ -150,13 +154,16 @@ function WorkoutTask({
   const [noteText, setNoteText] = useState("");
   const [noteSaving, setNoteSaving] = useState(false);
   const [videoOpen, setVideoOpen] = useState(false);
+  // Fallback start for the summary when the server has no startedAt yet.
+  const [openedAt] = useState(() => Date.now());
+  const [finishedAt, setFinishedAt] = useState<number | null>(null);
 
   const progressByIndex = useMemo(() => new Map(assignment.progress.map((row) => [row.exerciseIndex, row])), [assignment.progress]);
   const exercise = assignment.exercises[activeIndex];
   const rowProgress = progressByIndex.get(activeIndex);
   const completedSets = rowProgress?.setsCompleted.length ?? 0;
   const totalSets = exercise?.sets ?? 1;
-  const overall = assignment.exerciseCount ? assignment.completedCount / assignment.exerciseCount : 0;
+  const setProgress = workoutSetProgress(assignment.exercises, assignment.progress);
   const showSetInputs = exercise?.type === "sets_reps";
 
   // Reset per-exercise state (but not the rest timer, which counts down across the transition into the next exercise).
@@ -182,10 +189,14 @@ function WorkoutTask({
     const isLastExercise = activeIndex >= assignment.exercises.length - 1;
     if (finishedExercise && isLastExercise) {
       setDone(true);
-      celebrate({ title: "Workout complete!", body: `${assignment.name} is done. Great job.`, big: true });
+      setFinishedAt(Date.now());
+      setRestRemaining(null);
       return;
     }
-    if (restSec) setRestRemaining(restSec);
+    if (restSec) {
+      setRestKey((key) => key + 1);
+      setRestRemaining(restSec);
+    }
     if (finishedExercise) setActiveIndex((index) => index + 1);
   }
 
@@ -270,12 +281,28 @@ function WorkoutTask({
     return <EmptyState title="No exercises found" body="This workout has no exercise rows yet." icon="barbell-outline" />;
   }
 
+  if (done) {
+    const startedAtMs = assignment.startedAt ? Date.parse(assignment.startedAt) : openedAt;
+    return (
+      <WorkoutDone
+        name={assignment.name}
+        byCoach={assignment.assignedByRole === "coach"}
+        summary={summarizeWorkout(assignment.progress, startedAtMs, finishedAt ?? openedAt)}
+        selectedRpe={selectedRpe}
+        onSelectRpe={setSelectedRpe}
+        onLogEffort={() => router.push({ pathname: "/athlete/rpe", params: { sessionType: assignment.slot ?? "gym", rpe: String(selectedRpe) } } as never)}
+        onDone={() => router.back()}
+      />
+    );
+  }
+
   return (
     <>
       <AppCard>
         <Text style={styles.eyebrow}>Exercise {activeIndex + 1} of {assignment.exercises.length}</Text>
         <Text style={styles.workoutTitle}>{assignment.name}</Text>
-        <ProgressBar value={overall} style={{ marginTop: 14 }} />
+        <SetSegments done={setProgress.done} total={setProgress.total} />
+        <Text style={styles.setCount}>{setProgress.done} of {setProgress.total} sets</Text>
       </AppCard>
 
       <AppCard>
@@ -329,10 +356,8 @@ function WorkoutTask({
           const setDone = index < completedSets;
           const loggedSet = rowProgress?.setsCompleted[index];
           return (
-            <View key={index} style={styles.setRow}>
-              <View style={[styles.setIcon, setDone ? styles.setIconDone : null]}>
-                <Ionicons name={setDone ? "checkmark" : "ellipse-outline"} size={20} color={setDone ? colors.onPrimary : colors.inkMuted} />
-              </View>
+            <View key={index} style={[styles.setRow, index === completedSets ? styles.setRowCurrent : null, setDone ? styles.setRowDone : null]}>
+              <SetCheck done={setDone} number={index + 1} />
               <Text style={styles.setText}>Set {index + 1}</Text>
               <Text style={styles.setStatus}>
                 {setDone && (loggedSet?.reps || loggedSet?.weightKg)
@@ -345,31 +370,13 @@ function WorkoutTask({
           );
         })}
 
-        {done ? (
-          <View style={styles.rpeBox}>
-            <Text style={styles.currentLabel}>How hard was the workout?</Text>
-            <View style={styles.rpeRow}>
-              {Array.from({ length: 10 }, (_, index) => (
-                <Pressable
-                  key={index}
-                  onPress={() => setSelectedRpe(index + 1)}
-                  style={[styles.rpeDot, selectedRpe === index + 1 ? styles.rpeDotActive : null]}
-                >
-                  <Text style={[styles.rpeText, selectedRpe === index + 1 ? styles.rpeTextActive : null]}>{index + 1}</Text>
-                </Pressable>
-              ))}
-            </View>
-            <ActionButton
-              label="Log Effort"
-              variant="filled"
-              onPress={() => router.push({ pathname: "/athlete/rpe", params: { sessionType: assignment.slot ?? "gym", rpe: String(selectedRpe) } } as never)}
-            />
-          </View>
-        ) : (
+        {done ? null : (
           <>
-            {restRemaining != null ? (
+            {restRemaining != null && restRemaining > 0 ? (
               <RestTimer
+                key={restKey}
                 seconds={restRemaining}
+                nextLabel={completedSets > 0 && completedSets < totalSets ? `${exercise.title}, set ${completedSets + 1}` : exercise.title}
                 onAddTime={() => setRestRemaining((r) => (r ?? 0) + 30)}
                 onSkip={() => setRestRemaining(null)}
               />
@@ -386,9 +393,9 @@ function WorkoutTask({
               label={activeIndex === assignment.exercises.length - 1 && completedSets + 1 >= totalSets ? "Finish Workout" : "Complete Set"}
               variant="filled"
               onPress={completeSet}
-              disabled={saving}
+              busy={saving}
+              style={styles.completeButton}
             />
-            {saving ? <Text style={styles.savingText}>Saving progress...</Text> : null}
 
             {showSkipReasons ? (
               <View style={styles.skipBox}>
@@ -447,21 +454,205 @@ function WorkoutTask({
   );
 }
 
-function RestTimer({ seconds, onAddTime, onSkip }: { seconds: number; onAddTime: () => void; onSkip: () => void }) {
+const REST_RING = 72;
+const REST_STROKE = 7;
+
+/** Countdown ring: drains from full to empty over the rest, in the progress (teal) color. */
+function RestTimer({ seconds, nextLabel, onAddTime, onSkip }: { seconds: number; nextLabel: string; onAddTime: () => void; onSkip: () => void }) {
+  // The longest value seen this rest is the ring's full length (+30 s extends it).
+  const [total, setTotal] = useState(seconds);
+  if (seconds > total) setTotal(seconds);
+  const r = (REST_RING - REST_STROKE) / 2;
+  const c = 2 * Math.PI * r;
+  const shown = useAnimatedNumber(total > 0 ? seconds / total : 0, { duration: 900, from: 1 });
   return (
-    <View style={styles.restBox}>
-      <View style={styles.restHeadRow}>
-        <Ionicons name="time-outline" size={18} color={colors.primary} />
-        <Text style={styles.restText}>{formatClock(seconds)} rest remaining</Text>
+    <View style={styles.restBox} accessibilityRole="timer" accessibilityLabel={`${formatClock(seconds)} rest remaining`}>
+      <View style={{ width: REST_RING, height: REST_RING, alignItems: "center", justifyContent: "center" }}>
+        <Svg width={REST_RING} height={REST_RING} style={{ position: "absolute", transform: [{ rotate: "-90deg" }] }}>
+          <Circle cx={REST_RING / 2} cy={REST_RING / 2} r={r} stroke={colors.surfaceInset} strokeWidth={REST_STROKE} fill="none" />
+          <Circle
+            cx={REST_RING / 2}
+            cy={REST_RING / 2}
+            r={r}
+            stroke={colors.progress}
+            strokeWidth={REST_STROKE}
+            strokeLinecap="round"
+            fill="none"
+            strokeDasharray={`${c} ${c}`}
+            strokeDashoffset={c * (1 - Math.max(0, Math.min(1, shown)))}
+          />
+        </Svg>
+        <Text style={styles.restClock}>{formatClock(seconds)}</Text>
       </View>
-      <View style={styles.restActionsRow}>
-        <Pressable onPress={onAddTime} style={styles.restChip}>
-          <Text style={styles.restChipText}>+30 sec</Text>
+      <View style={{ flex: 1 }}>
+        <Text style={styles.restTitle}>Rest</Text>
+        <Text style={styles.restNext} numberOfLines={2}>Next: {nextLabel}</Text>
+      </View>
+      <View style={styles.restActions}>
+        <Pressable onPress={onAddTime} accessibilityRole="button" style={({ pressed }) => [styles.restChip, pressed ? styles.pressedChip : null]}>
+          <Text style={styles.restChipText}>+30 s</Text>
         </Pressable>
-        <Pressable onPress={onSkip} style={styles.restChip}>
-          <Text style={styles.restChipText}>Skip Rest</Text>
+        <Pressable onPress={onSkip} accessibilityRole="button" style={({ pressed }) => [styles.restSkip, pressed ? styles.pressedChip : null]}>
+          <Text style={styles.restSkipText}>Skip</Text>
         </Pressable>
       </View>
+    </View>
+  );
+}
+
+/** One thin segment per set across the whole workout; done segments fill lime. */
+function SetSegments({ done, total }: { done: number; total: number }) {
+  // Past ~24 segments they turn into hairlines, so long workouts get one bar.
+  if (total > 24) {
+    return (
+      <View style={styles.segmentTrack}>
+        <View style={[styles.segmentFill, { width: `${(done / total) * 100}%` }]} />
+      </View>
+    );
+  }
+  return (
+    <View style={styles.segments} accessibilityRole="progressbar" accessibilityValue={{ min: 0, max: total, now: done }}>
+      {Array.from({ length: total }, (_, index) => (
+        <View key={index} style={[styles.segment, index < done ? styles.segmentDone : null]} />
+      ))}
+    </View>
+  );
+}
+
+/** Set marker: a number while pending, a check that pops in when the set is saved. */
+function SetCheck({ done, number }: { done: boolean; number: number }) {
+  const [scale] = useState(() => new Animated.Value(1));
+  const wasDone = useRef(done);
+  useEffect(() => {
+    if (done && !wasDone.current && !prefersReducedMotion()) {
+      scale.setValue(0.6);
+      Animated.spring(scale, { toValue: 1, friction: 4, tension: 160, useNativeDriver: true }).start();
+    }
+    wasDone.current = done;
+  }, [done, scale]);
+  return (
+    <Animated.View style={[styles.setIcon, done ? styles.setIconDone : null, { transform: [{ scale }] }]}>
+      {done ? <Ionicons name="checkmark" size={18} color={colors.onPrimary} /> : <Text style={styles.setNumber}>{number}</Text>}
+    </Animated.View>
+  );
+}
+
+const DONE_RING = 168;
+const DONE_STROKE = 12;
+
+/** The payoff after the last set: ring draws, a burst, then the real numbers. */
+function WorkoutDone({
+  name,
+  byCoach,
+  summary,
+  selectedRpe,
+  onSelectRpe,
+  onLogEffort,
+  onDone,
+}: {
+  name: string;
+  byCoach: boolean;
+  summary: ReturnType<typeof summarizeWorkout>;
+  selectedRpe: number;
+  onSelectRpe: (value: number) => void;
+  onLogEffort: () => void;
+  onDone: () => void;
+}) {
+  const ring = useAnimatedNumber(1, { duration: 900 });
+  const [burst] = useState(() => new Animated.Value(0));
+  const [reveal] = useState(() => [0, 1, 2].map(() => new Animated.Value(0)));
+  useEffect(() => {
+    successFeedback();
+    if (prefersReducedMotion()) {
+      burst.setValue(1);
+      reveal.forEach((value) => value.setValue(1));
+      return;
+    }
+    Animated.timing(burst, { toValue: 1, duration: 900, delay: 550, easing: Easing.out(Easing.cubic), useNativeDriver: true }).start();
+    Animated.stagger(
+      150,
+      reveal.map((value) => Animated.timing(value, { toValue: 1, duration: 300, delay: 450, easing: Easing.out(Easing.cubic), useNativeDriver: true }))
+    ).start();
+  }, [burst, reveal]);
+
+  const r = (DONE_RING - DONE_STROKE) / 2;
+  const c = 2 * Math.PI * r;
+  const fadeUp = (value: Animated.Value) => ({
+    opacity: value,
+    transform: [{ translateY: value.interpolate({ inputRange: [0, 1], outputRange: [10, 0] }) }],
+  });
+  const stats = [
+    summary.minutes != null ? { value: String(summary.minutes), unit: " min", label: "Time" } : null,
+    { value: String(summary.sets), unit: "", label: summary.sets === 1 ? "Set" : "Sets" },
+    summary.volumeKg != null ? { value: summary.volumeKg.toLocaleString("en-US"), unit: " kg", label: "Volume" } : null,
+  ].filter((stat): stat is { value: string; unit: string; label: string } => stat != null);
+
+  return (
+    <View style={styles.doneWrap} accessibilityLiveRegion="polite">
+      <View style={styles.doneRingWrap}>
+        <Animated.View
+          pointerEvents="none"
+          style={[
+            styles.doneBurst,
+            {
+              opacity: burst.interpolate({ inputRange: [0, 0.1, 1], outputRange: [0, 0.6, 0] }),
+              transform: [{ scale: burst.interpolate({ inputRange: [0, 1], outputRange: [0.7, 1.6] }) }],
+            },
+          ]}
+        />
+        <Svg width={DONE_RING} height={DONE_RING} style={{ position: "absolute", transform: [{ rotate: "-90deg" }] }}>
+          <Circle cx={DONE_RING / 2} cy={DONE_RING / 2} r={r} stroke={colors.surfaceInset} strokeWidth={DONE_STROKE} fill="none" />
+          <Circle
+            cx={DONE_RING / 2}
+            cy={DONE_RING / 2}
+            r={r}
+            stroke={colors.primary}
+            strokeWidth={DONE_STROKE}
+            strokeLinecap="round"
+            fill="none"
+            strokeDasharray={`${c} ${c}`}
+            strokeDashoffset={c * (1 - ring)}
+            opacity={ring > 0.01 ? 1 : 0}
+          />
+        </Svg>
+        <Ionicons name="checkmark" size={64} color={colors.primary} />
+      </View>
+
+      <Animated.View style={[styles.doneCopy, fadeUp(reveal[0])]}>
+        <Text style={styles.doneTitle}>Workout done</Text>
+        <Text style={styles.doneSub}>{byCoach ? `${name} · your coach will see it` : name}</Text>
+      </Animated.View>
+
+      <Animated.View style={[styles.doneStats, fadeUp(reveal[1])]}>
+        {stats.map((stat) => (
+          <View key={stat.label} style={styles.doneStat}>
+            <Text style={styles.doneStatValue}>
+              {stat.value}
+              <Text style={styles.doneStatUnit}>{stat.unit}</Text>
+            </Text>
+            <Text style={styles.doneStatLabel}>{stat.label}</Text>
+          </View>
+        ))}
+      </Animated.View>
+
+      <Animated.View style={[styles.doneRpe, fadeUp(reveal[2])]}>
+        <Text style={styles.doneRpeTitle}>How hard was it?</Text>
+        <View style={styles.rpeRow}>
+          {Array.from({ length: 10 }, (_, index) => (
+            <Pressable
+              key={index}
+              onPress={() => onSelectRpe(index + 1)}
+              accessibilityRole="button"
+              accessibilityState={{ selected: selectedRpe === index + 1 }}
+              style={[styles.rpeDot, selectedRpe === index + 1 ? styles.rpeDotActive : null]}
+            >
+              <Text style={[styles.rpeText, selectedRpe === index + 1 ? styles.rpeTextActive : null]}>{index + 1}</Text>
+            </Pressable>
+          ))}
+        </View>
+        <ActionButton label="Log Effort" variant="filled" onPress={onLogEffort} style={styles.completeButton} />
+        <ActionButton label="Done" onPress={onDone} style={styles.completeButton} />
+      </Animated.View>
     </View>
   );
 }
@@ -524,24 +715,49 @@ const styles = StyleSheet.create({
   noteActionsRow: { flexDirection: "row", alignItems: "center", justifyContent: "flex-end", gap: 16 },
   noteCancelText: { color: colors.inkMuted, fontSize: 14, fontWeight: "700" },
   noteSaveButton: { flex: 0, minHeight: 38, paddingHorizontal: 16 },
-  setRow: { minHeight: 52, flexDirection: "row", alignItems: "center", gap: 12, borderBottomWidth: 1, borderBottomColor: colors.line },
-  setIcon: { height: 30, width: 30, borderRadius: 15, borderWidth: 1, borderColor: colors.lineStrong, alignItems: "center", justifyContent: "center" },
+  setRow: { minHeight: 52, flexDirection: "row", alignItems: "center", gap: 12, borderBottomWidth: 1, borderBottomColor: colors.line, marginHorizontal: -8, paddingHorizontal: 8, borderRadius: 10 },
+  setRowCurrent: { backgroundColor: colors.surfaceInset },
+  setRowDone: { opacity: 0.7 },
+  setNumber: { color: colors.inkMuted, fontSize: 13, fontWeight: "800" },
+  setCount: { color: colors.inkMuted, fontSize: 13, fontWeight: "700", marginTop: 8 },
+  segments: { flexDirection: "row", gap: 4, marginTop: 14 },
+  segment: { flex: 1, height: 6, borderRadius: 3, backgroundColor: colors.surfaceInset },
+  segmentDone: { backgroundColor: colors.primary },
+  segmentTrack: { height: 6, borderRadius: 3, backgroundColor: colors.surfaceInset, marginTop: 14, overflow: "hidden" },
+  segmentFill: { height: 6, borderRadius: 3, backgroundColor: colors.primary },
+  completeButton: { minHeight: 54, marginTop: 14 },
+  setIcon: { height: 30, width: 30, borderRadius: 15, borderWidth: 2, borderColor: colors.lineStrong, alignItems: "center", justifyContent: "center" },
   setIconDone: { backgroundColor: colors.ok, borderColor: colors.ok },
   setText: { flex: 1, color: colors.ink, fontSize: 16, fontWeight: "800" },
   setStatus: { color: colors.inkMuted, fontSize: 14, fontWeight: "700" },
-  rpeBox: { marginTop: 16, gap: 12 },
   rpeRow: { flexDirection: "row", flexWrap: "wrap", gap: 8 },
   rpeDot: { height: 34, width: 34, borderRadius: 17, borderWidth: 1, borderColor: colors.lineStrong, alignItems: "center", justifyContent: "center" },
   rpeDotActive: { borderColor: colors.primary, backgroundColor: colors.primary },
   rpeText: { color: colors.ink, fontSize: 14, fontWeight: "800" },
   rpeTextActive: { color: colors.onPrimary },
-  savingText: { color: colors.inkMuted, textAlign: "center", marginTop: 8, fontSize: 13 },
-  restBox: { marginTop: 16, marginBottom: 4, padding: 12, borderRadius: 14, backgroundColor: colors.primarySoft, gap: 10 },
-  restHeadRow: { flexDirection: "row", alignItems: "center", gap: 8 },
-  restText: { color: colors.primary, fontSize: 16, fontWeight: "900" },
-  restActionsRow: { flexDirection: "row", gap: 8 },
-  restChip: { flex: 1, minHeight: 36, borderRadius: 8, borderWidth: 1, borderColor: colors.primary, alignItems: "center", justifyContent: "center" },
-  restChipText: { color: colors.primary, fontSize: 13, fontWeight: "800" },
+  restBox: { marginTop: 16, marginBottom: 4, padding: 12, borderRadius: 16, backgroundColor: colors.surfaceInset, flexDirection: "row", alignItems: "center", gap: 14 },
+  restClock: { fontFamily: fonts.display, color: colors.ink, fontSize: 22 },
+  restTitle: { color: colors.ink, fontSize: 16, fontWeight: "800" },
+  restNext: { color: colors.inkMuted, fontSize: 13, fontWeight: "600", marginTop: 2 },
+  restActions: { gap: 8 },
+  restChip: { minHeight: 34, paddingHorizontal: 12, borderRadius: 10, borderWidth: 1, borderColor: colors.lineStrong, alignItems: "center", justifyContent: "center" },
+  restChipText: { color: colors.ink, fontSize: 13, fontWeight: "800" },
+  restSkip: { minHeight: 34, paddingHorizontal: 12, borderRadius: 10, alignItems: "center", justifyContent: "center" },
+  restSkipText: { color: colors.primary, fontSize: 13, fontWeight: "800" },
+  pressedChip: { opacity: 0.88, transform: [{ scale: 0.96 }] },
+  doneWrap: { alignItems: "center", paddingTop: 24, paddingBottom: 8, gap: 18 },
+  doneRingWrap: { width: DONE_RING, height: DONE_RING, alignItems: "center", justifyContent: "center" },
+  doneBurst: { position: "absolute", width: DONE_RING, height: DONE_RING, borderRadius: DONE_RING / 2, backgroundColor: colors.energy },
+  doneCopy: { alignItems: "center", gap: 4 },
+  doneTitle: { fontFamily: fonts.display, textTransform: "uppercase", color: colors.ink, fontSize: 40, lineHeight: 44 },
+  doneSub: { color: colors.inkMuted, fontSize: 15, fontWeight: "600", textAlign: "center" },
+  doneStats: { flexDirection: "row", gap: 10, alignSelf: "stretch" },
+  doneStat: { flex: 1, alignItems: "center", paddingVertical: 12, borderRadius: 16, backgroundColor: colors.surfaceRaised, borderWidth: 1, borderColor: colors.line },
+  doneStatValue: { fontFamily: fonts.display, color: colors.ink, fontSize: 28 },
+  doneStatUnit: { fontFamily: fonts.display, color: colors.inkMuted, fontSize: 16 },
+  doneStatLabel: { color: colors.inkMuted, fontSize: 12, fontWeight: "700" },
+  doneRpe: { alignSelf: "stretch", gap: 12, padding: 16, borderRadius: 20, backgroundColor: colors.surfaceRaised, borderWidth: 1, borderColor: colors.line },
+  doneRpeTitle: { color: colors.ink, fontSize: 17, fontWeight: "800" },
   // Deliberately compact/left-hugging (not stretched edge-to-edge): the
   // app's global Ask Agent FAB is a fixed ~150px hit target pinned to the
   // bottom-right of every screen, so a stepper "+" button flush against the
