@@ -5,6 +5,7 @@
 
 import * as SecureStore from "expo-secure-store";
 import { Platform } from "react-native";
+import { deviceTimeZone } from "./dateTimeValues";
 
 const LOCAL_API_BASE = "http://localhost:4000";
 const PRODUCTION_API_BASE = "https://fitora-psi.vercel.app";
@@ -211,7 +212,7 @@ export async function googleLogin(idToken: string, requestedRole: string): Promi
     const res = await fetchWithTimeout(`${API_BASE}/api/auth/google`, {
       method: "POST",
       headers: nativeHeaders(),
-      body: JSON.stringify({ credential: idToken, requestedRole, client: "native" }),
+      body: JSON.stringify({ credential: idToken, requestedRole, timezone: deviceTimeZone(), client: "native" }),
     });
     const payload = (await res.json().catch(() => ({}))) as AuthPayload;
     if (!res.ok || !payload.user || !payload.accessToken) {
@@ -234,7 +235,7 @@ export async function appleLogin(
     const res = await fetchWithTimeout(`${API_BASE}/api/auth/apple`, {
       method: "POST",
       headers: nativeHeaders(),
-      body: JSON.stringify({ identityToken, requestedRole, fullName, client: "native" }),
+      body: JSON.stringify({ identityToken, requestedRole, fullName, timezone: deviceTimeZone(), client: "native" }),
     });
     const payload = (await res.json().catch(() => ({}))) as AuthPayload;
     if (!res.ok || !payload.user || !payload.accessToken) {
@@ -259,7 +260,7 @@ export async function registerAthlete(fields: {
     const res = await fetchWithTimeout(`${API_BASE}/api/auth/register-athlete`, {
       method: "POST",
       headers: nativeHeaders(),
-      body: JSON.stringify({ ...fields, client: "native" }),
+      body: JSON.stringify({ ...fields, timezone: deviceTimeZone(), client: "native" }),
     });
     const payload = (await res.json().catch(() => ({}))) as AuthPayload;
     if (!res.ok || !payload.user || !payload.accessToken) {

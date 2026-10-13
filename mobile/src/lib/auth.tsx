@@ -14,6 +14,7 @@ import { registerPushToken, deregisterPushToken, subscribeToPushTokenUpdates } f
 import type { Role } from "./roles";
 import { loadVoiceLanguagePreference, setCachedVoiceLanguage } from "./voiceLanguage";
 import { clearDataCache, hydrateDataCache } from "./fitoraData";
+import { syncAthleteTimezone } from "./timezoneSync";
 
 /** Who owns the on-device data cache; email covers older stored users without an id. */
 function cacheOwnerFor(user: StoredUser): string {
@@ -93,6 +94,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     if (status !== "authed") return undefined;
     return subscribeToPushTokenUpdates();
   }, [status]);
+
+  useEffect(() => {
+    if (status === "authed" && user?.role === "athlete" && user.id) void syncAthleteTimezone(user.id);
+  }, [status, user?.role, user?.id]);
 
   const signIn = useCallback(async (email: string, password: string) => {
     const result = await apiLogin(email, password);

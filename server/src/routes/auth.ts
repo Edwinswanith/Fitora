@@ -17,6 +17,7 @@ import { requireAuth } from "../middleware/auth";
 import { writeRateLimit } from "../middleware/rateLimit";
 import { avatarSummary } from "../services/avatar";
 import { permanentlyDeleteAccount } from "../services/accountDeletion";
+import { isValidTimeZone } from "../services/timezone";
 
 const router = Router();
 
@@ -260,6 +261,16 @@ function checkLoginRateLimit(req: Request): boolean {
 
 type SocialSignupRole = "athlete" | "coach";
 
+/**
+ * The phone's IANA zone sent at sign-up. Reminder times and quiet hours are
+ * evaluated in it, so an unknown or missing zone falls back to UTC rather
+ * than failing the sign-up.
+ */
+function signupTimezone(value: unknown): string {
+  const zone = typeof value === "string" ? value.trim() : "";
+  return zone && isValidTimeZone(zone) ? zone : "UTC";
+}
+
 function requestedSelfSignupRole(requestedRole: unknown): SocialSignupRole | null {
   const normalized =
     typeof requestedRole === "string" ? requestedRole.trim().toLowerCase() : undefined;
@@ -273,6 +284,7 @@ async function findOrCreateSocialUser(input: {
   name?: string;
   requestedRole: unknown;
   appleSubject?: string;
+  timezone?: unknown;
 }): Promise<{ user: UserDoc | null; error?: { status: number; code: string } }> {
   const email = input.email.trim().toLowerCase();
   let user = input.appleSubject
@@ -306,7 +318,7 @@ async function findOrCreateSocialUser(input: {
         ...(input.appleSubject ? { appleSubject: input.appleSubject } : {}),
       });
       if (signupRole === "athlete") {
-        await AthleteProfile.create({ userId: user._id, sport: "Not set" });
+        await AthleteProfile.create({ userId: user._id, sport: "Not set", timezone: signupTimezone(input.timezone) });
       }
     } catch (err) {
       if (user) await User.deleteOne({ _id: user._id }).catch(() => undefined);
@@ -432,6 +444,7 @@ router.post("/google", async (req: Request, res: Response) => {
     email: info.email,
     name: info.name,
     requestedRole: req.body?.requestedRole,
+    timezone: req.body?.timezone,
   });
   if (error || !user) {
     logAuthEvent("google.user_resolution_failed", { code: error?.code });
@@ -565,6 +578,7 @@ router.post("/apple", async (req: Request, res: Response) => {
     email: info.email,
     name: typeof req.body?.fullName === "string" ? req.body.fullName : undefined,
     requestedRole: req.body?.requestedRole,
+    timezone: req.body?.timezone,
     appleSubject: info.sub,
   });
   if (error || !user) {
@@ -607,10 +621,7 @@ router.post("/register-athlete", async (req: Request, res: Response) => {
     typeof req.body?.position === "string" && req.body.position.trim()
       ? req.body.position.trim()
       : undefined;
-  const timezone =
-    typeof req.body?.timezone === "string" && req.body.timezone.trim()
-      ? req.body.timezone.trim()
-      : "UTC";
+  const timezone = signupTimezone(req.body?.timezone);
 
   if (!name) {
     res.status(400).json({ error: "invalid_name" });

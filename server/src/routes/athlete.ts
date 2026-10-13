@@ -68,7 +68,7 @@ import { enrichVoiceIntentResult, getVoiceIntentInterpreter, type VoicePendingIn
 import { logVoiceEvent } from "../lib/voiceObservability";
 import { withIdempotency } from "../lib/voiceIdempotency";
 import { evaluateAndDispatch } from "../services/notificationEligibility";
-import { resolveTimezoneForUser } from "../services/timezone";
+import { isValidTimeZone, resolveTimezoneForUser } from "../services/timezone";
 import { buildReadinessRiskFlag } from "../services/notificationTemplates";
 import multer from "multer";
 import fs from "fs";
@@ -375,7 +375,7 @@ router.patch("/me", async (req: Request, res: Response) => {
 
   if (Object.prototype.hasOwnProperty.call(body, "timezone")) {
     const timezone = trimmedStringInRange(body.timezone, 1, 64);
-    if (timezone === false) {
+    if (timezone === false || !isValidTimeZone(timezone)) {
       res.status(400).json({ error: "invalid_timezone" });
       return;
     }
