@@ -54,6 +54,11 @@ export const VOICE_ACTIONS = [
   "navigate",
   "answer",
   "reject",
+  // The athlete corrected or cancelled the action the app saved a moment
+  // ago ("actually make it one litre", "undo that"). The client performs it,
+  // since only the client knows what it saved and can delete or redo it.
+  "undo_last",
+  "amend_last",
 ] as const;
 export type VoiceAction = (typeof VOICE_ACTIONS)[number];
 
@@ -168,7 +173,8 @@ const NUMERIC_ENTITY_RANGES: Record<string, [number, number]> = {
  * (§7 of the plan).
  */
 const INTENT_ENTITY_KEYS: Partial<Record<VoiceIntentNameV2, string[]>> = {
-  log_wellness: ["sleepHours", "sleepQuality", "mood", "stress", "soreness", "fatigue"],
+  // fullCheckIn is set only by the policy (start_check_in), never by the model.
+  log_wellness: ["sleepHours", "sleepQuality", "mood", "stress", "soreness", "fatigue", "fullCheckIn"],
   log_session: [
     "sessionType",
     "status",
@@ -329,6 +335,10 @@ function sanitizeEntities(intent: VoiceIntentNameV2, entities: Record<string, un
 function requiredMissingFields(intent: VoiceIntentNameV2, entities: Record<string, unknown>): string[] {
   switch (intent) {
     case "log_wellness": {
+      // A check-in the athlete started ("do my check-in") collects all five
+      // scores before saving once; a single remark ("soreness is 6") saves
+      // just that score.
+      if (entities.fullCheckIn === true) return CHECK_IN_SCORES.filter((f) => typeof entities[f] !== "number");
       const any = ["sleepHours", "sleepQuality", "mood", "stress", "soreness", "fatigue"].some(
         (f) => typeof entities[f] === "number"
       );
@@ -393,8 +403,64 @@ function requiredMissingFields(intent: VoiceIntentNameV2, entities: Record<strin
   }
 }
 
+const CHECK_IN_SCORES = ["sleepQuality", "mood", "stress", "soreness", "fatigue"] as const;
+const CHECK_IN_SCORE_NAMES: Record<string, string> = {
+  sleepQuality: "sleep",
+  mood: "mood",
+  stress: "stress",
+  soreness: "soreness",
+  fatigue: "fatigue",
+};
+
+/** Scores the athlete rates out of ten; only ever saved when that number was actually said. */
+const SPOKEN_SCORE_FIELDS = ["sleepQuality", "mood", "stress", "soreness", "fatigue", "rpe", "effortScore", "muscleSoreness", "moodMotivation"];
+
+const FILLER_WORDS = new Set(["uh", "um", "umm", "hmm", "so", "er", "ah", "like", "okay", "ok", "hey", "the", "a"]);
+
+/** Three or more real words: a request that was heard, as opposed to noise or a half-started sentence. */
+export function isRealSentence(transcript: string): boolean {
+  const words = transcript.toLowerCase().split(/[^a-z\u0900-\u097f']+/).filter((w) => w.length > 1 && !FILLER_WORDS.has(w));
+  return words.length >= 3;
+}
+
+const NUMBER_WORDS: Record<string, number> = {
+  zero: 0, one: 1, two: 2, three: 3, four: 4, five: 5, six: 6, seven: 7, eight: 8, nine: 9, ten: 10,
+};
+
+/** Every number said in the transcript, as digits ("7", "7.5") or words ("seven"). */
+export function numbersSpoken(transcript: string): Set<number> {
+  const found = new Set<number>();
+  const lower = transcript.toLowerCase();
+  for (const match of lower.matchAll(/\d+(?:\.\d+)?/g)) found.add(Number(match[0]));
+  for (const word of lower.split(/[^a-z]+/)) {
+    if (word in NUMBER_WORDS) found.add(NUMBER_WORDS[word]);
+  }
+  return found;
+}
+
+/**
+ * Removes any 1-10 score the athlete didn't actually say. "I feel a bit
+ * tired" names no number, so it must not become fatigue 1 (the model
+ * guesses such values despite its instructions); the policy then asks for
+ * the score instead.
+ */
+export function dropUnspokenScores(entities: Record<string, unknown>, transcript: string): Record<string, unknown> {
+  const spoken = numbersSpoken(transcript);
+  const out: Record<string, unknown> = { ...entities };
+  for (const field of SPOKEN_SCORE_FIELDS) {
+    if (!(field in out)) continue;
+    const value = typeof out[field] === "number" ? (out[field] as number) : Number(out[field]);
+    if (!spoken.has(value)) delete out[field];
+  }
+  return out;
+}
+
 const FIELD_FOLLOW_UP_QUESTIONS: Record<string, string> = {
   sleepQuality: "What sleep quality score, one to ten, should I save?",
+  mood: "And your mood, one to ten?",
+  stress: "How stressed are you, one to ten?",
+  soreness: "How sore are you, one to ten?",
+  fatigue: "How tired are you, one to ten?",
   sessionType: "Which session — AM, afternoon, or PM?",
   status: "Was it planned, in progress, completed, skipped, or a rest day?",
   rpe: "What was your session RPE, zero to ten?",
@@ -422,6 +488,15 @@ function spokenResponseFor(
 ): string {
   if (action === "collect_fields") {
     const field = missingFields[0];
+    if (intent === "log_wellness" && entities.fullCheckIn === true && missingFields.length > 1) {
+      const names = missingFields.map((f) => CHECK_IN_SCORE_NAMES[f] ?? f);
+      const list = `${names.slice(0, -1).join(", ")} and ${names[names.length - 1]}`;
+      const first = missingFields.length === CHECK_IN_SCORES.length;
+      // Ends in "?" on purpose: the app only keeps the mic open after a question.
+      return first
+        ? `Let's do your check-in. You can say them all at once: how are your ${list}, one to ten each?`
+        : `Got it. And your ${list}, one to ten each?`;
+    }
     return FIELD_FOLLOW_UP_QUESTIONS[field] ?? "Could you say that again?";
   }
 
@@ -484,7 +559,30 @@ export function keepPendingWorkflow(pending: NonNullable<PolicyPendingState>, pr
  * The single entry point. Given a sanitized model turn and any pending
  * workflow state, derives everything downstream of intent+entities.
  */
-export function derivePolicy(turn: SanitizedTurn, pending: PolicyPendingState): PolicyResult {
+/** What the app saved a moment ago (sent back by the client), so "actually make it 600" or "undo that" can refer to it. */
+export type RecentAction = { intent: VoiceIntentNameV2; entities: Record<string, unknown> } | null;
+
+export type PolicyContext = {
+  /** The athlete's words; scores they didn't say are dropped. */
+  transcript?: string;
+  recent?: RecentAction;
+};
+
+export function derivePolicy(rawTurn: SanitizedTurn, pending: PolicyPendingState, context: PolicyContext = {}): PolicyResult {
+  // fullCheckIn is the policy's own marker; the model never gets to set it.
+  const { fullCheckIn: _ignored, ...modelEntities } = rawTurn.entities;
+  void _ignored;
+  let turn: SanitizedTurn = {
+    ...rawTurn,
+    entities: context.transcript ? dropUnspokenScores(modelEntities, context.transcript) : modelEntities,
+  };
+  // Scores the model guessed but the athlete never put a number on ("a bit
+  // tired" -> fatigue). The next question asks for exactly that score.
+  const guessedScores = Object.keys(modelEntities).filter((key) => CHECK_IN_SCORES.includes(key as (typeof CHECK_IN_SCORES)[number]) && !(key in turn.entities));
+  // Answering the open question with a fresh sentence of the same kind
+  // ("sleep 8, mood 7" during a check-in) continues that workflow; it must
+  // not restart it and lose what was already collected.
+  if (pending && turn.intent === pending.intent) turn = { ...turn, intent: "update_field" };
   const isMeta = META_INTENTS.includes(turn.intent);
 
   // A classification the model itself wasn't confident about is never acted
@@ -507,6 +605,42 @@ export function derivePolicy(turn: SanitizedTurn, pending: PolicyPendingState): 
 
   // Meta-intents operate on the pending workflow, not a fresh one.
   if (isMeta) {
+    if (!pending && context.recent) {
+      const recent = context.recent;
+      if (turn.intent === "cancel_action") {
+        return {
+          effectiveIntent: recent.intent,
+          entities: recent.entities,
+          missingFields: [],
+          action: "undo_last",
+          requiresConfirmation: false,
+          spokenResponse: "Okay, undoing that.",
+        };
+      }
+      if (turn.intent === "update_field") {
+        const incoming = filterToIntentKeys(recent.intent, turn.entities);
+        const merged = sanitizeEntities(recent.intent, { ...recent.entities, ...incoming });
+        const changed = Object.keys(incoming).some((key) => key in merged && merged[key] !== recent.entities[key]);
+        if (changed && requiredMissingFields(recent.intent, merged).length === 0) {
+          return {
+            effectiveIntent: recent.intent,
+            entities: merged,
+            missingFields: [],
+            action: "amend_last",
+            requiresConfirmation: false,
+            spokenResponse: "Okay, changing it.",
+          };
+        }
+      }
+      return {
+        effectiveIntent: "unknown_intent",
+        entities: {},
+        missingFields: [],
+        action: "reject",
+        requiresConfirmation: false,
+        spokenResponse: turn.intent === "confirm_action" ? "That's already saved." : "What should I change it to?",
+      };
+    }
     if (!pending) {
       return {
         effectiveIntent: "unknown_intent",
@@ -587,7 +721,12 @@ export function derivePolicy(turn: SanitizedTurn, pending: PolicyPendingState): 
       missingFields: [],
       action: "reject",
       requiresConfirmation: false,
-      spokenResponse: spokenResponseFor("unknown_intent", "reject", {}, []),
+      // A clear request the app can't do ("what's the weather") was heard
+      // fine; saying "I didn't catch that" would make the athlete repeat it.
+      spokenResponse:
+        context.transcript && isRealSentence(context.transcript)
+          ? "I can't help with that here. I can log water, meals, check-ins and training, or tell you about your day."
+          : spokenResponseFor("unknown_intent", "reject", {}, []),
     };
   }
 
@@ -618,18 +757,21 @@ export function derivePolicy(turn: SanitizedTurn, pending: PolicyPendingState): 
   }
 
   if (turn.intent === "start_check_in") {
+    const checkIn = { ...entities, fullCheckIn: true };
+    const missingFields = requiredMissingFields("log_wellness", checkIn);
     return {
       effectiveIntent: "log_wellness",
-      entities,
-      missingFields: requiredMissingFields("log_wellness", entities),
+      entities: checkIn,
+      missingFields,
       action: "collect_fields",
       requiresConfirmation: false,
-      spokenResponse: "Let's do your check-in. How was your sleep quality, one to ten?",
+      spokenResponse: spokenResponseFor("log_wellness", "collect_fields", checkIn, missingFields),
     };
   }
 
   // Every remaining intent is a write workflow.
-  const missingFields = requiredMissingFields(turn.intent, entities);
+  let missingFields = requiredMissingFields(turn.intent, entities);
+  if (turn.intent === "log_wellness" && guessedScores.length > 0 && missingFields.length > 0) missingFields = [guessedScores[0]];
   const requiresConfirmation = CONFIRMATION_REQUIRED_INTENTS.includes(turn.intent);
   const action: VoiceAction = missingFields.length > 0 ? "collect_fields" : requiresConfirmation ? "ready_to_confirm" : "execute";
 

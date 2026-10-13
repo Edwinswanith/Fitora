@@ -25,7 +25,7 @@ import { buildReadinessRiskFlag } from "../services/notificationTemplates";
 import { withIdempotency } from "../lib/voiceIdempotency";
 import { logVoiceEvent } from "../lib/voiceObservability";
 import { getVoiceIntentInterpreterV2, VoiceInterpreterError } from "../services/voiceIntentInterpreterV2";
-import { derivePolicy, keepPendingWorkflow, VOICE_INTENTS_V2, OPEN_SCREEN_ALLOWLIST, type PolicyPendingState, type VoiceIntentNameV2, type OpenScreenTarget } from "../services/voiceIntentPolicy";
+import { derivePolicy, keepPendingWorkflow, VOICE_INTENTS_V2, OPEN_SCREEN_ALLOWLIST, type PolicyPendingState, type RecentAction, type VoiceIntentNameV2, type OpenScreenTarget } from "../services/voiceIntentPolicy";
 
 /**
  * V2 athlete voice pipeline — additive and inert unless called. The existing
@@ -56,9 +56,23 @@ function sanitizePendingIntentHint(raw: unknown): PolicyPendingState {
   };
 }
 
+/** Write intents the client may report as "just saved" (recentAction). */
+const RECENT_ACTION_INTENTS: VoiceIntentNameV2[] = ["add_water", "log_wellness", "set_water_goal", "mark_rest_day", "log_meal", "log_session", "log_rpe", "log_heart_rate", "update_profile", "log_recovery"];
+
+/** The action the app saved moments ago, as reported by the client; ignored when malformed or older than 3 minutes. */
+function sanitizeRecentAction(raw: unknown): RecentAction {
+  if (!raw || typeof raw !== "object") return null;
+  const r = raw as Record<string, unknown>;
+  if (!RECENT_ACTION_INTENTS.includes(r.intent as VoiceIntentNameV2)) return null;
+  if (!r.entities || typeof r.entities !== "object" || Array.isArray(r.entities)) return null;
+  const secondsAgo = typeof r.secondsAgo === "number" ? r.secondsAgo : Number.POSITIVE_INFINITY;
+  if (!(secondsAgo >= 0 && secondsAgo <= 180)) return null;
+  return { intent: r.intent as VoiceIntentNameV2, entities: r.entities as Record<string, unknown> };
+}
+
 /**
  * POST /api/athlete/voice/interpret-v2
- * body: { transcript, pendingIntentHint?, currentScreen? }
+ * body: { transcript, pendingIntentHint?, currentScreen?, recentAction? }
  *
  * Read-only from the athlete's own data's perspective — never writes to any
  * athlete-scoped collection. It only classifies (interpreter, model-only),
@@ -94,6 +108,8 @@ router.post(
     const pending: PolicyPendingState = existing
       ? { intent: existing.intent as VoiceIntentNameV2, entities: (existing.entities as Record<string, unknown>) ?? {}, missingFields: existing.missingFields ?? [] }
       : sanitizePendingIntentHint(req.body?.pendingIntentHint);
+    // Only meaningful when nothing is in progress: "actually make it 600" after a save.
+    const recent = pending ? null : sanitizeRecentAction(req.body?.recentAction);
 
     const today = new Date().toISOString().slice(0, 10);
 
@@ -105,10 +121,10 @@ router.post(
     let turnIntent: VoiceIntentNameV2 | undefined;
     let confidence = 0;
     try {
-      const turn = await getVoiceIntentInterpreterV2().interpret({ transcript, today, pendingIntent: pending, currentScreen });
+      const turn = await getVoiceIntentInterpreterV2().interpret({ transcript, today, pendingIntent: pending, currentScreen, recentAction: recent });
       confidence = turn.confidence;
       turnIntent = turn.intent;
-      policyResult = derivePolicy(turn, pending);
+      policyResult = derivePolicy(turn, pending, { transcript, recent });
     } catch (err) {
       interpreterOutcome = "error";
       failureReason = err instanceof VoiceInterpreterError ? err.reason : "internal";
@@ -159,7 +175,7 @@ router.post(
         await VoicePendingState.deleteOne({ athleteProfileId: profileId });
       }
     }
-    // navigate/answer: one-shot, doesn't touch any existing pending workflow.
+    // navigate/answer/undo_last/amend_last: one-shot, don't touch any pending workflow.
 
     logVoiceEvent("interpret", {
       athleteId: profileId.toString(),

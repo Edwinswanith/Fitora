@@ -100,7 +100,8 @@ export function buildVoiceAction(
       const body: Record<string, unknown> = {};
       for (const key of WELLNESS_KEYS) {
         const value = entities[key];
-        if (typeof value === "number") body[key] = spokenTenToFive(value);
+        // Whole 1-5 values, the same ones the check-in screen offers.
+        if (typeof value === "number") body[key] = Math.round(spokenTenToFive(value));
       }
       if (typeof entities.sleepHours === "number") body.sleepHours = entities.sleepHours;
       return { kind: "http", method: "POST", path: "/api/athlete/wellness", body, successMessage: "Check-in saved." };

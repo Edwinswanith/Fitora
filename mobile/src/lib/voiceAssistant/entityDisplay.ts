@@ -48,6 +48,7 @@ export type EntityDisplayRow = { key: string; label: string; value: string };
 
 export function formatEntitiesForDisplay(entities: Record<string, unknown>): EntityDisplayRow[] {
   return Object.entries(entities)
-    .filter(([, value]) => value !== undefined && value !== null && value !== "")
+    // fullCheckIn is the policy's own "collect every score" marker, not something the athlete said.
+    .filter(([key, value]) => key !== "fullCheckIn" && value !== undefined && value !== null && value !== "")
     .map(([key, value]) => ({ key, label: FIELD_LABELS[key] ?? key, value: formatValue(key, value) }));
 }

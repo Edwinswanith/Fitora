@@ -4,7 +4,8 @@ import { speakAgentReply } from "../agentSpeech";
 import { apiJson } from "../api";
 import { actionKey, turnFailureMessage } from "./turnRules";
 import { initialVoiceAssistantState, voiceAssistantReducer } from "./state";
-import { executeVoiceAction, fetchAssignedCoaches } from "./actionDispatch";
+import { executeVoiceAction, fetchAssignedCoaches, followUpLastSaved } from "./actionDispatch";
+import { recentActionPayload, type LastSaved } from "./lastSaved";
 import { fetchAnswerFor } from "./answerFetchers";
 import type { InterpretV2Response, VoiceIntentNameV2 } from "./types";
 
@@ -38,6 +39,9 @@ export function useVoiceAssistant(options: UseVoiceAssistantOptions = {}) {
   // card): a spoken "yes" and a tapped Save must not both execute.
   const turnInFlightRef = useRef(false);
   const resolvedCoachIdRef = useRef<string | null>(null);
+  // The last save, kept for a few minutes (across overlay resets) so "actually
+  // make it one litre" or "undo that" can refer to it.
+  const lastSavedRef = useRef<LastSaved | null>(null);
   const currentScreenRef = useRef<string | undefined>(options.currentScreen);
   useEffect(() => {
     currentScreenRef.current = options.currentScreen;
@@ -46,7 +50,11 @@ export function useVoiceAssistant(options: UseVoiceAssistantOptions = {}) {
   const interpret = useCallback(async (transcript: string): Promise<InterpretV2Response> => {
     return apiJson<InterpretV2Response>("/api/athlete/voice/interpret-v2", {
       method: "POST",
-      body: JSON.stringify({ transcript, currentScreen: currentScreenRef.current }),
+      body: JSON.stringify({
+        transcript,
+        currentScreen: currentScreenRef.current,
+        recentAction: recentActionPayload(lastSavedRef.current, Date.now()),
+      }),
     });
   }, []);
 
@@ -62,6 +70,7 @@ export function useVoiceAssistant(options: UseVoiceAssistantOptions = {}) {
       try {
         const { message, response } = await executeVoiceAction(intent, entities, { clientActionId, coachId });
         clientActionIdRef.current = null;
+        lastSavedRef.current = { intent, entities, response, at: Date.now() };
         dispatch({ type: "EXECUTED", message });
         options.onExecuted?.(intent, entities, response);
         return message;
@@ -78,6 +87,25 @@ export function useVoiceAssistant(options: UseVoiceAssistantOptions = {}) {
     async (res: InterpretV2Response): Promise<string> => {
       if (res.action === "execute") {
         return performExecute(res.intent, res.entities);
+      }
+
+      if (res.action === "undo_last" || res.action === "amend_last") {
+        const last = lastSavedRef.current;
+        if (!last) return "That's saved already. You can change it on its screen.";
+        dispatch({ type: "EXECUTING" });
+        try {
+          const result = await followUpLastSaved(last, res.action, res.entities, { clientActionId: Crypto.randomUUID() });
+          if (result.changed) {
+            lastSavedRef.current = res.action === "undo_last" ? null : { intent: result.intent, entities: result.entities, response: result.response, at: Date.now() };
+            options.onExecuted?.(result.intent, result.entities, result.response);
+          }
+          dispatch({ type: "EXECUTED", message: result.message });
+          return result.message;
+        } catch (err) {
+          const message = err instanceof Error ? err.message : "Couldn't change that. Please try again.";
+          dispatch({ type: "ERROR", message });
+          return message;
+        }
       }
 
       if (res.action === "navigate") {

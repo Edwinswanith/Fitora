@@ -329,7 +329,8 @@ describe("POST /api/athlete/voice/interpret-v2 — contract", () => {
     expect(res.status).toBe(200);
     expect(res.body.intent).toBe("unknown_intent");
     expect(res.body.action).toBe("reject");
-    expect(res.body.spokenResponse).toBe("I didn't catch that. Could you say it again?");
+    // Heard clearly but out of scope: say what the assistant can do instead of asking to repeat.
+    expect(res.body.spokenResponse).toMatch(/^I can't help with that here/);
   });
 
   test("explain_app_field gives a controlled explanation for a known Apex term", async () => {

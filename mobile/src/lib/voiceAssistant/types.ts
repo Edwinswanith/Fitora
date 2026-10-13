@@ -36,7 +36,7 @@ export const VOICE_INTENTS_V2 = [
 ] as const;
 export type VoiceIntentNameV2 = (typeof VOICE_INTENTS_V2)[number];
 
-export const VOICE_ACTIONS_V2 = ["collect_fields", "ready_to_confirm", "execute", "navigate", "answer", "reject"] as const;
+export const VOICE_ACTIONS_V2 = ["collect_fields", "ready_to_confirm", "execute", "navigate", "answer", "reject", "undo_last", "amend_last"] as const;
 export type VoiceActionV2 = (typeof VOICE_ACTIONS_V2)[number];
 
 /** The exact shape POST /api/athlete/voice/interpret-v2 returns. */

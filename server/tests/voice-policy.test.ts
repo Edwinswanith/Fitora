@@ -405,3 +405,78 @@ describe("an unrecognised or garbled turn never throws away an in-progress workf
     expect(result.effectiveIntent).toBe("log_meal");
   });
 });
+
+describe("voiceIntentPolicy — found in the live end-to-end run", () => {
+  test("a score the athlete never put a number on is dropped, and the question asks for that score", () => {
+    const result = derivePolicy(turn("log_wellness", { fatigue: 1 }), null, { transcript: "I feel a bit tired today" });
+    expect(result.action).toBe("collect_fields");
+    expect(result.entities).toEqual({});
+    expect(result.missingFields).toEqual(["fatigue"]);
+    expect(result.spokenResponse).toBe("How tired are you, one to ten?");
+  });
+
+  test("spoken numbers are kept, as digits or words", () => {
+    const digits = derivePolicy(turn("log_wellness", { sleepQuality: 8, mood: 7 }), null, { transcript: "sleep 8 out of 10, mood 7" });
+    expect(digits.entities).toMatchObject({ sleepQuality: 8, mood: 7 });
+    const words = derivePolicy(turn("log_wellness", { stress: 2 }), null, { transcript: "stress two" });
+    expect(words.entities).toMatchObject({ stress: 2 });
+  });
+
+  test("a started check-in collects all five scores before saving once", () => {
+    const start = derivePolicy(turn("start_check_in"), null);
+    // Every follow-up question ends in "?", which is what keeps the mic open (mobile voiceTurnRules).
+    expect(start.spokenResponse.endsWith("?")).toBe(true);
+    expect(start.missingFields).toEqual(["sleepQuality", "mood", "stress", "soreness", "fatigue"]);
+    const pending: PolicyPendingState = { intent: "log_wellness", entities: start.entities, missingFields: start.missingFields };
+    // The model labels the answer as a fresh log_wellness; it must continue the check-in.
+    const partial = derivePolicy(turn("log_wellness", { sleepQuality: 8, mood: 7 }), pending, { transcript: "sleep 8, mood 7" });
+    expect(partial.action).toBe("collect_fields");
+    expect(partial.missingFields).toEqual(["stress", "soreness", "fatigue"]);
+    expect(partial.spokenResponse).toBe("Got it. And your stress, soreness and fatigue, one to ten each?");
+    const done = derivePolicy(
+      turn("log_wellness", { stress: 3, soreness: 4, fatigue: 2 }),
+      { intent: "log_wellness", entities: partial.entities, missingFields: partial.missingFields },
+      { transcript: "stress 3, soreness 4 and fatigue 2" }
+    );
+    expect(done.action).toBe("execute");
+    expect(done.entities).toMatchObject({ sleepQuality: 8, mood: 7, stress: 3, soreness: 4, fatigue: 2 });
+  });
+
+  test("the model can never set the check-in marker itself", () => {
+    const result = derivePolicy(turn("log_wellness", { fullCheckIn: true, mood: 6 }), null, { transcript: "mood 6" });
+    expect(result.entities.fullCheckIn).toBeUndefined();
+    expect(result.action).toBe("execute");
+  });
+
+  test("right after a save, a correction amends it and an undo undoes it", () => {
+    const recent = { intent: "add_water" as const, entities: { amountMl: 750 } };
+    const amend = derivePolicy(turn("update_field", { amountMl: 1000 }), null, { transcript: "actually make it one litre", recent });
+    expect(amend.action).toBe("amend_last");
+    expect(amend.effectiveIntent).toBe("add_water");
+    expect(amend.entities).toEqual({ amountMl: 1000 });
+    const undo = derivePolicy(turn("cancel_action"), null, { transcript: "cancel that", recent });
+    expect(undo.action).toBe("undo_last");
+    const yes = derivePolicy(turn("confirm_action"), null, { transcript: "yes", recent });
+    expect(yes.action).toBe("reject");
+    expect(yes.spokenResponse).toBe("That's already saved.");
+  });
+
+  test("a correction that changes nothing asks what to change", () => {
+    const recent = { intent: "add_water" as const, entities: { amountMl: 750 } };
+    const result = derivePolicy(turn("update_field", {}), null, { transcript: "actually", recent });
+    expect(result.action).toBe("reject");
+    expect(result.spokenResponse).toBe("What should I change it to?");
+  });
+});
+
+describe("voiceIntentPolicy — unsupported requests", () => {
+  test("a clear request the app can't do says so instead of 'didn't catch that'", () => {
+    const result = derivePolicy(turn("unknown_intent"), null, { transcript: "what's the weather in Chennai" });
+    expect(result.spokenResponse).toMatch(/^I can't help with that here/);
+  });
+
+  test("noise still asks to repeat", () => {
+    const result = derivePolicy(turn("unknown_intent"), null, { transcript: "uh um so" });
+    expect(result.spokenResponse).toBe("I didn't catch that. Could you say it again?");
+  });
+});
