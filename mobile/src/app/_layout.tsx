@@ -10,6 +10,7 @@ import { AuthProvider, useAuth } from "../lib/auth";
 import { AthleteAskAgentOverlay, CoachAskAgentOverlay } from "../components/RoleAskAgentOverlays";
 import { FeedbackHost } from "../components/FeedbackHost";
 import { ConfirmHost } from "../components/ConfirmHost";
+import { LaunchOverlay } from "../components/LaunchOverlay";
 import { dashboardPathForRole } from "../lib/roles";
 import { colors } from "../lib/theme";
 import { MobileTourProvider, useTourRootView } from "../lib/tour/MobileTourProvider";
@@ -145,6 +146,7 @@ export default function RootLayout() {
           <TourRootBoundary>
             <StatusBar style="light" />
             <Gate />
+            <LaunchOverlay />
           </TourRootBoundary>
         </MobileTourProvider>
       </AuthProvider>
