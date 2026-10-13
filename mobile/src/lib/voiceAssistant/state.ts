@@ -72,6 +72,8 @@ function phaseForAction(action: VoiceActionV2): VoiceAssistantPhase {
     case "ready_to_confirm":
       return "confirming";
     case "execute":
+    case "undo_last":
+    case "amend_last":
       return "executing";
     case "navigate":
     case "answer":

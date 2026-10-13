@@ -12,7 +12,7 @@
  */
 
 import { env } from "../config/env";
-import { VOICE_INTENTS_V2, OPEN_SCREEN_ALLOWLIST, type VoiceIntentNameV2, type SanitizedTurn, type PolicyPendingState, type OpenScreenTarget } from "./voiceIntentPolicy";
+import { VOICE_INTENTS_V2, OPEN_SCREEN_ALLOWLIST, type VoiceIntentNameV2, type SanitizedTurn, type PolicyPendingState, type OpenScreenTarget, type RecentAction } from "./voiceIntentPolicy";
 import { TRAINING_CATEGORIES } from "../lib/trainingCategories";
 
 export type VoiceInterpretInputV2 = {
@@ -21,6 +21,8 @@ export type VoiceInterpretInputV2 = {
   pendingIntent?: PolicyPendingState;
   /** Which Fitora tab the athlete is currently looking at (client-reported, allowlist-validated) — used only to disambiguate a vague reference like "add this", never to override an explicit, differently-stated intent. */
   currentScreen?: OpenScreenTarget;
+  /** What the app saved a moment ago, when nothing is pending, so a correction or undo can refer to it. */
+  recentAction?: RecentAction;
 };
 
 /** Screen a vague, otherwise-unclassifiable reference ("add this", "log it") most likely refers to — never used to override an explicit match. */
@@ -285,6 +287,14 @@ const SYSTEM_PROMPT_V2 =
 function buildUserPrompt(input: VoiceInterpretInputV2): string {
   const parts = [`Today's date: ${input.today}`];
   if (input.currentScreen) parts.push(`Current screen: ${input.currentScreen}`);
+  if (!input.pendingIntent && input.recentAction) {
+    parts.push(
+      `Just saved: ${input.recentAction.intent} ${JSON.stringify(input.recentAction.entities)}`,
+      "If the transcript corrects that save ('actually make it one litre', 'no, 600', 'make mood 6'), " +
+        "use update_field with only the corrected value. If it undoes it ('undo', 'cancel that', 'remove it', " +
+        "'delete that'), use cancel_action. Anything else is a new request as usual."
+    );
+  }
   if (input.pendingIntent) {
     parts.push(
       `In-progress intent: ${input.pendingIntent.intent}`,
@@ -445,6 +455,13 @@ export class MockVoiceIntentInterpreterV2 implements VoiceIntentInterpreterV2 {
     }
     if (pending && /\bactually\b|\bi meant\b|\bchange (it|that) to\b/.test(t)) {
       return { intent: "update_field", entities: extractEntitiesFor(pending.intent, t, input.transcript), confidence: 0.75 };
+    }
+    const recent = !pending ? input.recentAction : null;
+    if (recent && /\b(undo|cancel that|remove (it|that)|delete (it|that))\b/.test(t)) {
+      return { intent: "cancel_action", entities: {}, confidence: 0.9 };
+    }
+    if (recent && /\bactually\b|\bi meant\b|\bmake it\b|\bchange (it|that) to\b/.test(t)) {
+      return { intent: "update_field", entities: extractEntitiesFor(recent.intent, t, input.transcript), confidence: 0.75 };
     }
 
     if (/^(open|show|go to)\b/.test(t)) {

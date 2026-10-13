@@ -1,6 +1,7 @@
 import { apiJson, ApiError } from "../api";
 import { buildVoiceAction } from "./actionMapping";
 import type { CoachOption, VoiceIntentNameV2 } from "./types";
+import { planFollowUp, type LastSaved } from "./lastSaved";
 
 /** GET /api/athlete/coaches — the real, server-fetched assignment list. send_coach_note always resolves its target from this, never from anything the model proposed (plan §9). */
 export async function fetchAssignedCoaches(): Promise<CoachOption[]> {
@@ -75,4 +76,36 @@ export async function executeVoiceAction(
   } catch (err) {
     throw new Error(humanizeExecuteError(err));
   }
+}
+
+/**
+ * Undo or correct the last save ("undo that", "actually make it one litre").
+ * Water is deleted (and re-added with the new amount); overwrite-style saves
+ * are saved again with the corrected values. Anything else is reported as
+ * already saved rather than guessed at.
+ */
+export async function followUpLastSaved(
+  last: LastSaved,
+  action: "undo_last" | "amend_last",
+  entities: Record<string, unknown>,
+  opts: { clientActionId: string }
+): Promise<ExecuteVoiceActionResult & { intent: VoiceIntentNameV2; entities: Record<string, unknown>; changed: boolean }> {
+  const plan = planFollowUp(last, action, entities);
+  if (!plan.steps) return { message: plan.message, response: last.response, intent: last.intent, entities: last.entities, changed: false };
+  let response: unknown = last.response;
+  let savedEntities = last.entities;
+  try {
+    for (const step of plan.steps) {
+      if (step.kind === "delete_water") {
+        response = await apiJson<unknown>(`/api/athlete/water/${step.entryId}`, { method: "DELETE" });
+      } else {
+        const result = await executeVoiceAction(step.intent, step.entities, { clientActionId: opts.clientActionId });
+        response = result.response;
+        savedEntities = step.entities;
+      }
+    }
+  } catch (err) {
+    throw new Error(err instanceof Error && err.message ? err.message : "Couldn't change that. Please try again.");
+  }
+  return { message: plan.message, response, intent: last.intent, entities: savedEntities, changed: true };
 }
