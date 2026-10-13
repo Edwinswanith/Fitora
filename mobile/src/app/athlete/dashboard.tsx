@@ -1,5 +1,5 @@
 import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Pressable, StyleSheet, TextInput, View } from "react-native";
+import { Animated, Pressable, StyleSheet, TextInput, View } from "react-native";
 import { useFocusEffect, useLocalSearchParams, useRouter } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
 import { Text } from "../../components/AppText";
@@ -32,7 +32,9 @@ import { useAuth } from "../../lib/auth";
 import { PAYMENTS_ENABLED } from "../../lib/features";
 import { celebrate, showError } from "../../lib/feedback";
 import { confirmAction } from "../../lib/confirm";
-import { animateNextLayout } from "../../lib/motion";
+import { animateNextLayout, prefersReducedMotion } from "../../lib/motion";
+import { firstStepsState, type FirstStepKey, type FirstStepsState } from "../../lib/firstSteps";
+import { PexMascot } from "../../components/mascot/PexMascot";
 import { joinSessionCall } from "../../lib/videoCall";
 import { loadMyJoinRequest, type JoinRequest } from "../../lib/joinRequests";
 import { checkInStreak } from "../../lib/progressModel";
@@ -319,6 +321,13 @@ function TodayView({
   const [sessionExpanded, setSessionExpanded] = useState(false);
 
   const alert = buildTodayAlert(data, activeCoach, { membership: () => onNavigate("coach") });
+  const firstSteps = firstStepsState({
+    today: data.date,
+    createdAt: data.profile?.createdAt,
+    waterMl: data.water?.totalMl,
+    readinessScore: data.daily?.readinessScore,
+    hasCoach: athleteHasCoach(data),
+  });
 
   function goToWorkout(target = workout) {
     if (target) router.push({ pathname: "/athlete/active-workout", params: { assignmentId: target.id } } as never);
@@ -374,6 +383,17 @@ function TodayView({
         onFindCoach={() => onNavigate("coach")}
       />
 
+      {firstSteps ? (
+        <FirstStepsCard
+          state={firstSteps}
+          onStep={(key) => {
+            if (key === "water") router.push("/athlete/water" as never);
+            else if (key === "checkin") router.push("/athlete/check-in" as never);
+            else onNavigate("coach");
+          }}
+        />
+      ) : null}
+
       <TodayMetrics
         data={data}
         onReadiness={() => (data.daily?.readinessScore == null ? router.push("/athlete/check-in" as never) : router.push("/athlete/trends" as never))}
@@ -395,6 +415,89 @@ function TodayView({
 
       <CoachUpdateCard data={data} coachName={activeCoach} tomorrow={tomorrow} onReply={() => onNavigate("coach")} onTomorrowPress={handleTomorrowPress} />
     </>
+  );
+}
+
+const FIRST_STEP_COPY: Record<FirstStepKey, { title: string; sub: string; action: string; icon: keyof typeof Ionicons.glyphMap; color: string; soft: string }> = {
+  water: { title: "Log your first glass", sub: "One tap. Starts your water streak.", action: "Log", icon: "water", color: metricColors.water.ink, soft: metricColors.water.soft },
+  checkin: { title: "Morning check-in", sub: "Sleep, mood, soreness. 30 seconds.", action: "Start", icon: "sunny-outline", color: metricColors.readiness.ink, soft: metricColors.readiness.soft },
+  coach: { title: "Find a coach", sub: "Optional. Browse and send a request.", action: "Browse", icon: "person", color: colors.primary, soft: colors.primarySoft },
+};
+
+/** Day-1 setup: Pex, a short checklist, and a bar that fills as steps get done. */
+function FirstStepsCard({ state, onStep }: { state: FirstStepsState; onStep: (key: FirstStepKey) => void }) {
+  return (
+    <AppCard style={styles.firstSteps}>
+      {state.allDone ? (
+        <View style={styles.firstStepsHead}>
+          <View style={styles.firstStepsDoneIcon}>
+            <Ionicons name="checkmark" size={28} color={colors.onPrimary} />
+          </View>
+          <View style={{ flex: 1 }}>
+            <Text style={styles.firstStepsTitle}>You&apos;re all set</Text>
+            <Text style={styles.firstStepsBody}>From tomorrow this screen fills with your real numbers.</Text>
+          </View>
+        </View>
+      ) : (
+        <>
+          <View style={styles.firstStepsHead}>
+            <PexMascot pose="welcoming" state="entering" size={76} reducedMotion={prefersReducedMotion()} />
+            <View style={{ flex: 1 }}>
+              <Text style={styles.firstStepsEyebrow}>DAY {state.day}</Text>
+              <Text style={styles.firstStepsTitle}>Let&apos;s set you up</Text>
+              <Text style={styles.firstStepsBody}>Three quick steps. Under two minutes.</Text>
+            </View>
+          </View>
+          <View style={styles.firstStepsBarRow}>
+            <ProgressBar value={state.doneCount / state.steps.length} color={colors.primary} height={8} style={{ flex: 1 }} />
+            <Text style={styles.firstStepsCount}>{state.doneCount} of {state.steps.length}</Text>
+          </View>
+          <View style={styles.firstStepsList}>
+            {state.steps.map((step) => {
+              const copy = FIRST_STEP_COPY[step.key];
+              return (
+                <Pressable
+                  key={step.key}
+                  onPress={() => onStep(step.key)}
+                  disabled={step.done}
+                  accessibilityRole="button"
+                  accessibilityState={{ checked: step.done, disabled: step.done }}
+                  style={({ pressed }) => [styles.firstStep, step.done ? styles.firstStepDone : null, pressed ? styles.firstStepPressed : null]}
+                >
+                  <StepTick done={step.done} />
+                  <View style={[styles.firstStepIcon, { backgroundColor: copy.soft }]}>
+                    <Ionicons name={copy.icon} size={19} color={copy.color} />
+                  </View>
+                  <View style={{ flex: 1 }}>
+                    <Text style={styles.firstStepTitle}>{copy.title}</Text>
+                    <Text style={styles.firstStepSub} numberOfLines={1}>{copy.sub}</Text>
+                  </View>
+                  <Text style={[styles.firstStepAction, step.done ? { color: colors.ok } : null]}>{step.done ? "Done" : copy.action}</Text>
+                </Pressable>
+              );
+            })}
+          </View>
+        </>
+      )}
+    </AppCard>
+  );
+}
+
+/** Check circle that pops when its step becomes done (e.g. coming back from check-in). */
+function StepTick({ done }: { done: boolean }) {
+  const [scale] = useState(() => new Animated.Value(1));
+  const wasDone = useRef(done);
+  useEffect(() => {
+    if (done && !wasDone.current && !prefersReducedMotion()) {
+      scale.setValue(0.6);
+      Animated.spring(scale, { toValue: 1, friction: 4, tension: 160, useNativeDriver: true }).start();
+    }
+    wasDone.current = done;
+  }, [done, scale]);
+  return (
+    <Animated.View style={[styles.stepTick, done ? styles.stepTickDone : null, { transform: [{ scale }] }]}>
+      {done ? <Ionicons name="checkmark" size={16} color={colors.onPrimary} /> : null}
+    </Animated.View>
   );
 }
 
@@ -3694,6 +3797,24 @@ function Divider({ vertical }: { vertical?: boolean }) {
 }
 
 const styles = StyleSheet.create({
+  firstSteps: { gap: 14 },
+  firstStepsHead: { flexDirection: "row", alignItems: "center", gap: 12 },
+  firstStepsEyebrow: { color: colors.primary, fontSize: 11, fontWeight: "800", letterSpacing: 1.6 },
+  firstStepsTitle: { fontFamily: fonts.display, textTransform: "uppercase", color: colors.ink, fontSize: 26, lineHeight: 29 },
+  firstStepsBody: { color: colors.inkMuted, fontSize: 14, lineHeight: 19, fontWeight: "600", marginTop: 2 },
+  firstStepsDoneIcon: { width: 56, height: 56, borderRadius: 28, backgroundColor: colors.primary, alignItems: "center", justifyContent: "center" },
+  firstStepsBarRow: { flexDirection: "row", alignItems: "center", gap: 12 },
+  firstStepsCount: { color: colors.primary, fontSize: 13, fontWeight: "800" },
+  firstStepsList: { borderRadius: 16, borderWidth: 1, borderColor: colors.line, overflow: "hidden" },
+  firstStep: { flexDirection: "row", alignItems: "center", gap: 12, paddingVertical: 12, paddingHorizontal: 12, borderBottomWidth: 1, borderBottomColor: colors.line },
+  firstStepDone: { opacity: 0.6 },
+  firstStepPressed: { backgroundColor: colors.surfaceInset },
+  firstStepIcon: { width: 38, height: 38, borderRadius: 12, alignItems: "center", justifyContent: "center" },
+  firstStepTitle: { color: colors.ink, fontSize: 15, fontWeight: "800" },
+  firstStepSub: { color: colors.inkMuted, fontSize: 12, fontWeight: "600", marginTop: 1 },
+  firstStepAction: { color: colors.primary, fontSize: 13, fontWeight: "800" },
+  stepTick: { width: 26, height: 26, borderRadius: 13, borderWidth: 2, borderColor: colors.lineStrong, alignItems: "center", justifyContent: "center" },
+  stepTickDone: { backgroundColor: colors.ok, borderColor: colors.ok },
   targetExplainToggle: { flexDirection: "row", alignItems: "center", gap: 6, alignSelf: "flex-start", paddingVertical: 4 },
   targetExplainToggleText: { color: colors.primary, fontSize: 13, lineHeight: 18, fontWeight: "800" },
   targetExplain: { gap: 10, borderRadius: 12, backgroundColor: colors.surfaceInset, padding: 12 },
