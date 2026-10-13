@@ -9,6 +9,7 @@ import {
   ErrorState,
   HeroCard,
   IconTile,
+  FadeIn,
   LoadingState,
   MetricTile,
   MiniLineChart,
@@ -29,7 +30,7 @@ import { joinSessionCall } from "../../lib/videoCall";
 import { decideJoinRequest, type JoinRequest } from "../../lib/joinRequests";
 import { celebrate, errorFeedback } from "../../lib/feedback";
 import { useAuth } from "../../lib/auth";
-import { colors } from "../../lib/theme";
+import { colors, layout } from "../../lib/theme";
 import {
   attentionRank,
   attentionReason,
@@ -75,6 +76,7 @@ export default function CoachHome() {
   return (
     <ScreenContainer refreshing={state.refreshing} onRefresh={state.reload}>
       {state.stale ? <StaleDataNotice onRetry={state.reload} /> : null}
+      <FadeIn style={{ gap: layout.sectionGap }}>
       <CoachHomeView
         data={state.data}
         onSessionUpdate={patchSession}
@@ -84,6 +86,7 @@ export default function CoachHome() {
           if (accepted) state.reload();
         }}
       />
+      </FadeIn>
     </ScreenContainer>
   );
 }

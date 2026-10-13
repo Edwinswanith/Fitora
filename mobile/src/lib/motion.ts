@@ -1,5 +1,5 @@
-import { useEffect, useRef, useState } from "react";
-import { AccessibilityInfo, LayoutAnimation, Platform } from "react-native";
+import { useCallback, useEffect, useRef, useState } from "react";
+import { AccessibilityInfo, Animated, Easing, LayoutAnimation, Platform } from "react-native";
 
 // Shared motion helpers. Every animation here snaps instantly when the OS
 // "reduce motion" setting is on.
@@ -72,4 +72,33 @@ export function useAnimatedNumber(target: number, { duration = 450, from = 0 }: 
 export function animateNextLayout(): void {
   if (Platform.OS === "web" || reduceMotionNow) return;
   LayoutAnimation.configureNext(LayoutAnimation.create(220, LayoutAnimation.Types.easeInEaseOut, LayoutAnimation.Properties.opacity));
+}
+
+/**
+ * A one-shot "pop" (scale dips to `low`, springs back past 1, settles), for a
+ * check that lands, a flame that grows, a tab that is picked. Returns the
+ * scale to put in a transform and the function that plays it.
+ */
+export function usePop(low = 0.7): [Animated.Value, () => void] {
+  const [scale] = useState(() => new Animated.Value(1));
+  const play = useCallback(() => {
+    if (reduceMotionNow) return;
+    scale.stopAnimation();
+    scale.setValue(low);
+    Animated.spring(scale, { toValue: 1, friction: 4, tension: 160, useNativeDriver: true }).start();
+  }, [scale, low]);
+  return [scale, play];
+}
+
+/** A short sideways shake for a value that was refused (put it in translateX). */
+export function useShake(): [Animated.Value, () => void] {
+  const [x] = useState(() => new Animated.Value(0));
+  const play = useCallback(() => {
+    if (reduceMotionNow) return;
+    x.stopAnimation();
+    x.setValue(0);
+    const step = (toValue: number) => Animated.timing(x, { toValue, duration: 60, easing: Easing.linear, useNativeDriver: true });
+    Animated.sequence([step(-7), step(6), step(-4), step(2), step(0)]).start();
+  }, [x]);
+  return [x, play];
 }

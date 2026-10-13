@@ -10,7 +10,8 @@ import { useRouter } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
 import Svg, { Circle, Line, Path, Rect, Text as SvgText } from "react-native-svg";
 import { Text } from "./AppText";
-import { AppCard, HeroCard, IconTile, PrimaryAppBar, SectionLabel } from "./fitora";
+import { AppCard, HeroCard, IconTile, PrimaryAppBar, SectionLabel, SlidingPill } from "./fitora";
+import { selectionFeedback } from "../lib/feedback";
 import { apiJson } from "../lib/api";
 import { colors, metricColors, type MetricKey, fonts } from "../lib/theme";
 import { localDayOf, type JudgedTone } from "../lib/progressWindow";
@@ -237,13 +238,17 @@ export function ProgressView({
 function RangeTabs({ value, onChange }: { value: ProgressRange; onChange: (value: ProgressRange) => void }) {
   return (
     <View style={styles.rangeTabs} accessibilityRole="tablist">
+      <SlidingPill index={RANGES.indexOf(value)} count={RANGES.length} radius={9} />
       {RANGES.map((item) => {
         const active = value === item;
         return (
           <Pressable
             key={item}
-            onPress={() => onChange(item)}
-            style={({ pressed }) => [styles.rangeTab, active ? styles.rangeTabActive : null, pressed ? { opacity: 0.75 } : null]}
+            onPress={() => {
+              if (!active) selectionFeedback();
+              onChange(item);
+            }}
+            style={({ pressed }) => [styles.rangeTab, pressed ? { opacity: 0.75 } : null]}
             accessibilityRole="tab"
             accessibilityState={{ selected: active }}
             accessibilityLabel={item === "7D" ? "Last 7 days" : item === "4W" ? "Last 4 weeks" : "Last 3 months"}
@@ -462,7 +467,6 @@ function TrendChart({
 const styles = StyleSheet.create({
   rangeTabs: { flexDirection: "row", gap: 4, padding: 4, borderRadius: 12, backgroundColor: colors.surfaceInset },
   rangeTab: { flex: 1, minHeight: 36, borderRadius: 9, alignItems: "center", justifyContent: "center" },
-  rangeTabActive: { backgroundColor: colors.primary },
   rangeText: { color: colors.ink, fontSize: 13, lineHeight: 18, fontWeight: "800" },
   rangeTextActive: { color: colors.onPrimary, fontWeight: "900" },
   tiles: { flexDirection: "row", gap: 8 },

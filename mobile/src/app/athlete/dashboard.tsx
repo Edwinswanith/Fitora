@@ -11,7 +11,9 @@ import {
   MetricRow,
   MetricTileRing,
   SectionLabel,
+  SlidingPill,
   StaleDataNotice,
+  FadeIn,
   AppCard,
   BottomNavigation,
   EmptyState,
@@ -30,9 +32,9 @@ import type { MessageView } from "../../components/MessageCenter";
 import { apiFetch, apiJson } from "../../lib/api";
 import { useAuth } from "../../lib/auth";
 import { PAYMENTS_ENABLED } from "../../lib/features";
-import { celebrate, showError } from "../../lib/feedback";
+import { celebrate, selectionFeedback, showError } from "../../lib/feedback";
 import { confirmAction } from "../../lib/confirm";
-import { animateNextLayout, prefersReducedMotion } from "../../lib/motion";
+import { animateNextLayout, prefersReducedMotion, usePop } from "../../lib/motion";
 import { firstStepsState, type FirstStepKey, type FirstStepsState } from "../../lib/firstSteps";
 import { PexMascot } from "../../components/mascot/PexMascot";
 import { joinSessionCall } from "../../lib/videoCall";
@@ -284,18 +286,21 @@ export default function AthleteDashboard() {
       }
     >
       {state.stale ? <StaleDataNotice onRetry={state.reload} /> : null}
-      {activeTab === "today" ? <TodayView data={data} onNavigate={setActiveTab} /> : null}
-      {activeTab === "workouts" ? <WorkoutsView data={data} /> : null}
-      {activeTab === "nutrition" ? <NutritionViewV2 data={data} onLogWater={logWater} loggingWater={loggingWater} onUpdateData={state.setData} /> : null}
-      {activeTab === "coach" ? <CoachView data={data} onReload={state.reload} onNavigate={setActiveTab} /> : null}
-      {activeTab === "progress" ? <ProgressView data={data} onOpenTab={setActiveTab}>
-          {data.coachComments.length ? (
-            <>
-              <SectionLabel title="From your coach" />
-              <ProgressFeedbackCard comments={data.coachComments} onOpen={() => setActiveTab("coach")} />
-            </>
-          ) : null}
-        </ProgressView> : null}
+      {/* Fades in when real data replaces the loading placeholders, and on each tab switch. */}
+      <FadeIn key={activeTab} style={{ gap: TAB_CONTENT_GAP[activeTab] }}>
+        {activeTab === "today" ? <TodayView data={data} onNavigate={setActiveTab} /> : null}
+        {activeTab === "workouts" ? <WorkoutsView data={data} /> : null}
+        {activeTab === "nutrition" ? <NutritionViewV2 data={data} onLogWater={logWater} loggingWater={loggingWater} onUpdateData={state.setData} /> : null}
+        {activeTab === "coach" ? <CoachView data={data} onReload={state.reload} onNavigate={setActiveTab} /> : null}
+        {activeTab === "progress" ? <ProgressView data={data} onOpenTab={setActiveTab}>
+            {data.coachComments.length ? (
+              <>
+                <SectionLabel title="From your coach" />
+                <ProgressFeedbackCard comments={data.coachComments} onOpen={() => setActiveTab("coach")} />
+              </>
+            ) : null}
+          </ProgressView> : null}
+      </FadeIn>
       {data.partialIssues.length > 0 ? (
         <Text style={styles.partialNote}>
           Some Fitora data is temporarily unavailable: {data.partialIssues.slice(0, 3).join(", ")}.
@@ -304,6 +309,9 @@ export default function AthleteDashboard() {
     </ScreenContainer>
   );
 }
+
+/** Matches each tab's screen content gap, so wrapping the tab in FadeIn keeps its spacing. */
+const TAB_CONTENT_GAP: Record<AthleteTab, number> = { today: 7, workouts: 8, nutrition: 10, coach: 10, progress: 10 };
 
 function TodayView({
   data,
@@ -552,13 +560,34 @@ function TodayMetrics({
       {streak ? (
         <Pressable onPress={onProgress} accessibilityRole="button" style={({ pressed }) => [styles.streakRow, pressed ? { opacity: 0.8 } : null]}>
           <Text style={[styles.streakTitle, styles.streakCopy]}>Check-in streak</Text>
-          <View style={styles.streakChip}>
-            <Ionicons name="flame" size={15} color={colors.energy} />
-            <Text style={styles.streakChipText}>{`${streak} day${streak === 1 ? "" : "s"}`}</Text>
-          </View>
+          <StreakChip streak={streak} />
         </Pressable>
       ) : null}
     </>
+  );
+}
+
+/** Flame and count; the flame pops once when the streak grows while you watch (e.g. back from a check-in). */
+function StreakChip({ streak }: { streak: number }) {
+  const [flameScale, popFlame] = usePop(0.6);
+  const [countScale, popCount] = usePop(0.8);
+  const last = useRef(streak);
+  useEffect(() => {
+    if (streak > last.current) {
+      popFlame();
+      popCount();
+    }
+    last.current = streak;
+  }, [streak, popFlame, popCount]);
+  return (
+    <View style={styles.streakChip}>
+      <Animated.View style={{ transform: [{ scale: flameScale }] }}>
+        <Ionicons name="flame" size={15} color={colors.energy} />
+      </Animated.View>
+      <Animated.View style={{ transform: [{ scale: countScale }] }}>
+        <Text style={styles.streakChipText}>{`${streak} day${streak === 1 ? "" : "s"}`}</Text>
+      </Animated.View>
+    </View>
   );
 }
 
@@ -1820,24 +1849,22 @@ function WorkoutSegmentedControl({ value, onChange }: { value: WorkoutSegment; o
   ];
   return (
     <View style={styles.workoutSegmented}>
-      {options.map((option, index) => {
+      <SlidingPill index={options.findIndex((option) => option.value === value)} count={options.length} radius={9} />
+      {options.map((option) => {
         const active = value === option.value;
         return (
-          <Fragment key={option.value}>
-            <Pressable
-              onPress={() => onChange(option.value)}
-              style={({ pressed }) => [
-                styles.workoutSegment,
-                active ? styles.workoutSegmentActive : null,
-                pressed ? { opacity: 0.78 } : null,
-              ]}
-              accessibilityRole="tab"
-              accessibilityState={{ selected: active }}
-            >
-              <Text style={[styles.workoutSegmentText, active ? styles.workoutSegmentTextActive : null]}>{option.label}</Text>
-            </Pressable>
-            {index === 1 ? <View style={styles.workoutSegmentDivider} /> : null}
-          </Fragment>
+          <Pressable
+            key={option.value}
+            onPress={() => {
+              if (!active) selectionFeedback();
+              onChange(option.value);
+            }}
+            style={({ pressed }) => [styles.workoutSegment, pressed ? { opacity: 0.78 } : null]}
+            accessibilityRole="tab"
+            accessibilityState={{ selected: active }}
+          >
+            <Text style={[styles.workoutSegmentText, active ? styles.workoutSegmentTextActive : null]}>{option.label}</Text>
+          </Pressable>
         );
       })}
     </View>
@@ -3990,23 +4017,15 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
     padding: 4,
+    gap: 4,
     borderRadius: 12,
     borderWidth: 1,
     borderColor: colors.line,
     backgroundColor: colors.surfaceInset,
   },
   workoutSegment: { flex: 1, minHeight: 36, borderRadius: 9, alignItems: "center", justifyContent: "center" },
-  workoutSegmentActive: {
-    backgroundColor: colors.primary,
-    shadowColor: colors.primary,
-    shadowOpacity: 0.12,
-    shadowRadius: 4,
-    shadowOffset: { width: 0, height: 1 },
-    elevation: 1,
-  },
   workoutSegmentText: { color: colors.ink, fontSize: 14, lineHeight: 18, fontWeight: "700" },
   workoutSegmentTextActive: { color: colors.onPrimary, fontWeight: "900" },
-  workoutSegmentDivider: { width: 1, height: 28, backgroundColor: colors.line },
   weekStrip: { flexDirection: "row", justifyContent: "space-between", paddingTop: 7, paddingBottom: 10 },
   weekDay: { width: 43, minHeight: 54, alignItems: "center", gap: 4, paddingVertical: 7, borderRadius: 11, borderWidth: 1, borderColor: "transparent" },
   weekDayToday: { borderColor: colors.primary, backgroundColor: colors.primarySoft },

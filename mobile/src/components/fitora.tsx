@@ -1,4 +1,4 @@
-import { ReactNode, useEffect, useId, useMemo, useState } from "react";
+import { ReactNode, useEffect, useId, useMemo, useRef, useState } from "react";
 import {
   AccessibilityInfo,
   ActivityIndicator,
@@ -10,6 +10,8 @@ import {
   ScrollView,
   StyleProp,
   StyleSheet,
+  TextInput,
+  TextInputProps,
   TextStyle,
   View,
   ViewStyle,
@@ -21,7 +23,9 @@ import Svg, { Circle, Defs, LinearGradient as SvgGradient, Polyline, Stop } from
 import { Text } from "./AppText";
 import { Avatar } from "./Avatar";
 import { apiJson } from "../lib/api";
-import { useAnimatedNumber } from "../lib/motion";
+import { prefersReducedMotion, useAnimatedNumber, usePop, useShake } from "../lib/motion";
+import { formatLikeTemplate, parseNumberTemplate } from "../lib/countUp";
+import { selectionFeedback } from "../lib/feedback";
 import { useAuth } from "../lib/auth";
 import { ROLE_THEMES, colors, fonts, layout, metricColors, radius, type MetricKey } from "../lib/theme";
 
@@ -214,12 +218,15 @@ export function BottomNavigation({
         return (
           <Pressable
             key={item.key}
-            onPress={() => onChange(item.key)}
+            onPress={() => {
+              if (!selected) selectionFeedback();
+              onChange(item.key);
+            }}
             style={({ pressed }) => [styles.bottomItem, pressed ? styles.pressed : null]}
             accessibilityRole="tab"
             accessibilityState={{ selected }}
           >
-            <Ionicons name={selected ? filledIcon(item.icon) : item.icon} size={26} color={selected ? colors.primary : colors.inkFaint} />
+            <BottomTabIcon icon={item.icon} selected={selected} />
             <Text style={[styles.bottomLabel, selected ? styles.bottomLabelActive : null]} numberOfLines={1}>
               {item.label}
             </Text>
@@ -229,6 +236,137 @@ export function BottomNavigation({
       })}
     </View>
   );
+}
+
+/** Tab icon that presses in and springs back each time its tab becomes the active one. */
+function BottomTabIcon({ icon, selected }: { icon: IconName; selected: boolean }) {
+  const [scale, pop] = usePop(0.8);
+  const wasSelected = useRef(selected);
+  useEffect(() => {
+    if (selected && !wasSelected.current) pop();
+    wasSelected.current = selected;
+  }, [selected, pop]);
+  return (
+    <Animated.View style={{ transform: [{ scale }] }}>
+      <Ionicons name={selected ? filledIcon(icon) : icon} size={26} color={selected ? colors.primary : colors.inkFaint} />
+    </Animated.View>
+  );
+}
+
+/**
+ * The lime pill behind the selected option of a segmented control. Put it as
+ * the FIRST child of the control's row; it measures the row and slides to
+ * `index`. `padding` and `gap` must match the row's own.
+ */
+export function SlidingPill({
+  index,
+  count,
+  padding = 4,
+  gap = 4,
+  radius: pillRadius = 10,
+}: {
+  index: number;
+  count: number;
+  padding?: number;
+  gap?: number;
+  radius?: number;
+}) {
+  const [width, setWidth] = useState(0);
+  const [x] = useState(() => new Animated.Value(0));
+  const placed = useRef(false);
+  const segment = count > 0 && width > 0 ? (width - padding * 2 - gap * (count - 1)) / count : 0;
+  useEffect(() => {
+    if (!segment || index < 0) return;
+    const to = padding + index * (segment + gap);
+    if (!placed.current || prefersReducedMotion()) {
+      // First layout: put the pill in place without sliding in from the left.
+      placed.current = true;
+      x.setValue(to);
+      return;
+    }
+    Animated.spring(x, { toValue: to, friction: 9, tension: 90, useNativeDriver: true }).start();
+  }, [segment, index, padding, gap, x]);
+  return (
+    <View pointerEvents="none" style={StyleSheet.absoluteFill} onLayout={(event) => setWidth(event.nativeEvent.layout.width)}>
+      {segment > 0 && index >= 0 ? (
+        <Animated.View
+          style={{
+            position: "absolute",
+            top: padding,
+            bottom: padding,
+            left: 0,
+            width: segment,
+            borderRadius: pillRadius,
+            backgroundColor: colors.primary,
+            transform: [{ translateX: x }],
+          }}
+        />
+      ) : null}
+    </View>
+  );
+}
+
+/**
+ * A display value ("1.5 L", "1,240", "72") whose number counts to each new
+ * value instead of jumping. Text with no number ("--") shows as is.
+ */
+export function CountUpText({ value, style, numberOfLines }: { value: string; style?: StyleProp<TextStyle>; numberOfLines?: number }) {
+  const template = parseNumberTemplate(value);
+  const shown = useAnimatedNumber(template?.value ?? 0, { duration: 600 });
+  return (
+    <Text style={style} numberOfLines={numberOfLines}>
+      {template ? formatLikeTemplate(template, shown) : value}
+    </Text>
+  );
+}
+
+/**
+ * Text input with the app's states: lime outline while focused, red outline
+ * when `error` is set, and one short shake each time an error appears. Clear
+ * `error` when the person edits the value, so the next refusal shakes again.
+ */
+export function FormField({ error, style, containerStyle, onFocus, onBlur, ...rest }: TextInputProps & { error?: string | null; containerStyle?: StyleProp<ViewStyle> }) {
+  const [focused, setFocused] = useState(false);
+  const [x, shake] = useShake();
+  const hadError = useRef(Boolean(error));
+  useEffect(() => {
+    if (error && !hadError.current) {
+      shake();
+      AccessibilityInfo.announceForAccessibility(error);
+    }
+    hadError.current = Boolean(error);
+  }, [error, shake]);
+  return (
+    <Animated.View style={[{ flex: 1 }, containerStyle, { transform: [{ translateX: x }] }]}>
+      <TextInput
+        placeholderTextColor={colors.inkFaint}
+        {...rest}
+        onFocus={(event) => {
+          setFocused(true);
+          onFocus?.(event);
+        }}
+        onBlur={(event) => {
+          setFocused(false);
+          onBlur?.(event);
+        }}
+        accessibilityHint={error ?? undefined}
+        style={[styles.formField, style, focused ? styles.formFieldFocused : null, error ? styles.formFieldError : null]}
+      />
+    </Animated.View>
+  );
+}
+
+/** Fades its content in once on mount, so real data replacing a placeholder doesn't pop. */
+export function FadeIn({ children, style }: { children: ReactNode; style?: StyleProp<ViewStyle> }) {
+  const [opacity] = useState(() => new Animated.Value(prefersReducedMotion() ? 1 : 0));
+  const [offset] = useState(() => new Animated.Value(prefersReducedMotion() ? 0 : 4));
+  useEffect(() => {
+    Animated.parallel([
+      Animated.timing(opacity, { toValue: 1, duration: 220, useNativeDriver: true }),
+      Animated.timing(offset, { toValue: 0, duration: 220, useNativeDriver: true }),
+    ]).start();
+  }, [opacity, offset]);
+  return <Animated.View style={[style, { opacity, transform: [{ translateY: offset }] }]}>{children}</Animated.View>;
 }
 
 export function SectionHeader({
@@ -596,7 +734,7 @@ export function MetricTileRing({
     >
       <MetricRing metric={metric} value={progress} />
       <Text style={styles.metricRingLabel} numberOfLines={1}>{label}</Text>
-      <Text style={[styles.metricRingValue, { color: progress != null && progress > 0 ? palette.ink : colors.ink }]} numberOfLines={1}>{value}</Text>
+      <CountUpText style={[styles.metricRingValue, { color: progress != null && progress > 0 ? palette.ink : colors.ink }]} numberOfLines={1} value={value} />
       {sub ? <Text style={styles.metricRingSub} numberOfLines={1}>{sub}</Text> : null}
     </Pressable>
   );
@@ -733,13 +871,19 @@ export function SegmentedControl<T extends string>({
 }) {
   return (
     <View style={styles.segmented}>
+      <SlidingPill index={options.findIndex((option) => option.value === value)} count={options.length} />
       {options.map((option) => {
         const active = option.value === value;
         return (
           <Pressable
             key={option.value}
-            onPress={() => onChange(option.value)}
-            style={({ pressed }) => [styles.segment, active ? styles.segmentActive : null, pressed ? styles.pressed : null]}
+            onPress={() => {
+              if (!active) selectionFeedback();
+              onChange(option.value);
+            }}
+            accessibilityRole="tab"
+            accessibilityState={{ selected: active }}
+            style={({ pressed }) => [styles.segment, pressed ? styles.pressed : null]}
           >
             {option.icon ? <Ionicons name={option.icon} size={15} color={active ? colors.onPrimary : colors.inkMuted} /> : null}
             <Text style={[styles.segmentText, active ? styles.segmentTextActive : null]}>{option.label}</Text>
@@ -1112,7 +1256,6 @@ const styles = StyleSheet.create({
   rowValue: { color: colors.ink, fontSize: 12, fontWeight: "800" },
   segmented: { minHeight: 46, flexDirection: "row", padding: 4, gap: 4, borderRadius: 14, borderWidth: 1, borderColor: colors.line, backgroundColor: colors.surfaceRaised },
   segment: { flex: 1, minHeight: 38, borderRadius: 10, alignItems: "center", justifyContent: "center", flexDirection: "row", gap: 7 },
-  segmentActive: { backgroundColor: colors.primary },
   segmentText: { color: colors.inkMuted, fontSize: 13, fontWeight: "800" },
   segmentTextActive: { color: colors.onPrimary },
   actionButton: {
@@ -1160,5 +1303,8 @@ const styles = StyleSheet.create({
   settingsValue: { maxWidth: 150, color: colors.inkMuted, fontSize: 12 },
   pressed: { opacity: 0.72 },
   // Buttons and tiles: a small press-in so a tap is felt, not just seen.
+  formField: { height: 46, borderRadius: radius.md, borderWidth: 1.5, borderColor: colors.line, backgroundColor: colors.surfaceInset, paddingHorizontal: 14, color: colors.ink, fontSize: 15, fontWeight: "700" },
+  formFieldFocused: { borderColor: colors.primary },
+  formFieldError: { borderColor: colors.bad },
   pressedButton: { opacity: 0.88, transform: [{ scale: 0.97 }] },
 });
