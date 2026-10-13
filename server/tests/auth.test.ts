@@ -210,6 +210,36 @@ describe("POST /api/auth/register-athlete (self-signup)", () => {
     expect(await User.countDocuments()).toBe(0);
   });
 
+  test("saves the phone's timezone, and falls back to UTC for an unknown zone", async () => {
+    const app = buildApp();
+    const res = await request(app)
+      .post("/api/auth/register-athlete")
+      .send({ ...body, timezone: "Asia/Kolkata" });
+    expect(res.status).toBe(201);
+    const user = await User.findOne({ email: "sam@solo.io" }).lean();
+    expect((await AthleteProfile.findOne({ userId: user!._id }).lean())?.timezone).toBe("Asia/Kolkata");
+
+    const bad = await request(app)
+      .post("/api/auth/register-athlete")
+      .send({ ...body, email: "bad.zone@solo.io", timezone: "Mars/Olympus" });
+    expect(bad.status).toBe(201);
+    const badUser = await User.findOne({ email: "bad.zone@solo.io" }).lean();
+    expect((await AthleteProfile.findOne({ userId: badUser!._id }).lean())?.timezone).toBe("UTC");
+  });
+
+  test("PATCH /api/athlete/me updates the timezone and refuses an unknown zone", async () => {
+    const app = buildApp();
+    const res = await request(app).post("/api/auth/register-athlete").send(body);
+    const auth = `Bearer ${res.body.accessToken}`;
+    const ok = await request(app).patch("/api/athlete/me").set("Authorization", auth).send({ timezone: "Europe/London" });
+    expect(ok.status).toBe(200);
+    const bad = await request(app).patch("/api/athlete/me").set("Authorization", auth).send({ timezone: "Not/AZone" });
+    expect(bad.status).toBe(400);
+    expect(bad.body).toEqual({ error: "invalid_timezone" });
+    const user = await User.findOne({ email: "sam@solo.io" }).lean();
+    expect((await AthleteProfile.findOne({ userId: user!._id }).lean())?.timezone).toBe("Europe/London");
+  });
+
   test("missing sport returns 400 invalid_sport", async () => {
     const res = await request(buildApp())
       .post("/api/auth/register-athlete")
@@ -256,7 +286,7 @@ describe("POST /api/auth/google self-signup roles", () => {
 
     const res = await request(buildApp())
       .post("/api/auth/google")
-      .send({ credential: "athlete-token", requestedRole: "athlete" });
+      .send({ credential: "athlete-token", requestedRole: "athlete", timezone: "Asia/Kolkata" });
 
     expect(res.status).toBe(200);
     expect(res.body.user).toMatchObject({
@@ -269,6 +299,7 @@ describe("POST /api/auth/google self-signup roles", () => {
     const user = await User.findOne({ email: "google.athlete@test.io" }).lean();
     const profile = await AthleteProfile.findOne({ userId: user!._id }).lean();
     expect(profile?.sport).toBe("Not set");
+    expect(profile?.timezone).toBe("Asia/Kolkata");
     expect(await CoachAthleteAssignment.countDocuments({ athleteId: profile!._id })).toBe(0);
   });
 
