@@ -35,7 +35,7 @@ type AuthValue = {
   ) => ReturnType<typeof apiAppleLogin>;
   signUp: (fields: Parameters<typeof apiRegisterAthlete>[0]) => ReturnType<typeof apiRegisterAthlete>;
   signOut: () => Promise<void>;
-  deleteAccount: () => ReturnType<typeof apiDeleteAccount>;
+  deleteAccount: (currentPassword?: string) => ReturnType<typeof apiDeleteAccount>;
   setUser: (u: StoredUser) => void;
 };
 
@@ -151,8 +151,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     setStatus("anon");
   }, []);
 
-  const deleteAccount = useCallback(async () => {
-    const result = await apiDeleteAccount();
+  const deleteAccount = useCallback(async (currentPassword?: string) => {
+    const result = await apiDeleteAccount(currentPassword);
     if (result.ok) {
       await clearDataCache();
       setUserState(null);

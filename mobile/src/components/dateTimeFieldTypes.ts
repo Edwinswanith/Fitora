@@ -27,6 +27,12 @@ export type DateFieldProps = FieldBaseProps & {
   maximumDate?: string;
   /** Where the picker opens when `value` is empty, "YYYY-MM-DD" (defaults to today, clamped to min/max). */
   initialPickerDate?: string;
+  /**
+   * Web only: a typed date outside min/max snaps back into range on blur
+   * (default). Set false where a snapped value would be silently wrong, such
+   * as a birthday, and validate instead.
+   */
+  snapToRange?: boolean;
 };
 
 export type TimeFieldProps = FieldBaseProps & {

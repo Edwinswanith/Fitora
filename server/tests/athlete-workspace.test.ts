@@ -166,6 +166,19 @@ describe("Athlete profile management", () => {
     expect(updatedProfile?.academyId).toBeFalsy();
   });
 
+  test("a birthday must give an age from 13 to 100", async () => {
+    const { user } = await makeAthlete("ath-dob", "football");
+    const auth = `Bearer ${tokenFor(user._id, "athlete")}`;
+    const today = new Date().toISOString().slice(0, 10);
+    for (const dob of [today, "2099-01-01", "1900-01-01"]) {
+      const res = await request(buildApp()).patch("/api/athlete/me").set("Authorization", auth).send({ dob });
+      expect(res.status).toBe(400);
+      expect(res.body.error).toBe("invalid_dob");
+    }
+    const ok = await request(buildApp()).patch("/api/athlete/me").set("Authorization", auth).send({ dob: "2000-01-01" });
+    expect(ok.status).toBe(200);
+  });
+
   test("invalid profile values are rejected without changing the profile", async () => {
     const { user, profile } = await makeAthlete("ath-profile-bad", "football");
     const res = await request(buildApp())

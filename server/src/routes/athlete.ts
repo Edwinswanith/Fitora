@@ -42,6 +42,7 @@ import { buildDailyCardForAthlete, dayRange } from "../services/dashboard";
 import { buildWorkoutAssignmentsForDate } from "../services/workoutAssignment";
 import { buildTrendSeries, clampDays } from "../services/trends";
 import { buildActivityFeed, clampLimit } from "../services/activity";
+import { ageFromDob, MAX_TARGET_AGE, MIN_TARGET_AGE } from "../services/nutritionTarget";
 import {
   buildAthleteAchievements,
   clampAchievementDays,
@@ -426,7 +427,8 @@ router.patch("/me", async (req: Request, res: Response) => {
       profileUnset.dob = 1;
     } else {
       const dob = parseDateOrNull(body.dob);
-      if (!dob || dob.getTime() > Date.now()) {
+      const age = dob ? ageFromDob(dob) : null;
+      if (!dob || age === null || age < MIN_TARGET_AGE || age > MAX_TARGET_AGE) {
         res.status(400).json({ error: "invalid_dob" });
         return;
       }

@@ -213,9 +213,15 @@ async function issueTokensForUser(
       }
     );
   }
+  if (!opts.replaceHash) {
+    await User.updateOne({ _id: user._id }, { $set: { lastSignInAt: new Date() } });
+  }
   setAuthCookies(res, accessToken, refreshToken);
   return { accessToken, refreshToken };
 }
+
+/** How recent a sign-in must be to delete an account without re-entering a password. */
+const DELETE_REAUTH_WINDOW_MS = 10 * 60 * 1000;
 
 /** The stored session hash this refresh token belongs to, if it is still live. */
 function matchingSessionHash(token: string, user: UserDoc): string | null {
@@ -779,6 +785,23 @@ router.delete("/account", requireAuth, async (req: Request, res: Response) => {
   if (!user || !user.isActive) {
     res.status(401).json({ error: "user_inactive" });
     return;
+  }
+
+  // An unlocked phone or a leaked access token must not be enough to erase
+  // the account: prove the password, or have signed in within the last few
+  // minutes (the only option for Google/Apple accounts, which have none).
+  const currentPassword = typeof req.body?.currentPassword === "string" ? req.body.currentPassword : "";
+  if (currentPassword) {
+    if (!(await bcrypt.compare(currentPassword, user.passwordHash))) {
+      res.status(401).json({ error: "invalid_current_password" });
+      return;
+    }
+  } else {
+    const signedInAt = user.lastSignInAt ? new Date(user.lastSignInAt).getTime() : 0;
+    if (Date.now() - signedInAt > DELETE_REAUTH_WINDOW_MS) {
+      res.status(401).json({ error: "reauth_required" });
+      return;
+    }
   }
 
   await permanentlyDeleteAccount(user);

@@ -1,7 +1,7 @@
 // Who gets the one-time setup flow, and the checks on its "About you" step.
 
 import AsyncStorage from "@react-native-async-storage/async-storage";
-import { athleteNeedsOnboarding, bodyBasicsError, buildAvailabilityRules, coachNeedsOnboarding, hasSeenOnboarding, markOnboardingSeen } from "../onboarding";
+import { ageOn, athleteNeedsOnboarding, bodyBasicsError, buildAvailabilityRules, coachNeedsOnboarding, hasSeenOnboarding, markOnboardingSeen } from "../onboarding";
 import { sportLabel } from "../sport";
 
 jest.mock("@react-native-async-storage/async-storage", () =>
@@ -50,6 +50,14 @@ describe("seen flag", () => {
   });
 });
 
+describe("ageOn", () => {
+  test("counts whole years, turning over on the birthday", () => {
+    expect(ageOn("2000-06-15", "2026-06-14")).toBe(25);
+    expect(ageOn("2000-06-15", "2026-06-15")).toBe(26);
+    expect(ageOn("2013-01-01", "2026-01-01")).toBe(13);
+  });
+});
+
 describe("bodyBasicsError", () => {
   const ok = { weightKg: "72", heightCm: "170", dob: "1998-03-14", sex: "male", today };
   it("accepts complete, believable values", () => {
@@ -62,6 +70,9 @@ describe("bodyBasicsError", () => {
     expect(bodyBasicsError({ ...ok, heightCm: "abc" })).toMatch(/height/);
     expect(bodyBasicsError({ ...ok, dob: "" })).toMatch(/birthday/);
     expect(bodyBasicsError({ ...ok, dob: "2030-01-01" })).toMatch(/future/);
+    // A birthday "today" (what a silently clamped future date used to become) is age 0.
+    expect(bodyBasicsError({ ...ok, dob: today })).toMatch(/at least 13/);
+    expect(bodyBasicsError({ ...ok, dob: "1900-01-01" })).toMatch(/100/);
     expect(bodyBasicsError({ ...ok, sex: "" })).toMatch(/male or female/);
   });
 });

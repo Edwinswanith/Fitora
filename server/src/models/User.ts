@@ -33,6 +33,10 @@ const userSchema = new Schema(
     // Set when a coach provisions the account with a temp password — the user is
     // nudged to set their own password on first sign-in. Cleared on change.
     mustChangePassword: { type: Boolean, default: false },
+    // Last time credentials were proven (password, Google, Apple, password
+    // change), not a token refresh. Lets a social-only account delete itself
+    // right after signing in again, since it has no password to re-enter.
+    lastSignInAt: { type: Date, default: null },
     // Legacy single-session hash. Still accepted once on refresh (then moved
     // into refreshTokenHashes) so existing logins survive the upgrade.
     refreshTokenHash: { type: String },

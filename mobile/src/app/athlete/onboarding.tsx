@@ -10,7 +10,7 @@ import { useAuth } from "../../lib/auth";
 import { todayLocalDate, yearsAgoLocalDate } from "../../lib/dateTimeValues";
 import { celebrate, errorFeedback, selectionFeedback } from "../../lib/feedback";
 import type { AthleteProfile, NutritionTarget } from "../../lib/fitoraData";
-import { bodyBasicsError, markOnboardingSeen } from "../../lib/onboarding";
+import { MIN_AGE, bodyBasicsError, markOnboardingSeen } from "../../lib/onboarding";
 import { SPORT_OPTIONS, sportLabel } from "../../lib/sport";
 import { colors, fonts, metricColors, radius } from "../../lib/theme";
 
@@ -69,7 +69,7 @@ export default function AthleteOnboarding() {
   const [otherAllergies, setOtherAllergies] = useState("");
   const [sport, setSport] = useState("");
   const [otherSport, setOtherSport] = useState("");
-  const [dobBounds] = useState(() => ({ today: todayLocalDate(), defaultDate: yearsAgoLocalDate(25) }));
+  const [dobBounds] = useState(() => ({ today: todayLocalDate(), latest: yearsAgoLocalDate(MIN_AGE), defaultDate: yearsAgoLocalDate(25) }));
 
   // Opening the flow counts as seeing it, so leaving half way never loops back here.
   useEffect(() => {
@@ -250,8 +250,9 @@ export default function AthleteOnboarding() {
                   accessibilityLabel="Birthday"
                   placeholder="Pick your birthday"
                   minimumDate={DOB_MIN_DATE}
-                  maximumDate={dobBounds.today}
+                  maximumDate={dobBounds.latest}
                   initialPickerDate={dobBounds.defaultDate}
+                  snapToRange={false}
                 />
               </View>
               <View style={styles.group}>

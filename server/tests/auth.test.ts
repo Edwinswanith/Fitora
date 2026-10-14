@@ -689,6 +689,56 @@ describe("DELETE /api/auth/account", () => {
   });
 });
 
+describe("DELETE /api/auth/account re-authentication", () => {
+  async function seedAndLogin() {
+    const passwordHash = await bcrypt.hash("delete-me", 10);
+    const user = await User.create({ email: "reauth@test.io", passwordHash, role: "athlete", name: "Re Auth" });
+    await AthleteProfile.create({ userId: user._id, sport: "Athletics" });
+    const login = await request(buildApp()).post("/api/auth/login").send({ email: "reauth@test.io", password: "delete-me" });
+    return { user, auth: `Bearer ${login.body.accessToken}` };
+  }
+
+  test("a token from a sign-in more than 10 minutes ago needs the password", async () => {
+    const { user, auth } = await seedAndLogin();
+    await User.updateOne({ _id: user._id }, { $set: { lastSignInAt: new Date(Date.now() - 11 * 60 * 1000) } });
+
+    const noPassword = await request(buildApp()).delete("/api/auth/account").set("Authorization", auth).send({ confirmation: "DELETE" });
+    expect(noPassword.status).toBe(401);
+    expect(noPassword.body.error).toBe("reauth_required");
+
+    const wrong = await request(buildApp())
+      .delete("/api/auth/account")
+      .set("Authorization", auth)
+      .send({ confirmation: "DELETE", currentPassword: "guess" });
+    expect(wrong.status).toBe(401);
+    expect(wrong.body.error).toBe("invalid_current_password");
+    expect(await User.countDocuments({ _id: user._id })).toBe(1);
+
+    const right = await request(buildApp())
+      .delete("/api/auth/account")
+      .set("Authorization", auth)
+      .send({ confirmation: "DELETE", currentPassword: "delete-me" });
+    expect(right.status).toBe(200);
+    expect(await User.countDocuments({ _id: user._id })).toBe(0);
+  });
+
+  test("a token refresh does not count as signing in again", async () => {
+    const passwordHash = await bcrypt.hash("delete-me", 10);
+    const user = await User.create({ email: "refresh@test.io", passwordHash, role: "athlete", name: "Refresh" });
+    await AthleteProfile.create({ userId: user._id, sport: "Athletics" });
+    const login = await request(buildApp())
+      .post("/api/auth/login")
+      .send({ email: "refresh@test.io", password: "delete-me", client: "native" });
+    const old = new Date(Date.now() - 11 * 60 * 1000);
+    await User.updateOne({ _id: user._id }, { $set: { lastSignInAt: old } });
+
+    const refreshed = await request(buildApp()).post("/api/auth/refresh").send({ refreshToken: login.body.refreshToken, client: "native" });
+    expect(refreshed.status).toBe(200);
+    const after = await User.findById(user._id).lean();
+    expect(after?.lastSignInAt?.getTime()).toBe(old.getTime());
+  });
+});
+
 describe("protected routes", () => {
   test("GET /api/coach/athletes without token returns 401", async () => {
     const res = await request(buildApp()).get("/api/coach/athletes");
