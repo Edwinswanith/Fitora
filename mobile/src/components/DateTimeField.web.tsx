@@ -29,6 +29,7 @@ export function DateField({
   onChange,
   minimumDate,
   maximumDate,
+  snapToRange = true,
   label,
   accessibilityLabel,
   disabled,
@@ -52,7 +53,7 @@ export function DateField({
     // Browsers don't stop typed dates outside min/max; snap them back on blur
     // (not while typing, where the year passes through values like 0002).
     const current = event.currentTarget.value;
-    if (current && isValidDateString(current)) {
+    if (snapToRange && current && isValidDateString(current)) {
       const clamped = clampDateString(current, minimumDate, maximumDate);
       if (clamped !== current) onChange(clamped);
     }

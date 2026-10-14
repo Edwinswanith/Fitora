@@ -38,10 +38,12 @@ import { buildWorkoutAssignmentsForDate } from "../services/workoutAssignment";
 import { evaluateAndDispatch } from "../services/notificationEligibility";
 import { getFcmConfigurationStatus } from "../services/fcmDelivery";
 import { resolveTimezoneForUser } from "../services/timezone";
+import { inviteAthleteByEmail, pendingInvitesForCoach } from "../services/coachInvite";
 import { buildCoachFeedback, buildInjuryAlert } from "../services/notificationTemplates";
 import { notificationPreview } from "../services/notificationCopy";
 import { buildTrendSeries, clampDays } from "../services/trends";
 import { buildActivityFeed, clampLimit } from "../services/activity";
+import { relationshipStarts } from "../services/relationshipWindow";
 import {
   buildWellnessSeries,
   buildAttendanceSeries,
@@ -413,16 +415,15 @@ router.post(
 /**
  * POST /api/coach/athletes/link
  * body: { email }
- * Links an EXISTING athlete (e.g. one who self-registered) to the acting coach
- * by email — the counterpart to POST /athletes, which creates a fresh account.
- * No password is issued: the athlete already has their own. If the athlete has
- * no academy yet, they're adopted into the coach's academy so their RPE rows
- * and announcements tag correctly. Idempotent-ish: re-linking an already-active
- * athlete returns 409 already_linked.
+ * Invites an EXISTING athlete (e.g. one who self-registered) to train with
+ * the acting coach. Nothing is shared until the athlete accepts in the app
+ * (services/coachInvite.ts); an email address alone never grants access.
+ * Always answers 202 with the same body, so it can't be used to learn who
+ * has an account or a coach.
  */
 router.post(
   "/athletes/link",
-  writeRateLimit({ windowMs: 60_000, max: 40 }),
+  writeRateLimit({ windowMs: 60_000, max: 20 }),
   async (req: Request, res: Response) => {
     if (!req.actor) {
       res.status(401).json({ error: "unauthenticated" });
@@ -433,87 +434,15 @@ router.post(
       res.status(400).json({ error: "invalid_email" });
       return;
     }
-
-    const user = await User.findOne({ email }).select("_id role name email").lean();
-    if (!user || user.role !== "athlete") {
-      // Don't leak whether the email exists as a non-athlete account.
-      res.status(404).json({ error: "athlete_not_found" });
-      return;
-    }
-    const profile = await AthleteProfile.findOne({ userId: user._id })
-      .select("_id userId academyId sport position")
-      .lean();
-    if (!profile) {
-      res.status(404).json({ error: "athlete_not_found" });
-      return;
-    }
-
-    const active = await CoachAthleteAssignment.exists({
-      coachId: req.actor.userId,
-      athleteId: profile._id,
-      endedAt: null,
-    });
-    if (active) {
-      res.status(409).json({ error: "already_linked" });
-      return;
-    }
-
-    // V1 product rule: one primary Coach at a time. A different coach already
-    // holding an active relationship with this athlete is a distinct, expected
-    // rejection — not the same case as "you already linked them" above.
-    const activeWithAnyCoach = await CoachAthleteAssignment.exists({
-      athleteId: profile._id,
-      status: "active",
-    });
-    if (activeWithAnyCoach) {
-      res.status(409).json({ error: "athlete_has_active_coach" });
-      return;
-    }
-
-    const coachAcademyId = req.actor.academyId ?? undefined;
-
-    try {
-      await CoachAthleteAssignment.create({
-        coachId: req.actor.userId,
-        athleteId: profile._id,
-        assignedBy: req.actor.userId,
-        endedAt: null,
-      });
-    } catch (err) {
-      if ((err as { code?: number }).code === 11000) {
-        // Either the already_linked pair-index or the one-active-coach index —
-        // the pre-checks above make this a defense-in-depth race case, not the
-        // common path, so a single generic conflict code is fine here.
-        res.status(409).json({ error: "athlete_has_active_coach" });
-        return;
-      }
-      throw err;
-    }
-
-    // Adopt an unaffiliated athlete into the coach's academy (never reassign one
-    // that already belongs to an academy).
-    if (!profile.academyId && coachAcademyId) {
-      await Promise.all([
-        AthleteProfile.updateOne({ _id: profile._id }, { $set: { academyId: coachAcademyId } }),
-        User.updateOne({ _id: user._id }, { $set: { academyId: coachAcademyId } }),
-      ]).catch(() => undefined);
-    }
-
-    await auditAllow(req, "athlete", profile._id, "athlete_linked");
-
-    res.status(201).json({
-      athlete: {
-        athleteId: profile._id.toString(),
-        userId: (user._id as Types.ObjectId).toString(),
-        name: user.name,
-        email: user.email,
-        sport: profile.sport,
-        position: profile.position ?? null,
-      },
-      linkedExisting: true,
-    });
+    await inviteAthleteByEmail({ coachId: req.actor.userId, email });
+    res.status(202).json({ invited: true });
   }
 );
+
+/** GET /api/coach/invites: this coach's invites still waiting for an answer. */
+router.get("/invites", async (req: Request, res: Response) => {
+  res.json({ invites: await pendingInvitesForCoach(req.actor!.userId) });
+});
 
 // ── Academy-owner: manage coaches ─────────────────────────────────────────
 // An "academy owner" is a coach with isAcademyOwner=true — a scoped capability
@@ -1021,7 +950,9 @@ router.get(
   requireAthleteAccess("athleteId"),
   async (req: Request, res: Response) => {
     const limit = clampLimit(req.query.limit);
-    const items = await buildActivityFeed(new Types.ObjectId(req.params.athleteId), limit);
+    const athleteId = new Types.ObjectId(req.params.athleteId);
+    const since = (await relationshipStarts(req.actor!.userId, [athleteId])).get(String(athleteId)) ?? new Date();
+    const items = await buildActivityFeed(athleteId, limit, { coachId: req.actor!.userId, since });
     res.json({ items });
   }
 );
@@ -1098,7 +1029,7 @@ router.get("/notes-inbox", async (req: Request, res: Response) => {
     return;
   }
   const days = clampDays(req.query.days, 14, 60);
-  res.json({ days, ...(await buildCoachNotesInbox(assignedIdsFor(req), days)) });
+  res.json({ days, ...(await buildCoachNotesInbox(req.actor.userId, assignedIdsFor(req), days)) });
 });
 
 /**

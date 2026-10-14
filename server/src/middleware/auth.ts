@@ -16,6 +16,18 @@ function readCookie(req: Request, name: string): string | null {
   return null;
 }
 
+// While a coach-issued temporary password is unchanged, the only thing the
+// account can do is change it (or read itself, sign out, delete itself). The
+// coach who created the account knows that password, so nothing else may be
+// readable or writable with it.
+const MUST_CHANGE_PASSWORD_ALLOWED = /^\/api\/auth(\/|$)/;
+
+function requestPath(req: Request): string {
+  const url = req.originalUrl || req.url || "";
+  const q = url.indexOf("?");
+  return q === -1 ? url : url.slice(0, q);
+}
+
 function readBearerToken(req: Request): string | null {
   const header = req.header("authorization");
   if (header && header.toLowerCase().startsWith("bearer ")) {
@@ -43,7 +55,7 @@ export async function requireAuth(
     // Also pull the two scope fields here so loadScope doesn't need a second
     // User read on every coach/athlete request (one round-trip, not two).
     const user = await User.findById(sub)
-      .select("_id role isActive academyId isAcademyOwner")
+      .select("_id role isActive academyId isAcademyOwner mustChangePassword")
       .lean();
     if (!user || !user.isActive) {
       res.status(401).json({ error: "user_inactive" });
@@ -51,6 +63,10 @@ export async function requireAuth(
     }
     if (user.role !== role) {
       res.status(401).json({ error: "role_mismatch" });
+      return;
+    }
+    if (user.mustChangePassword && !MUST_CHANGE_PASSWORD_ALLOWED.test(requestPath(req))) {
+      res.status(403).json({ error: "must_change_password" });
       return;
     }
     req.actor = {

@@ -22,6 +22,7 @@ const HIDDEN_ROUTE_PREFIXES = [
   "/coach/athletes/new",
   "/coach/announcements",
   "/account",
+  "/change-password",
 ];
 
 export function isAskAgentHiddenOn(pathname: string | null | undefined): boolean {

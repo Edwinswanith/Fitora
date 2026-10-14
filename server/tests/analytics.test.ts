@@ -205,17 +205,51 @@ describe("coach analytics (scoped)", () => {
 describe("coach notes inbox (scoped)", () => {
   test("flags needsReply until the coach replies on/after the note date", async () => {
     const a = await makeAthlete("noteA");
+    const coach = await makeUser("coach", "noteCoach");
+    await CoachAthleteAssignment.create({ coachId: coach._id, athleteId: a.profile._id, assignedBy: coach._id });
     await AthleteNote.create({ athleteId: a.profile._id, date: TODAY, body: "knee tight" });
 
-    let inbox = await buildCoachNotesInbox([a.profile._id], 7, TODAY);
+    let inbox = await buildCoachNotesInbox(coach._id, [a.profile._id], 7, TODAY);
     expect(inbox.openCount).toBe(1);
     expect(inbox.notes[0]).toMatchObject({ body: "knee tight", athleteName: "noteA", needsReply: true });
 
     // coach replies same day → resolved
-    await CoachComment.create({ athleteId: a.profile._id, coachId: new Types.ObjectId(), date: TODAY, body: "rest it" });
-    inbox = await buildCoachNotesInbox([a.profile._id], 7, TODAY);
+    // another coach's comment doesn't count as this coach's reply
+    await CoachComment.create({ athleteId: a.profile._id, coachId: new Types.ObjectId(), date: TODAY, body: "someone else" });
+    inbox = await buildCoachNotesInbox(coach._id, [a.profile._id], 7, TODAY);
+    expect(inbox.openCount).toBe(1);
+
+    await CoachComment.create({ athleteId: a.profile._id, coachId: coach._id, date: TODAY, body: "rest it" });
+    inbox = await buildCoachNotesInbox(coach._id, [a.profile._id], 7, TODAY);
     expect(inbox.openCount).toBe(0);
     expect(inbox.notes[0].needsReply).toBe(false);
+  });
+
+  test("a coach who inherits an athlete sees neither the old coach's comments nor notes written before", async () => {
+    const oldCoach = await makeUser("coach", "oldC");
+    const newCoach = await makeUser("coach", "newC");
+    const a = await makeAthlete("moved");
+    const first = await CoachAthleteAssignment.create({
+      coachId: oldCoach._id, athleteId: a.profile._id, assignedBy: oldCoach._id, assignedAt: new Date(Date.now() - 86_400_000),
+    });
+    await AthleteNote.create({ athleteId: a.profile._id, date: TODAY, body: "private to old coach" });
+    await CoachComment.create({ athleteId: a.profile._id, coachId: oldCoach._id, date: TODAY, body: "old coach feedback" });
+    await CoachAthleteAssignment.updateOne({ _id: first._id }, { $set: { status: "ended", endedAt: new Date() } });
+    await new Promise((r) => setTimeout(r, 5));
+    await CoachAthleteAssignment.create({ coachId: newCoach._id, athleteId: a.profile._id, assignedBy: newCoach._id });
+    await AthleteNote.create({ athleteId: a.profile._id, date: TODAY, body: "hello new coach" });
+
+    const inbox = await buildCoachNotesInbox(newCoach._id, [a.profile._id], 7, TODAY);
+    expect(inbox.notes.map((n) => n.body)).toEqual(["hello new coach"]);
+
+    const feed = await request(buildApp())
+      .get(`/api/coach/athletes/${a.profile._id}/activity`)
+      .set("Authorization", `Bearer ${tokenFor(newCoach._id, "coach")}`);
+    expect(feed.status).toBe(200);
+    const details = feed.body.items.map((i: { detail?: string }) => i.detail);
+    expect(details).toContain("hello new coach");
+    expect(details).not.toContain("private to old coach");
+    expect(details).not.toContain("old coach feedback");
   });
 
   test("endpoint returns only the coach's own roster notes", async () => {

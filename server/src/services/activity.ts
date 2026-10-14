@@ -67,7 +67,9 @@ const recoveryBand = (s: unknown): Band | undefined =>
  */
 export async function buildActivityFeed(
   athleteId: Types.ObjectId,
-  limit = 40
+  limit = 40,
+  /** Set when a coach is reading: only their own comments, and notes written since they took over. */
+  coachView?: { coachId: Types.ObjectId; since: Date }
 ): Promise<FeedItem[]> {
   const cap = 20; // per source, before the merge + final slice
   const [sessions, rpes, attendance, recovery, comments, notes, performance, injuries] =
@@ -76,8 +78,14 @@ export async function buildActivityFeed(
       RpeMonitoring.find({ athleteId }).sort({ updatedAt: -1 }).limit(cap).lean(),
       Attendance.find({ athleteId }).sort({ updatedAt: -1 }).limit(cap).lean(),
       Recovery.find({ athleteId }).sort({ updatedAt: -1 }).limit(cap).lean(),
-      CoachComment.find({ athleteId }).sort({ createdAt: -1 }).limit(cap).lean(),
-      AthleteNote.find({ athleteId }).sort({ createdAt: -1 }).limit(cap).lean(),
+      CoachComment.find(coachView ? { athleteId, coachId: coachView.coachId } : { athleteId })
+        .sort({ createdAt: -1 })
+        .limit(cap)
+        .lean(),
+      AthleteNote.find(coachView ? { athleteId, createdAt: { $gte: coachView.since } } : { athleteId })
+        .sort({ createdAt: -1 })
+        .limit(cap)
+        .lean(),
       Performance.find({ athleteId }).sort({ date: -1 }).limit(cap).lean(),
       Injury.find({ athleteId }).sort({ startedAt: -1 }).limit(cap).lean(),
     ]);

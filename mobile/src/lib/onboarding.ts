@@ -56,6 +56,26 @@ export const WEIGHT_RANGE_KG = { min: 20, max: 250 } as const;
 export const HEIGHT_RANGE_CM = { min: 50, max: 250 } as const;
 
 /** Field errors for the "About you" step, or null when it can be saved. */
+/** Calorie targets are only calculated for ages 13 to 100 (the server refuses others). */
+export const MIN_AGE = 13;
+export const MAX_AGE = 100;
+
+/** Whole years between two local "YYYY-MM-DD" dates. */
+export function ageOn(dob: string, today: string): number {
+  const [by, bm, bd] = dob.split("-").map(Number);
+  const [ty, tm, td] = today.split("-").map(Number);
+  return ty - by - (tm < bm || (tm === bm && td < bd) ? 1 : 0);
+}
+
+export function dobError(dob: string, today: string): string | null {
+  if (!dob) return "Pick your birthday.";
+  if (dob > today) return "Your birthday can't be in the future.";
+  const age = ageOn(dob, today);
+  if (age < MIN_AGE) return `You need to be at least ${MIN_AGE} to use Fitora.`;
+  if (age > MAX_AGE) return "Check your birthday: that's over 100 years ago.";
+  return null;
+}
+
 export function bodyBasicsError(values: { weightKg: string; heightCm: string; dob: string; sex: string; today: string }): string | null {
   const weight = Number(values.weightKg);
   const height = Number(values.heightCm);
@@ -65,8 +85,8 @@ export function bodyBasicsError(values: { weightKg: string; heightCm: string; do
   if (!values.heightCm.trim() || !Number.isFinite(height) || height < HEIGHT_RANGE_CM.min || height > HEIGHT_RANGE_CM.max) {
     return `Enter your height in cm (${HEIGHT_RANGE_CM.min} to ${HEIGHT_RANGE_CM.max}).`;
   }
-  if (!values.dob) return "Pick your birthday.";
-  if (values.dob > values.today) return "Your birthday can't be in the future.";
+  const dobProblem = dobError(values.dob, values.today);
+  if (dobProblem) return dobProblem;
   if (!values.sex) return "Pick male or female.";
   return null;
 }

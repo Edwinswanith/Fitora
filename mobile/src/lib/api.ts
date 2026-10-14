@@ -377,13 +377,17 @@ export async function logout(): Promise<void> {
   await clearStorage();
 }
 
-export async function deleteAccount(): Promise<
+/**
+ * Permanently delete the account. The server needs the password, or a sign-in
+ * within the last 10 minutes (Google/Apple accounts have no password).
+ */
+export async function deleteAccount(currentPassword?: string): Promise<
   { ok: true } | { ok: false; status: number; error: string }
 > {
   try {
     const res = await apiFetch("/api/auth/account", {
       method: "DELETE",
-      body: JSON.stringify({ confirmation: "DELETE" }),
+      body: JSON.stringify({ confirmation: "DELETE", ...(currentPassword ? { currentPassword } : {}) }),
     });
     const body = (await res.json().catch(() => ({}))) as { error?: string };
     if (!res.ok) {

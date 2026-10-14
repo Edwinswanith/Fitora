@@ -6,6 +6,7 @@ import { Text } from "../components/AppText";
 import { Avatar, AvatarEditorPanel } from "../components/Avatar";
 import { DateField } from "../components/DateTimeField";
 import { todayLocalDate, yearsAgoLocalDate } from "../lib/dateTimeValues";
+import { MIN_AGE, dobError } from "../lib/onboarding";
 import {
   ActionButton,
   AppCard,
@@ -23,7 +24,6 @@ import { apiFetch, changePassword } from "../lib/api";
 import { useAuth } from "../lib/auth";
 import { confirmAction } from "../lib/confirm";
 import { animateNextLayout } from "../lib/motion";
-import { showError } from "../lib/feedback";
 import { PRIVACY_POLICY_URL, SUPPORT_URL, openExternal } from "../lib/links";
 import { colors, radius, fonts } from "../lib/theme";
 import { useNotificationPreferences, type NotificationCategories } from "../lib/notificationPreferences";
@@ -325,8 +325,8 @@ function AthleteEditForm({
   // The server stores dob as a calendar date (UTC midnight) and returns it as
   // "YYYY-MM-DD", so the first 10 chars are the date itself, no tz shift.
   const [dob, setDob] = useState(profile?.dob ? profile.dob.slice(0, 10) : "");
-  // Picker bounds: today (no future birthdays) and, when empty, open around 25 years ago.
-  const [dobBounds] = useState(() => ({ today: todayLocalDate(), defaultDate: yearsAgoLocalDate(25) }));
+  // Picker bounds: at least MIN_AGE years ago and, when empty, open around 25 years ago.
+  const [dobBounds] = useState(() => ({ latest: yearsAgoLocalDate(MIN_AGE), defaultDate: yearsAgoLocalDate(25) }));
   const [biologicalSex, setBiologicalSex] = useState(profile?.biologicalSex ?? "");
   const [activityLevel, setActivityLevel] = useState(profile?.activityLevel ?? "");
   const [fitnessGoal, setFitnessGoal] = useState(profile?.fitnessGoal ?? "");
@@ -358,8 +358,9 @@ function AthleteEditForm({
       setError("Height must be a number.");
       return;
     }
-    if (dob && dob > todayLocalDate()) {
-      setError("Date of birth can't be in the future.");
+    const dobProblem = dob ? dobError(dob, todayLocalDate()) : null;
+    if (dobProblem) {
+      setError(dobProblem);
       return;
     }
     setSaving(true);
@@ -432,8 +433,9 @@ function AthleteEditForm({
         accessibilityLabel="Date of birth"
         placeholder="Select your date of birth"
         minimumDate={DOB_MIN_DATE}
-        maximumDate={dobBounds.today}
+        maximumDate={dobBounds.latest}
         initialPickerDate={dobBounds.defaultDate}
+        snapToRange={false}
         fieldStyle={styles.dateInput}
         textStyle={styles.dateInputText}
       />
@@ -694,18 +696,32 @@ function DangerZone() {
     router.replace("/");
   }
 
+  const [deleteOpen, setDeleteOpen] = useState(false);
+  const [deletePassword, setDeletePassword] = useState("");
+  const [deleteError, setDeleteError] = useState<string | null>(null);
+
   function confirmDelete() {
+    setDeleteError(null);
     void confirmAction({
       title: "Delete account?",
-      body: "This permanently deletes your account and associated personal data.",
+      body: "This permanently deletes your account and associated personal data. It can't be undone.",
       confirmLabel: "Delete",
       destructive: true,
       onConfirm: async () => {
         setDeleting(true);
-        const result = await deleteAccount();
+        const result = await deleteAccount(deletePassword || undefined);
         setDeleting(false);
-        if (result.ok) router.replace("/");
-        else showError("Could not delete account", "Please try again.");
+        if (result.ok) {
+          router.replace("/");
+          return;
+        }
+        setDeleteError(
+          result.error === "invalid_current_password"
+            ? "That password is incorrect."
+            : result.error === "reauth_required"
+              ? "Enter your password. Signed in with Google or Apple? Log out, sign back in, then delete within 10 minutes."
+              : "Could not delete your account. Please try again."
+        );
       },
     });
   }
@@ -715,9 +731,26 @@ function DangerZone() {
       <Pressable onPress={onSignOut} style={styles.logout}>
         <Text style={styles.logoutText}>Log Out</Text>
       </Pressable>
-      <Pressable onPress={confirmDelete} disabled={deleting} style={styles.deleteButton}>
-        {deleting ? <ActivityIndicator color={colors.bad} /> : <Text style={styles.deleteText}>Delete Account</Text>}
-      </Pressable>
+      {deleteOpen ? (
+        <AppCard style={styles.deleteCard}>
+          <Text style={styles.cardTitle}>Delete account</Text>
+          <Text style={styles.deleteHint}>
+            Enter your password to confirm. Signed in with Google or Apple? Leave it blank: that works within 10 minutes of signing in.
+          </Text>
+          <SecureInput value={deletePassword} onChangeText={(v) => { setDeletePassword(v); setDeleteError(null); }} placeholder="Password" />
+          {deleteError ? <Text style={styles.errorText}>{deleteError}</Text> : null}
+          <Pressable onPress={confirmDelete} disabled={deleting} style={styles.deleteButton}>
+            {deleting ? <ActivityIndicator color={colors.bad} /> : <Text style={styles.deleteText}>Delete Permanently</Text>}
+          </Pressable>
+          <Pressable onPress={() => { animateNextLayout(); setDeleteOpen(false); setDeletePassword(""); setDeleteError(null); }} style={styles.deleteButton}>
+            <Text style={styles.cancelDeleteText}>Cancel</Text>
+          </Pressable>
+        </AppCard>
+      ) : (
+        <Pressable onPress={() => { animateNextLayout(); setDeleteOpen(true); }} style={styles.deleteButton}>
+          <Text style={styles.deleteText}>Delete Account</Text>
+        </Pressable>
+      )}
     </>
   );
 }
@@ -785,6 +818,9 @@ const styles = StyleSheet.create({
   logoutText: { color: colors.bad, fontSize: 15, fontWeight: "800" },
   deleteButton: { alignItems: "center", justifyContent: "center", minHeight: 44 },
   deleteText: { color: colors.bad, fontSize: 14, fontWeight: "700" },
+  deleteCard: { gap: 10 },
+  deleteHint: { color: colors.inkMuted, fontSize: 13, lineHeight: 18, fontWeight: "600" },
+  cancelDeleteText: { color: colors.inkMuted, fontSize: 14, fontWeight: "700" },
   successText: { color: colors.ok, fontSize: 14, fontWeight: "800" },
   errorText: { color: colors.bad, fontSize: 14, fontWeight: "800" },
   disabled: { opacity: 0.6 },

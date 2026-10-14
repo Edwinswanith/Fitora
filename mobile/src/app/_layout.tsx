@@ -41,6 +41,12 @@ function Gate() {
 
     if (status === "anon" && !inAuthArea) {
       router.replace("/");
+    } else if (status === "authed" && user?.mustChangePassword) {
+      // A coach-issued temporary password: the server refuses everything
+      // else until it is replaced.
+      if (top !== "change-password") router.replace("/change-password" as never);
+    } else if (status === "authed" && top === "change-password" && user) {
+      router.replace((dashboardPathForRole(user.role) ?? "/") as never);
     } else if (status === "authed" && inAuthArea && user) {
       const dest = dashboardPathForRole(user.role) ?? "/";
       router.replace(dest as never);
@@ -58,8 +64,9 @@ function Gate() {
   }, [status, user, router]);
 
   const heartbeatTimer = useRef<ReturnType<typeof setInterval> | null>(null);
+  const mustChangePassword = Boolean(user?.mustChangePassword);
   useEffect(() => {
-    if (status !== "authed") return;
+    if (status !== "authed" || mustChangePassword) return;
 
     function sendHeartbeat() {
       apiFetch("/api/presence/heartbeat", { method: "POST" }).catch(() => undefined);
@@ -89,7 +96,7 @@ function Gate() {
       subscription.remove();
       stopHeartbeat();
     };
-  }, [status]);
+  }, [status, mustChangePassword]);
 
   if (status === "loading") {
     return (

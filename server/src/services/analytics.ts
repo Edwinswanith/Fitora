@@ -7,6 +7,7 @@ import { RpeMonitoring } from "../models/RpeMonitoring";
 import { Injury } from "../models/Injury";
 import { AthleteNote } from "../models/AthleteNote";
 import { CoachComment } from "../models/CoachComment";
+import { relationshipStarts } from "./relationshipWindow";
 import { AthleteProfile } from "../models/AthleteProfile";
 import { WaterIntake } from "../models/WaterIntake";
 import { User } from "../models/User";
@@ -352,21 +353,29 @@ export type CoachNote = {
  * notes surface instead of being buried in each athlete's activity timeline.
  */
 export async function buildCoachNotesInbox(
+  coachId: Types.ObjectId,
   athleteIds: Types.ObjectId[],
   days: number,
   today: Date = dayRange(undefined).start
 ): Promise<{ notes: CoachNote[]; openCount: number }> {
   if (athleteIds.length === 0) return { notes: [], openCount: 0 };
   const { start, end } = windowRange(days, today);
-  const [notes, comments, profiles] = await Promise.all([
+  const [allNotes, comments, profiles, since] = await Promise.all([
     AthleteNote.find({ athleteId: { $in: athleteIds }, date: { $gte: start, $lt: end } })
       .sort({ date: -1, createdAt: -1 })
       .lean(),
-    CoachComment.find({ athleteId: { $in: athleteIds }, date: { $gte: start, $lt: end } })
+    // Only this coach's replies count as answering a note.
+    CoachComment.find({ athleteId: { $in: athleteIds }, coachId, date: { $gte: start, $lt: end } })
       .select("athleteId date")
       .lean(),
     AthleteProfile.find({ _id: { $in: athleteIds } }).select("userId").lean(),
+    relationshipStarts(coachId, athleteIds),
   ]);
+  // Notes written to a previous coach stay with that relationship.
+  const notes = allNotes.filter((n) => {
+    const from = since.get(String(n.athleteId));
+    return Boolean(from) && new Date(n.createdAt as Date).getTime() >= from!.getTime();
+  });
 
   // Resolve display names (profile → user).
   const users = await User.find({ _id: { $in: profiles.map((p) => p.userId) } })

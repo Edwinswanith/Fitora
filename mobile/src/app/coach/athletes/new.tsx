@@ -14,12 +14,6 @@ const theme = ROLE_THEMES.coach;
 type Created = { name: string; email: string; tempPassword?: string };
 type Mode = "create" | "link";
 
-const LINK_ERROR_MESSAGES: Record<string, string> = {
-  athlete_not_found: "No self-registered athlete found with that email.",
-  already_linked: "This athlete is already on your roster.",
-  athlete_has_active_coach: "This athlete already has another coach.",
-};
-
 export default function NewAthlete() {
   const router = useRouter();
   const [mode, setMode] = useState<Mode>("create");
@@ -31,6 +25,7 @@ export default function NewAthlete() {
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [created, setCreated] = useState<Created | null>(null);
+  const [invitedEmail, setInvitedEmail] = useState<string | null>(null);
 
   function addToRosterCache(athlete: { athleteId: string; userId?: string; name: string; email: string; sport: string; position?: string | null }) {
     // The roster screen (coach/athletes/index.tsx) shares this cache key —
@@ -92,7 +87,8 @@ export default function NewAthlete() {
 
   async function submitLink() {
     setError(null);
-    if (!linkEmail.trim()) {
+    const target = linkEmail.trim();
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(target)) {
       setError("Enter the athlete's email.");
       return;
     }
@@ -100,18 +96,15 @@ export default function NewAthlete() {
     try {
       const res = await apiFetch("/api/coach/athletes/link", {
         method: "POST",
-        body: JSON.stringify({ email: linkEmail.trim() }),
+        body: JSON.stringify({ email: target }),
       });
-      const json = (await res.json().catch(() => ({}))) as {
-        athlete?: { athleteId: string; userId?: string; name: string; email: string; sport: string; position?: string | null };
-        error?: string;
-      };
-      if (!res.ok || !json.athlete) {
-        setError((json.error && LINK_ERROR_MESSAGES[json.error]) || "Couldn't link this athlete. Check the email and try again.");
+      if (!res.ok) {
+        setError(res.status === 429 ? "Too many invites at once. Wait a minute and try again." : "Couldn't send the invite. Check the email and try again.");
         return;
       }
-      addToRosterCache(json.athlete);
-      setCreated({ name: json.athlete.name, email: json.athlete.email });
+      // The server answers the same way whether or not the email has an
+      // account, so all we can say is that the invite went out if it could.
+      setInvitedEmail(target);
     } catch {
       setError("Network error. Please try again.");
     } finally {
@@ -119,14 +112,36 @@ export default function NewAthlete() {
     }
   }
 
+  if (invitedEmail) {
+    return (
+      <SafeAreaView style={styles.safe} edges={["top"]}>
+        <ScrollView contentContainerStyle={styles.content}>
+          <Text style={styles.title}>Invite sent</Text>
+          <Muted style={{ marginBottom: 16 }}>
+            {`If ${invitedEmail} has a Fitora athlete account without a coach, they'll get your invite. They'll appear in your clients once they accept.`}
+          </Muted>
+          <View style={{ marginTop: 16, gap: 10 }}>
+            <PrimaryButton
+              label="Invite Another"
+              onPress={() => { setInvitedEmail(null); setLinkEmail(""); }}
+              accent={theme.accent}
+              accentInk={theme.accentInk}
+            />
+            <Pressable onPress={() => router.back()} style={styles.secondary}>
+              <Text style={styles.secondaryText}>Back to roster</Text>
+            </Pressable>
+          </View>
+        </ScrollView>
+      </SafeAreaView>
+    );
+  }
+
   if (created) {
     return (
       <SafeAreaView style={styles.safe} edges={["top"]}>
         <ScrollView contentContainerStyle={styles.content}>
-          <Text style={styles.title}>{created.tempPassword ? "Athlete added" : "Client linked"}</Text>
-          <Muted style={{ marginBottom: 16 }}>
-            {created.tempPassword ? `Share these sign-in details with ${created.name}.` : `You're now coaching ${created.name}.`}
-          </Muted>
+          <Text style={styles.title}>Client added</Text>
+          <Muted style={{ marginBottom: 16 }}>{`Share these sign-in details with ${created.name}.`}</Muted>
           {created.tempPassword ? (
             <Card style={{ gap: 12 }}>
               <Secret label="Email" value={created.email} />
@@ -136,8 +151,8 @@ export default function NewAthlete() {
           ) : null}
           <View style={{ marginTop: 16, gap: 10 }}>
             <PrimaryButton
-              label={mode === "link" ? "Link another" : "Add another"}
-              onPress={() => { setCreated(null); setName(""); setEmail(""); setSport(""); setPosition(""); setLinkEmail(""); }}
+              label="Add Another"
+              onPress={() => { setCreated(null); setName(""); setEmail(""); setSport(""); setPosition(""); }}
               accent={theme.accent}
               accentInk={theme.accentInk}
             />
@@ -154,14 +169,14 @@ export default function NewAthlete() {
     <SafeAreaView style={styles.safe} edges={["top"]}>
       <KeyboardAvoidingView behavior={Platform.OS === "ios" ? "padding" : undefined} style={{ flex: 1 }}>
         <ScrollView contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
-          <BackHeader title="Add client" subtitle="Create a new account, or link someone who already signed up." />
+          <BackHeader title="Add client" subtitle="Create a new account, or invite someone who already signed up." />
 
           <View style={styles.modeToggle}>
             <Pressable onPress={() => { setMode("create"); setError(null); }} style={[styles.modeButton, mode === "create" ? styles.modeButtonActive : null]}>
               <Text style={[styles.modeButtonText, mode === "create" ? styles.modeButtonTextActive : null]}>Create new</Text>
             </Pressable>
             <Pressable onPress={() => { setMode("link"); setError(null); }} style={[styles.modeButton, mode === "link" ? styles.modeButtonActive : null]}>
-              <Text style={[styles.modeButtonText, mode === "link" ? styles.modeButtonTextActive : null]}>Link existing</Text>
+              <Text style={[styles.modeButtonText, mode === "link" ? styles.modeButtonTextActive : null]}>Invite existing</Text>
             </Pressable>
           </View>
 
@@ -176,10 +191,10 @@ export default function NewAthlete() {
             </Card>
           ) : (
             <Card style={{ gap: 14 }}>
-              <Muted>Links a self-registered athlete to your roster by email. No new account or password is created.</Muted>
+              <Muted>Sends an invite to an athlete who already has a Fitora account. They join your clients only after they accept.</Muted>
               <Field label="Athlete email" value={linkEmail} onChange={setLinkEmail} placeholder="jane@academy.com" email />
               {error ? <Banner kind="error">{error}</Banner> : null}
-              <PrimaryButton label="Link Client" onPress={submitLink} loading={saving} accent={theme.accent} accentInk={theme.accentInk} />
+              <PrimaryButton label="Send Invite" onPress={submitLink} loading={saving} accent={theme.accent} accentInk={theme.accentInk} />
             </Card>
           )}
         </ScrollView>

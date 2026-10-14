@@ -2,6 +2,7 @@ import { Router, type Request, type Response } from "express";
 import { Types } from "mongoose";
 import { requireAuth } from "../middleware/auth";
 import { requireRole } from "../middleware/role";
+import { loadScope } from "../middleware/coachAthleteAccess";
 import { writeRateLimit } from "../middleware/rateLimit";
 import { CoachVideo, COACH_VIDEO_CATEGORIES, COACH_VIDEO_VISIBILITIES } from "../models/CoachVideo";
 import { CoachVideoProgress } from "../models/CoachVideoProgress";
@@ -55,7 +56,7 @@ async function notifyNewlySelectedClients(
 }
 
 const router = Router();
-router.use(requireAuth, requireRole("coach"));
+router.use(requireAuth, requireRole("coach"), loadScope);
 
 function reqStr(v: unknown): string {
   return typeof v === "string" ? v.trim() : "";
@@ -158,6 +159,12 @@ router.patch("/videos/:videoId", writeRateLimit({ windowMs: 60_000, max: 40 }), 
     const previousIds = new Set((video.selectedClientIds as unknown as Types.ObjectId[]).map((id) => id.toString()));
     const nextIds = raw.map((id: string) => new Types.ObjectId(id));
     newlyAddedClientIds = nextIds.filter((id) => !previousIds.has(id.toString()));
+    // Only current clients can be added: anything else would notify (and
+    // name the coach to) athletes this coach has no relationship with.
+    const roster = new Set((req.actor!.assignedAthleteIds ?? []).map((id) => id.toString()));
+    if (newlyAddedClientIds.some((id) => !roster.has(id.toString()))) {
+      return void res.status(403).json({ error: "client_not_assigned" });
+    }
     video.selectedClientIds = nextIds as never;
   }
 

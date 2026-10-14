@@ -144,7 +144,7 @@ async function allowPush(userId: Types.ObjectId, tokenName?: string): Promise<vo
 }
 
 async function assign(coachId: Types.ObjectId, athleteId: Types.ObjectId): Promise<void> {
-  await CoachAthleteAssignment.create({ coachId, athleteId, assignedBy: coachId });
+  await CoachAthleteAssignment.create({ coachId, athleteId, assignedBy: coachId, assignedAt: new Date(Date.UTC(2025, 0, 1)) });
 }
 
 async function seedRpe(athleteId: Types.ObjectId, date: Date, sessionType: RpeSessionType): Promise<void> {

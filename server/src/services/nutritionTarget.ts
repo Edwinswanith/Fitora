@@ -11,7 +11,11 @@ export class NutritionTargetError extends Error {
   }
 }
 
-function ageFromDob(dob: Date | null | undefined): number | null {
+/** Ages the engine's formulas are meant for; outside them there is no target. */
+export const MIN_TARGET_AGE = 13;
+export const MAX_TARGET_AGE = 100;
+
+export function ageFromDob(dob: Date | null | undefined): number | null {
   if (!dob) return null;
   const now = new Date();
   let age = now.getUTCFullYear() - dob.getUTCFullYear();
@@ -31,6 +35,8 @@ function engineInputFromProfile(profile: AthleteProfileDoc): NutritionEngineInpu
     !profile.weightKg ||
     !profile.heightCm ||
     age === null ||
+    age < MIN_TARGET_AGE ||
+    age > MAX_TARGET_AGE ||
     !profile.biologicalSex ||
     !profile.activityLevel ||
     !profile.fitnessGoal ||

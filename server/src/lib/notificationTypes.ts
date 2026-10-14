@@ -84,6 +84,10 @@ export const NOTIFICATION_TYPES = {
   join_requested: "reminders",
   join_accepted: "milestones",
   join_declined: "messages",
+
+  // --- Coach invites an existing athlete by email ---
+  coach_invited: "messages",
+  coach_invite_accepted: "milestones",
 } as const satisfies Record<string, NotificationCategory>;
 
 export type NotificationType = keyof typeof NOTIFICATION_TYPES;
