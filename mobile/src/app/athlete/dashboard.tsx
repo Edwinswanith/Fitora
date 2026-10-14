@@ -1,5 +1,5 @@
 import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Animated, Pressable, StyleSheet, TextInput, View } from "react-native";
+import { Animated, FlatList, Pressable, StyleSheet, TextInput, View } from "react-native";
 import { useFocusEffect, useLocalSearchParams, useRouter } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
 import { Text } from "../../components/AppText";
@@ -38,6 +38,7 @@ import { animateNextLayout, prefersReducedMotion, usePop } from "../../lib/motio
 import { firstStepsState, type FirstStepKey, type FirstStepsState } from "../../lib/firstSteps";
 import { athleteNeedsOnboarding, hasSeenOnboarding } from "../../lib/onboarding";
 import AsyncStorage from "@react-native-async-storage/async-storage";
+import { centeredStart, dayOfMonth, monthKey, monthLabel, monthRange, monthsAround, stripDates, weekdayShort } from "../../lib/dateStrip";
 import { PexMascot } from "../../components/mascot/PexMascot";
 import { dayProgress, daysSinceLastCheckIn, derivePexReaction, streakMilestoneLine, type PexActionKey } from "../../lib/pex/brain";
 import type { PexFace } from "../../lib/pex/faces";
@@ -1264,21 +1265,6 @@ function SessionCard({
   );
 }
 
-const WEEKDAY_SHORT = ["MON", "TUE", "WED", "THU", "FRI", "SAT", "SUN"];
-
-/** The Monday-Sunday week (as date keys) containing `centerKey`. */
-function weekDatesFor(centerKey: string): string[] {
-  const [year, month, day] = centerKey.split("-").map(Number);
-  const center = new Date(year, (month || 1) - 1, day || 1);
-  const isoDow = center.getDay() === 0 ? 7 : center.getDay(); // 1=Mon..7=Sun
-  const monday = addDays(centerKey, 1 - isoDow);
-  return Array.from({ length: 7 }, (_, i) => addDays(monday, i));
-}
-
-function dayNumber(key: string): number {
-  return Number(key.split("-")[2]);
-}
-
 type WorkoutStateTone = "success" | "primary" | "warning" | "danger" | "neutral";
 
 /** Derives a display state from real assignment fields — never invents a state for a day with no assignment (that's a rest day, handled separately). */
@@ -1295,17 +1281,44 @@ function WorkoutsView({ data }: { data: AthleteDashboardData }) {
   const [selectedDate, setSelectedDate] = useState(data.date);
   const coachName = data.coachProfile?.name ?? data.coaches[0]?.name ?? "your coach";
 
+  // Today loads 30 days back and 14 ahead; further days come a month at a time.
+  const [monthWorkouts, setMonthWorkouts] = useState<Record<string, WorkoutAssignmentSummary[]>>({});
+  const [recenter, setRecenter] = useState(0);
+  const requestedMonths = useRef(new Set<string>());
+  const loadedFrom = addDays(data.date, -30);
+  const loadedTo = addDays(data.date, 14);
+  const loadMonthsAround = useCallback(
+    (day: string) => {
+      for (const month of monthsAround(day)) {
+        const { from, to } = monthRange(month);
+        if ((from >= loadedFrom && to <= loadedTo) || requestedMonths.current.has(month)) continue;
+        requestedMonths.current.add(month);
+        apiJson<{ assignments: WorkoutAssignmentSummary[] }>(`/api/athlete/workout-assignments?from=${from}&to=${to}`)
+          .then((result) => setMonthWorkouts((prev) => ({ ...prev, [month]: result.assignments ?? [] })))
+          .catch(() => requestedMonths.current.delete(month));
+      }
+    },
+    [loadedFrom, loadedTo]
+  );
+  useEffect(() => loadMonthsAround(selectedDate), [selectedDate, loadMonthsAround]);
+
   const workoutsByDate = useMemo(() => {
     const map = new Map<string, WorkoutAssignmentSummary[]>();
-    for (const workout of [...data.recentWorkouts, ...data.workouts, ...data.upcomingWorkouts]) {
+    const seen = new Set<string>();
+    // Today's own lists first: their progress counts are the reliable ones.
+    for (const workout of [...data.workouts, ...data.recentWorkouts, ...data.upcomingWorkouts, ...Object.values(monthWorkouts).flat()]) {
+      if (seen.has(workout.id)) continue;
+      seen.add(workout.id);
       const list = map.get(workout.scheduledDate) ?? [];
       list.push(workout);
       map.set(workout.scheduledDate, list);
     }
     return map;
-  }, [data.recentWorkouts, data.workouts, data.upcomingWorkouts]);
+  }, [data.recentWorkouts, data.workouts, data.upcomingWorkouts, monthWorkouts]);
+  const selectedMonth = monthKey(selectedDate);
+  const selectedDayLoading =
+    (selectedDate < loadedFrom || selectedDate > loadedTo) && !(selectedMonth in monthWorkouts);
 
-  const weekDates = useMemo(() => weekDatesFor(data.date), [data.date]);
   const selectedWorkout = (workoutsByDate.get(selectedDate) ?? [])[0] ?? null;
   const isSelectedToday = selectedDate === data.date;
 
@@ -1337,19 +1350,25 @@ function WorkoutsView({ data }: { data: AthleteDashboardData }) {
         onCalendarPress={() => {
           setSegment("today");
           setSelectedDate(data.date);
+          setRecenter((value) => value + 1);
         }}
       />
       <WorkoutSegmentedControl value={segment} onChange={setSegment} />
       {segment === "today" ? (
         <>
-          <WeeklyCalendarStrip
-            dates={weekDates}
+          <DateStrip
             selected={selectedDate}
             todayKeyValue={data.date}
             workoutsByDate={workoutsByDate}
+            recenter={recenter}
             onSelect={setSelectedDate}
+            onVisibleCenter={loadMonthsAround}
           />
-          {selectedWorkout ? (
+          {selectedDayLoading ? (
+            <AppCard>
+              <Text style={styles.dateStripLoading}>Loading this day...</Text>
+            </AppCard>
+          ) : selectedWorkout ? (
             <TrainingWorkoutHero
               workout={selectedWorkout}
               detail={selectedDetail}
@@ -1403,41 +1422,99 @@ function WorkoutsView({ data }: { data: AthleteDashboardData }) {
   );
 }
 
-function WeeklyCalendarStrip({
-  dates,
+const STRIP_VISIBLE_DAYS = 7;
+
+/**
+ * Scrollable day strip. Tapping a day selects it and slides the strip so it
+ * sits in the middle (a day on the right moves the list left, one on the left
+ * moves it right); swiping scrolls freely through about six months either way.
+ */
+function DateStrip({
   selected,
   todayKeyValue,
   workoutsByDate,
+  recenter,
   onSelect,
+  onVisibleCenter,
 }: {
-  dates: string[];
   selected: string;
   todayKeyValue: string;
   workoutsByDate: Map<string, WorkoutAssignmentSummary[]>;
+  /** Changes when the strip should jump back to the selected day (e.g. the Today button). */
+  recenter: number;
   onSelect: (date: string) => void;
+  onVisibleCenter: (date: string) => void;
 }) {
+  const dates = useMemo(() => stripDates(todayKeyValue), [todayKeyValue]);
+  const listRef = useRef<FlatList<string>>(null);
+  const [width, setWidth] = useState(0);
+  const [visibleCenter, setVisibleCenter] = useState(selected);
+  const itemWidth = width ? width / STRIP_VISIBLE_DAYS : 0;
+  const selectedIndex = Math.max(0, dates.indexOf(selected));
+  const placed = useRef(false);
+
+  useEffect(() => {
+    if (!itemWidth) return;
+    const offset = centeredStart(selectedIndex, STRIP_VISIBLE_DAYS, dates.length) * itemWidth;
+    listRef.current?.scrollToOffset({ offset, animated: placed.current && !prefersReducedMotion() });
+    placed.current = true;
+    setVisibleCenter(dates[selectedIndex]);
+  }, [selectedIndex, itemWidth, recenter, dates]);
+
+  function handleScrollEnd(x: number) {
+    if (!itemWidth) return;
+    const center = dates[Math.min(dates.length - 1, Math.max(0, Math.round(x / itemWidth) + Math.floor(STRIP_VISIBLE_DAYS / 2)))];
+    setVisibleCenter(center);
+    onVisibleCenter(center);
+  }
+
   return (
-    <View style={styles.weekStrip}>
-      {dates.map((date, index) => {
-        const isSelected = date === selected;
-        const isToday = date === todayKeyValue;
-        const workouts = workoutsByDate.get(date) ?? [];
-        const state = workouts.length ? workoutState(workouts[0], todayKeyValue) : null;
-        const dotColor = state?.tone === "success" ? colors.ok : state?.tone === "danger" ? colors.bad : state?.tone === "primary" ? colors.primary : "transparent";
-        return (
-          <Pressable
-            key={date}
-            onPress={() => onSelect(date)}
-            style={[styles.weekDay, isToday && !isSelected ? styles.weekDayToday : null, isSelected ? styles.weekDaySelected : null]}
-            accessibilityRole="button"
-            accessibilityState={{ selected: isSelected }}
-          >
-            <Text style={[styles.weekDayLabel, isSelected ? styles.weekDayLabelSelected : null]}>{WEEKDAY_SHORT[index]}</Text>
-            <Text style={[styles.weekDayNumber, isSelected ? styles.weekDayNumberSelected : null]}>{dayNumber(date)}</Text>
-            <View style={[styles.weekDayDot, { backgroundColor: dotColor }]} />
-          </Pressable>
-        );
-      })}
+    <View style={styles.dateStrip} onLayout={(event) => setWidth(event.nativeEvent.layout.width)}>
+      <Text style={styles.dateStripMonth}>{monthLabel(visibleCenter)}</Text>
+      {itemWidth ? (
+        <FlatList
+          ref={listRef}
+          data={dates}
+          horizontal
+          keyExtractor={(date) => date}
+          showsHorizontalScrollIndicator={false}
+          snapToInterval={itemWidth}
+          decelerationRate="fast"
+          initialNumToRender={21}
+          windowSize={7}
+          initialScrollIndex={centeredStart(selectedIndex, STRIP_VISIBLE_DAYS, dates.length)}
+          getItemLayout={(_, index) => ({ length: itemWidth, offset: itemWidth * index, index })}
+          onMomentumScrollEnd={(event) => handleScrollEnd(event.nativeEvent.contentOffset.x)}
+          onScrollEndDrag={(event) => handleScrollEnd(event.nativeEvent.contentOffset.x)}
+          renderItem={({ item: date }) => {
+            const isSelected = date === selected;
+            const isToday = date === todayKeyValue;
+            const workouts = workoutsByDate.get(date) ?? [];
+            const state = workouts.length ? workoutState(workouts[0], todayKeyValue) : null;
+            const dotColor = state?.tone === "success" ? colors.ok : state?.tone === "danger" ? colors.bad : state?.tone === "primary" ? colors.primary : "transparent";
+            return (
+              <View style={{ width: itemWidth, alignItems: "center" }}>
+                <Pressable
+                  onPress={() => {
+                    selectionFeedback();
+                    onSelect(date);
+                  }}
+                  style={[styles.weekDay, isToday && !isSelected ? styles.weekDayToday : null, isSelected ? styles.weekDaySelected : null]}
+                  accessibilityRole="button"
+                  accessibilityLabel={`${weekdayShort(date)} ${dayOfMonth(date)} ${monthLabel(date)}${isToday ? ", today" : ""}`}
+                  accessibilityState={{ selected: isSelected }}
+                >
+                  <Text style={[styles.weekDayLabel, isSelected ? styles.weekDayLabelSelected : null]}>{weekdayShort(date)}</Text>
+                  <Text style={[styles.weekDayNumber, isSelected ? styles.weekDayNumberSelected : null]}>{dayOfMonth(date)}</Text>
+                  <View style={[styles.weekDayDot, { backgroundColor: dotColor }]} />
+                </Pressable>
+              </View>
+            );
+          }}
+        />
+      ) : (
+        <View style={{ height: 62 }} />
+      )}
     </View>
   );
 }
@@ -4193,7 +4270,9 @@ const styles = StyleSheet.create({
   workoutSegment: { flex: 1, minHeight: 36, borderRadius: 9, alignItems: "center", justifyContent: "center" },
   workoutSegmentText: { color: colors.ink, fontSize: 14, lineHeight: 18, fontWeight: "700" },
   workoutSegmentTextActive: { color: colors.onPrimary, fontWeight: "900" },
-  weekStrip: { flexDirection: "row", justifyContent: "space-between", paddingTop: 7, paddingBottom: 10 },
+  dateStrip: { paddingTop: 4, paddingBottom: 10, gap: 6 },
+  dateStripMonth: { color: colors.inkMuted, fontSize: 13, lineHeight: 18, fontWeight: "800", letterSpacing: 0.3, paddingLeft: 4 },
+  dateStripLoading: { color: colors.inkMuted, fontSize: 14, fontWeight: "700", textAlign: "center", paddingVertical: 18 },
   weekDay: { width: 43, minHeight: 54, alignItems: "center", gap: 4, paddingVertical: 7, borderRadius: 11, borderWidth: 1, borderColor: "transparent" },
   weekDayToday: { borderColor: colors.primary, backgroundColor: colors.primarySoft },
   weekDaySelected: { backgroundColor: colors.primary, borderColor: colors.primary },
