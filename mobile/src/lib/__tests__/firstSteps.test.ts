@@ -1,6 +1,6 @@
 import { firstStepsState } from "../firstSteps";
 
-const base = { today: "2026-10-13", waterMl: 0, readinessScore: null, hasCoach: false };
+const base = { today: "2026-10-13", waterMl: 0, readinessScore: null, hasCoach: false, hasTarget: true };
 const joinedLocal = (y: number, m: number, d: number) => new Date(y, m - 1, d, 9, 0).toISOString();
 
 describe("firstStepsState", () => {
@@ -25,5 +25,11 @@ describe("firstStepsState", () => {
     expect(firstStepsState({ ...base, createdAt: joinedLocal(2026, 10, 7) })?.day).toBe(7);
     expect(firstStepsState({ ...base, createdAt: joinedLocal(2026, 10, 6) })).toBeNull();
     expect(firstStepsState({ ...base, createdAt: null })).toBeNull();
+  });
+
+  it("asks for the calorie target first while it is missing", () => {
+    const state = firstStepsState({ ...base, hasTarget: false, waterMl: 500, createdAt: joinedLocal(2026, 10, 13) });
+    expect(state?.steps.map((s) => s.key)).toEqual(["target", "checkin", "coach"]);
+    expect(state?.steps[0].done).toBe(false);
   });
 });

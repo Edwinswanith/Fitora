@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Pressable, StyleSheet, TextInput, View } from "react-native";
 import { useRouter } from "expo-router";
 import { Text } from "../../components/AppText";
@@ -20,11 +20,10 @@ import {
   SectionLabel,
   StaleDataNotice,
 } from "../../components/fitora";
-import { Ionicons } from "@expo/vector-icons";
 import { Avatar } from "../../components/Avatar";
 import { DateField, TimeField } from "../../components/DateTimeField";
 import { combineLocalDateTime, isInFuture, isoToLocalParts, todayLocalDate } from "../../lib/dateTimeValues";
-import { apiFetch } from "../../lib/api";
+import { apiFetch, apiJson } from "../../lib/api";
 import { PAYMENTS_ENABLED } from "../../lib/features";
 import { joinSessionCall } from "../../lib/videoCall";
 import { decideJoinRequest, type JoinRequest } from "../../lib/joinRequests";
@@ -42,12 +41,16 @@ import {
   titleCase,
   useAsyncData,
   type CoachHomeData,
+  type CoachOwnProfile,
   type CoachSession,
   type DailyCard,
 } from "../../lib/fitoraData";
+import { sportLabel } from "../../lib/sport";
+import { coachNeedsOnboarding, hasSeenOnboarding, markOnboardingSeen } from "../../lib/onboarding";
 
 export default function CoachHome() {
   const state = useAsyncData(loadCoachHomeData, [], "coach-dashboard");
+  useCoachOnboardingRedirect();
 
   if (state.loading && !state.data) {
     return (
@@ -597,7 +600,7 @@ function JoinRequestsCard({ requests, onDecided }: { requests: JoinRequest[]; on
       {requests.map((request, index) => (
         <View key={request.id} style={[styles.joinRow, index > 0 ? styles.joinRowDivider : null]}>
           <Text style={styles.cardTitle}>{request.athlete.name}</Text>
-          <Text style={styles.muted}>{[request.athlete.sport ? titleCase(request.athlete.sport) : null, relativeAge(request.createdAt)].filter(Boolean).join(" · ")}</Text>
+          <Text style={styles.muted}>{[sportLabel(request.athlete.sport) ? titleCase(request.athlete.sport) : null, relativeAge(request.createdAt)].filter(Boolean).join(" · ")}</Text>
           {request.message ? <Text style={styles.joinMessage}>{`"${request.message}"`}</Text> : null}
           <View style={styles.actionRow}>
             <ActionButton
@@ -630,48 +633,44 @@ function relativeAge(iso: string): string {
   return `${days} day${days === 1 ? "" : "s"} ago`;
 }
 
-/** First-day guide for a coach with no clients yet, instead of a wall of zeros. */
+/** A coach with no clients yet has one thing to do; profile setup lives in its own flow. */
 function CoachGettingStartedCard() {
   const router = useRouter();
-  const steps: { icon: keyof typeof Ionicons.glyphMap; title: string; body: string; onPress: () => void }[] = [
-    {
-      icon: "person-add-outline",
-      title: "Add your first client",
-      body: "Create their account, or link one by email.",
-      onPress: () => router.push("/coach/athletes/new" as never),
-    },
-    {
-      icon: "barbell-outline",
-      title: "Build a workout template",
-      body: "Reuse it for every client you coach.",
-      onPress: () => router.push({ pathname: "/coach/plan/workout-template", params: { kind: "workout" } } as never),
-    },
-    {
-      icon: "calendar-outline",
-      title: "Set your availability",
-      body: "So clients can book video sessions with you.",
-      onPress: () => router.push("/coach/profile" as never),
-    },
-  ];
   return (
-    <AppCard>
-      <Text style={styles.blueTitle}>Welcome to Fitora</Text>
-      <Text style={styles.cardTitle}>Get set up in 3 steps</Text>
-      {steps.map((step, index) => (
-        <View key={step.title}>
-          <Pressable onPress={step.onPress} style={({ pressed }) => [styles.setupRow, pressed ? { opacity: 0.75 } : null]} accessibilityRole="button">
-            <IconTile icon={step.icon} size={40} />
-            <View style={{ flex: 1, minWidth: 0 }}>
-              <Text style={styles.setupTitle}>{step.title}</Text>
-              <Text style={styles.muted}>{step.body}</Text>
-            </View>
-            <Ionicons name="chevron-forward" size={20} color={colors.inkFaint} />
-          </Pressable>
-          {index < steps.length - 1 ? <Divider /> : null}
-        </View>
-      ))}
-    </AppCard>
+    <HeroCard
+      icon="person-add-outline"
+      eyebrow="Welcome to Fitora"
+      title="Add your first client"
+      body="Create their account, or link someone who already signed up."
+      actionLabel="Add Client"
+      onAction={() => router.push("/coach/athletes/new" as never)}
+    />
   );
+}
+
+/** Sends a coach who hasn't set anything up into the one-time setup flow, once. */
+function useCoachOnboardingRedirect() {
+  const router = useRouter();
+  const { user } = useAuth();
+  const userId = user?.id;
+  useEffect(() => {
+    if (!userId) return undefined;
+    let active = true;
+    (async () => {
+      if (await hasSeenOnboarding(userId)) return;
+      const [profile, availability] = await Promise.all([
+        apiJson<{ profile: CoachOwnProfile }>("/api/coach/profile"),
+        apiJson<{ rules: unknown[] }>("/api/coach/availability"),
+      ]);
+      if (!active) return;
+      const due = coachNeedsOnboarding({ ...profile.profile, availabilityRuleCount: availability.rules.length });
+      if (due) router.replace("/coach/onboarding" as never);
+      else await markOnboardingSeen(userId);
+    })().catch(() => undefined);
+    return () => {
+      active = false;
+    };
+  }, [userId, router]);
 }
 
 /** Every pending booking request, so a coach can act on more than just the next session. */
@@ -850,8 +849,6 @@ const styles = StyleSheet.create({
   activityRow: { minHeight: 42, flexDirection: "row", alignItems: "center", gap: 9 },
   timeText: { width: 48, color: colors.inkMuted, fontSize: 12, fontWeight: "700" },
   activityText: { flex: 1, color: colors.ink, fontSize: 12, lineHeight: 16, fontWeight: "700" },
-  setupRow: { flexDirection: "row", alignItems: "center", gap: 12, paddingVertical: 10 },
-  setupTitle: { color: colors.ink, fontSize: 15, fontWeight: "800" },
   requestRow: { flexDirection: "row", alignItems: "center", gap: 10, paddingVertical: 6 },
   sessionPanel: { marginTop: 10, borderTopWidth: 1, borderTopColor: colors.line, paddingTop: 9, gap: 8 },
   sessionDivider: { height: 1, backgroundColor: colors.line, marginVertical: 2 },

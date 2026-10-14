@@ -38,6 +38,7 @@ import {
 import { planVisual, workoutVisual, type FitoraIconName, type FitoraTone } from "../../../lib/fitoraIcons";
 import { colors } from "../../../lib/theme";
 import { addDays, loadCoachPlanData, titleCase, todayKey, useAsyncData, type CoachPlanData } from "../../../lib/fitoraData";
+import { sportLabel } from "../../../lib/sport";
 
 type Tab = "assignments" | "templates" | "routines";
 type PlanMode = "workout" | "tasks" | "meal" | "routine";
@@ -701,7 +702,7 @@ function PlanComposer({
               multi
               selected={selectedAthleteIds.includes(client.athleteId)}
               title={client.name}
-              subtitle={client.sport || "Client"}
+              subtitle={sportLabel(client.sport) || "Client"}
               onPress={() => toggleAthlete(client.athleteId)}
             />
           ))

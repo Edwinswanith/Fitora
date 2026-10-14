@@ -75,6 +75,7 @@ export default function CoachLayout() {
       <Tabs.Screen name="messages" options={{ href: null }} />
       <Tabs.Screen name="announcements" options={{ href: null }} />
       <Tabs.Screen name="coaches" options={{ href: null }} />
+      <Tabs.Screen name="onboarding" options={{ href: null, tabBarStyle: { display: "none" } }} />
     </Tabs>
   );
 }

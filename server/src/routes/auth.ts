@@ -261,6 +261,9 @@ function checkLoginRateLimit(req: Request): boolean {
 
 type SocialSignupRole = "athlete" | "coach";
 
+/** AthleteProfile.sport is required; this marks "not answered yet". */
+const SPORT_NOT_SET = "Not set";
+
 /**
  * The phone's IANA zone sent at sign-up. Reminder times and quiet hours are
  * evaluated in it, so an unknown or missing zone falls back to UTC rather
@@ -318,7 +321,7 @@ async function findOrCreateSocialUser(input: {
         ...(input.appleSubject ? { appleSubject: input.appleSubject } : {}),
       });
       if (signupRole === "athlete") {
-        await AthleteProfile.create({ userId: user._id, sport: "Not set", timezone: signupTimezone(input.timezone) });
+        await AthleteProfile.create({ userId: user._id, sport: SPORT_NOT_SET, timezone: signupTimezone(input.timezone) });
       }
     } catch (err) {
       if (user) await User.deleteOne({ _id: user._id }).catch(() => undefined);
@@ -594,7 +597,8 @@ router.post("/apple", async (req: Request, res: Response) => {
 
 /**
  * POST /api/auth/register-athlete
- * body: { name, email, password, sport, position?, timezone? }
+ * body: { name, email, password, sport?, position?, timezone? }
+ * Sport is optional: the app asks for it later in onboarding.
  *
  * Self-service athlete sign-up: creates a User(role: athlete) + AthleteProfile
  * with NO coach assignment and NO academy, then signs the new athlete straight
@@ -635,11 +639,6 @@ router.post("/register-athlete", async (req: Request, res: Response) => {
     res.status(400).json({ error: "weak_password" });
     return;
   }
-  if (!sport) {
-    res.status(400).json({ error: "invalid_sport" });
-    return;
-  }
-
   if (await User.exists({ email })) {
     res.status(409).json({ error: "email_already_exists" });
     return;
@@ -660,7 +659,7 @@ router.post("/register-athlete", async (req: Request, res: Response) => {
     });
     await AthleteProfile.create({
       userId: user._id,
-      sport,
+      sport: sport || SPORT_NOT_SET,
       position,
       timezone,
     });

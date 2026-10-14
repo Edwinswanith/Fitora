@@ -158,9 +158,7 @@ export default function CoachProfile() {
         hasSpecializations={Boolean(profile?.specializations?.length)}
         hasAvailability={data.availabilityRules.length > 0}
         listed={Boolean(profile?.active)}
-        onEditProfile={() => router.push("/account" as never)}
-        onSetAvailability={() => setAvailabilityOpen(true)}
-        onGoLive={() => void toggleMarketplace(true)}
+        onContinueSetup={(start) => router.replace({ pathname: "/coach/onboarding", params: { start } } as never)}
       />
 
       <AppCard>
@@ -395,62 +393,37 @@ export default function CoachProfile() {
 }
 
 /**
- * What still stops athletes from finding and booking this coach, in the order
- * to fix it. One action at a time; calm once everything is in place.
+ * Until athletes can find and book this coach, the hero sends them back into
+ * the setup flow at the first missing step. Calm once everything is in place.
  */
 function ProfileReadinessHero({
   hasBio,
   hasSpecializations,
   hasAvailability,
   listed,
-  onEditProfile,
-  onSetAvailability,
-  onGoLive,
+  onContinueSetup,
 }: {
   hasBio: boolean;
   hasSpecializations: boolean;
   hasAvailability: boolean;
   listed: boolean;
-  onEditProfile: () => void;
-  onSetAvailability: () => void;
-  onGoLive: () => void;
+  onContinueSetup: (start: "specialty" | "bio" | "hours" | "live") => void;
 }) {
-  const steps = [hasBio, hasSpecializations, hasAvailability, listed];
-  const done = steps.filter(Boolean).length;
-  const progressLine = `${done} of ${steps.length} done`;
-  if (!hasBio || !hasSpecializations) {
+  const missing = [
+    !hasSpecializations ? "what you coach" : null,
+    !hasBio ? "a short bio" : null,
+    !hasAvailability ? "your hours" : null,
+  ].filter(Boolean) as string[];
+  if (missing.length || !listed) {
+    const start = !hasSpecializations ? "specialty" : !hasBio ? "bio" : !hasAvailability ? "hours" : "live";
     return (
       <HeroCard
         icon="person-circle-outline"
-        eyebrow={`Profile setup · ${progressLine}`}
-        title={!hasBio ? "Add a short bio" : "Add your specializations"}
-        body="Athletes read this first. Two or three sentences is enough."
-        actionLabel="Edit Profile"
-        onAction={onEditProfile}
-      />
-    );
-  }
-  if (!hasAvailability) {
-    return (
-      <HeroCard
-        icon="calendar-outline"
-        eyebrow={`Profile setup · ${progressLine}`}
-        title="Set your working hours"
-        body="Clients can book only inside these hours."
-        actionLabel="Set Availability"
-        onAction={onSetAvailability}
-      />
-    );
-  }
-  if (!listed) {
-    return (
-      <HeroCard
-        icon="storefront-outline"
-        eyebrow={`Profile setup · ${progressLine}`}
-        title="Ready to be found"
-        body="Your profile is complete. List it so athletes can find you."
-        actionLabel="List My Profile"
-        onAction={onGoLive}
+        eyebrow="Profile setup"
+        title={missing.length ? "Finish your profile" : "Ready to be found"}
+        body={missing.length ? `Still to add: ${missing.join(", ")}.` : "Your profile is complete. List it so athletes can find you."}
+        actionLabel={missing.length ? "Continue Setup" : "Review and List"}
+        onAction={() => onContinueSetup(start)}
       />
     );
   }

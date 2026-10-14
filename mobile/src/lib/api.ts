@@ -253,7 +253,7 @@ export async function registerAthlete(fields: {
   name: string;
   email: string;
   password: string;
-  sport: string;
+  sport?: string;
   position?: string;
 }): Promise<LoginResult> {
   try {
