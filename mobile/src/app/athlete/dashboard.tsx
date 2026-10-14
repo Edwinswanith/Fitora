@@ -3574,7 +3574,7 @@ function NoCoachState({ onFindCoach, onCoachJoined }: { onFindCoach: () => void;
           <AppCard key={invite.id} style={styles.inviteCard}>
             <Text style={styles.inviteTitle}>{`${invite.coach.name} invited you to train with them`}</Text>
             {invite.coach.specializations.length || invite.coach.yearsExperience ? (
-              <Text style={styles.noCoachBody}>
+              <Text style={styles.inviteMeta}>
                 {[
                   invite.coach.specializations.slice(0, 3).join(", "),
                   invite.coach.yearsExperience ? `${invite.coach.yearsExperience} yrs experience` : "",
@@ -4368,6 +4368,7 @@ const styles = StyleSheet.create({
   noCoachButton: { alignSelf: "stretch", minHeight: 44, borderRadius: 10 },
   inviteCard: { paddingHorizontal: 16, paddingVertical: 16, gap: 10 },
   inviteTitle: { color: colors.ink, fontSize: 17, lineHeight: 22, fontWeight: "900" },
+  inviteMeta: { color: colors.inkMuted, fontSize: 13.5, lineHeight: 19, fontWeight: "600" },
   inviteNote: { color: colors.inkMuted, fontSize: 12.5, lineHeight: 17, fontWeight: "600" },
   inviteActions: { flexDirection: "row", gap: 10 },
   inviteButton: { flex: 1, minHeight: 44, borderRadius: 10 },

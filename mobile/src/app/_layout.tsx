@@ -64,8 +64,9 @@ function Gate() {
   }, [status, user, router]);
 
   const heartbeatTimer = useRef<ReturnType<typeof setInterval> | null>(null);
+  const mustChangePassword = Boolean(user?.mustChangePassword);
   useEffect(() => {
-    if (status !== "authed") return;
+    if (status !== "authed" || mustChangePassword) return;
 
     function sendHeartbeat() {
       apiFetch("/api/presence/heartbeat", { method: "POST" }).catch(() => undefined);
@@ -95,7 +96,7 @@ function Gate() {
       subscription.remove();
       stopHeartbeat();
     };
-  }, [status]);
+  }, [status, mustChangePassword]);
 
   if (status === "loading") {
     return (

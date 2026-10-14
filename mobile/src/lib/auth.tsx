@@ -96,8 +96,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   }, [status]);
 
   useEffect(() => {
-    if (status === "authed" && user?.role === "athlete" && user.id) void syncAthleteTimezone(user.id);
-  }, [status, user?.role, user?.id]);
+    if (status === "authed" && user?.role === "athlete" && user.id && !user.mustChangePassword) void syncAthleteTimezone(user.id);
+  }, [status, user?.role, user?.id, user?.mustChangePassword]);
 
   const signIn = useCallback(async (email: string, password: string) => {
     const result = await apiLogin(email, password);
