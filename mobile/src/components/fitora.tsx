@@ -610,11 +610,14 @@ export function HeroCard({
   onSecondary,
   children,
   calm = false,
+  mascot,
 }: {
   eyebrow?: string;
   title: string;
   body?: string;
   icon?: IconName;
+  /** Pex (or another character) in place of the icon tile. */
+  mascot?: ReactNode;
   actionLabel?: string;
   onAction?: () => void;
   secondaryLabel?: string;
@@ -625,8 +628,8 @@ export function HeroCard({
 }) {
   const content = (
     <>
-      <View style={styles.heroTop}>
-        {icon ? (
+      <View style={[styles.heroTop, mascot ? styles.heroTopMascot : null]}>
+        {mascot ? <View style={styles.heroMascot}>{mascot}</View> : icon ? (
           <View style={[styles.heroIcon, calm ? styles.heroIconCalm : null]}>
             <Ionicons name={icon} size={24} color={colors.primary} />
           </View>
@@ -1210,6 +1213,8 @@ const styles = StyleSheet.create({
   backHeaderAction: { color: colors.primary, fontSize: 15, fontWeight: "800" },
   heroCalm: {},
   heroTop: { flexDirection: "row", alignItems: "flex-start", gap: 12 },
+  heroTopMascot: { alignItems: "center", gap: 14 },
+  heroMascot: { marginLeft: -4 },
   heroIcon: { width: 48, height: 48, borderRadius: 14, alignItems: "center", justifyContent: "center", backgroundColor: colors.primarySoft },
   heroIconCalm: {},
   heroCopy: { flex: 1, minWidth: 0, gap: 3 },

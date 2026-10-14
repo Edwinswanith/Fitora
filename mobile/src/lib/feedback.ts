@@ -51,6 +51,17 @@ export function setCelebrationListener(next: Listener | null): void {
 export function celebrate(options: CelebrationOptions): void {
   successFeedback();
   listener?.({ ...options, tone: "success" });
+  watchers.forEach((watch) => watch(options));
+}
+
+const watchers = new Set<Listener>();
+
+/** Lets Pex react to saves and goals. Returns an unsubscribe function. */
+export function watchCelebrations(watch: Listener): () => void {
+  watchers.add(watch);
+  return () => {
+    watchers.delete(watch);
+  };
 }
 
 /** Error haptic + toast, for quick actions that have no inline error area (e.g. a +250 ml tap). */

@@ -1,175 +1,227 @@
-import Svg, { Circle, Ellipse, Line, Path, Rect } from "react-native-svg";
+import { useEffect, useId } from "react";
+import Svg, { Circle, ClipPath, Defs, Ellipse, G, Line, Path, RadialGradient, Rect, Stop, Text as SvgText } from "react-native-svg";
 import Animated, {
+  Easing,
   useAnimatedProps,
   useAnimatedStyle,
   useSharedValue,
+  withDelay,
   withRepeat,
   withSequence,
   withTiming,
   type SharedValue,
 } from "react-native-reanimated";
-import { useEffect } from "react";
-import { colors, ROLE_THEMES } from "../../lib/theme";
-import { MASCOT_ANATOMY, MASCOT_SIZE } from "../../lib/tour/tourConfig";
-import {
-  DEFAULT_POSE_FOR_STATE,
-  PEX_POSES,
-  type ColorToken,
-  type PexEyeSpec,
-  type PexMascotState,
-  type PexPose,
-  type PexShape,
-  type PexTone,
-} from "../../lib/tour/mascotPoses";
+import { colors } from "../../lib/theme";
+import { MASCOT_SIZE } from "../../lib/tour/tourConfig";
+import { DEFAULT_POSE_FOR_STATE, type PexMascotState, type PexPose, type PexTone } from "../../lib/tour/mascotPoses";
+import { FACE_FOR_LEGACY_POSE, PEX_FACES, type PexFace, type PexFaceSpec, type PexMotion } from "../../lib/pex/faces";
 
+const AnimatedRect = Animated.createAnimatedComponent(Rect);
 const AnimatedEllipse = Animated.createAnimatedComponent(Ellipse);
+const AnimatedCircle = Animated.createAnimatedComponent(Circle);
 
-/** How nearly-shut a blinking eye gets — a sliver, not zero, so it still reads as an eyelid line rather than a vanishing dot. */
-const BLINK_CLOSED_RY = 0.8;
 const BLINK_CLOSE_MS = 90;
-const BLINK_OPEN_MS = 130;
-const BLINK_MIN_GAP_MS = 2200;
-const BLINK_MAX_GAP_MS = 4800;
+const BLINK_OPEN_MS = 140;
+const BLINK_MIN_GAP_MS = 2400;
+const BLINK_MAX_GAP_MS = 5200;
+const LASH = "#05070a";
 
-/** A single open eye that periodically animates shut and back open (see the blink scheduler in `PexMascot`). */
-function BlinkingEye({ eye, fill, blink }: { eye: PexEyeSpec; fill: string; blink: SharedValue<number> }) {
-  const animatedProps = useAnimatedProps(() => ({
-    ry: eye.ry - (eye.ry - BLINK_CLOSED_RY) * blink.value,
-  }));
-  return <AnimatedEllipse cx={eye.cx} cy={eye.cy} rx={eye.rx} animatedProps={animatedProps} fill={fill} />;
-}
+const RING_COLOR: Record<PexTone, string> = {
+  ready: colors.progress,
+  caution: colors.warn,
+  alert: colors.bad,
+};
 
 export type PexMascotProps = {
+  /** Expression. Wins over `pose`. */
+  face?: PexFace;
+  /** Older pose names (guided tour, reaction overlay). */
   pose?: PexPose;
   state?: PexMascotState;
   tone?: PexTone;
   size?: number;
   reducedMotion?: boolean;
+  /** Today's progress, 0..1, drawn as the ring. Omit for a full ring. */
+  progress?: number;
+  /** Orange spark at the tip of the ring (a live streak). */
+  spark?: boolean;
 };
 
-const TONE_COLOR: Record<PexTone, string> = {
-  ready: colors.ok,
-  caution: colors.warn,
-  alert: colors.bad,
-};
+/** One eyeball: shaded white, black iris, two glints, and an eyelid that blinks. */
+function Eye({
+  id,
+  cx,
+  cy,
+  r,
+  lid,
+  spec,
+  side,
+  blink,
+  glance,
+}: {
+  id: string;
+  cx: number;
+  cy: number;
+  r: number;
+  lid: number;
+  spec: PexFaceSpec;
+  side: "left" | "right";
+  blink: SharedValue<number>;
+  glance: SharedValue<number>;
+}) {
+  const shut = r * 1.95;
+  const ir = r * 0.58;
+  const [gx, gy] = spec.gaze;
+  const tilt = spec.tilt * (side === "left" ? 1 : -1);
 
-function resolveColor(token: ColorToken, tone: PexTone): string {
-  switch (token) {
-    case "tone":
-      return TONE_COLOR[tone];
-    case "line":
-      return colors.ink;
-    case "ready":
-      return colors.ok;
-    case "caution":
-      return colors.warn;
-    case "alert":
-      return colors.bad;
-    case "coach":
-      return ROLE_THEMES.coach.accent;
-    case "athlete":
-      return ROLE_THEMES.athlete.accent;
+  // Lid edge position: resting closure, pushed fully shut while blinking.
+  const lidRect = useAnimatedProps(() => {
+    const d = (lid + (1 - lid) * blink.value) * shut;
+    return { y: cy - r * 3.2 + d };
+  });
+  const lidEdge = useAnimatedProps(() => {
+    const d = (lid + (1 - lid) * blink.value) * shut;
+    return { cy: cy - r + d };
+  });
+  const lookX = cx + (gx * r) / 10;
+  const lookY = cy + (gy * r) / 10;
+  const iris = useAnimatedProps(() => ({ cx: lookX + (glance.value * r) / 10, cy: lookY }));
+  const glintBig = useAnimatedProps(() => ({ cx: lookX - ir * 0.36 + (glance.value * r) / 10, cy: lookY - ir * 0.4 }));
+  const glintSmall = useAnimatedProps(() => ({ cx: lookX + ir * 0.3 + (glance.value * r) / 10, cy: lookY + ir * 0.3 }));
+
+  return (
+    <G>
+      <Defs>
+        <RadialGradient id={`${id}s`} cx="38%" cy="32%" r="75%">
+          <Stop offset="0" stopColor="#ffffff" />
+          <Stop offset="0.55" stopColor="#eef2f6" />
+          <Stop offset="1" stopColor="#b9c3ce" />
+        </RadialGradient>
+        <RadialGradient id={`${id}i`} cx="42%" cy="38%" r="70%">
+          <Stop offset="0" stopColor="#0b0b0c" />
+          <Stop offset="0.62" stopColor="#050506" />
+          <Stop offset="0.86" stopColor="#3b424c" />
+          <Stop offset="1" stopColor="#000000" />
+        </RadialGradient>
+        <ClipPath id={`${id}c`}>
+          <Circle cx={cx} cy={cy} r={r} />
+        </ClipPath>
+      </Defs>
+      <Circle cx={cx} cy={cy + r * 0.12} r={r * 1.04} fill="#000" opacity={0.35} />
+      <G clipPath={`url(#${id}c)`}>
+        <Circle cx={cx} cy={cy} r={r} fill={`url(#${id}s)`} />
+        <AnimatedCircle animatedProps={iris} r={ir} fill={`url(#${id}i)`} />
+        <AnimatedCircle animatedProps={iris} r={ir * 0.5} fill="#000" />
+        <AnimatedCircle animatedProps={glintBig} r={ir * 0.3} fill="#fff" />
+        <AnimatedCircle animatedProps={glintSmall} r={ir * 0.12} fill="#fff" opacity={0.85} />
+        <Circle cx={cx} cy={cy} r={r} fill="none" stroke="#000" strokeOpacity={0.18} strokeWidth={r * 0.18} />
+        {spec.smile ? (
+          <>
+            <Ellipse cx={cx} cy={cy + r * 1.28} rx={r * 1.35} ry={r * 0.82} fill={colors.surfaceRaised} />
+            <Path d={`M${cx - r * 1.1} ${cy + r * 0.62} Q${cx} ${cy + r * 0.2} ${cx + r * 1.1} ${cy + r * 0.62}`} stroke={LASH} strokeWidth={r * 0.1} fill="none" />
+          </>
+        ) : null}
+        <G rotation={tilt} origin={`${cx}, ${cy}`}>
+          <AnimatedEllipse animatedProps={lidEdge} cx={cx} rx={r * 1.6} ry={r * 0.42} fill={colors.surfaceRaised} />
+          <AnimatedEllipse animatedProps={lidEdge} cx={cx} rx={r * 1.25} ry={r * 0.36} fill="none" stroke={LASH} strokeWidth={r * 0.13} />
+          <AnimatedRect animatedProps={lidRect} x={cx - r * 1.6} width={r * 3.2} height={r * 2.2} fill={colors.surfaceRaised} />
+        </G>
+      </G>
+      <Circle cx={cx} cy={cy} r={r} fill="none" stroke={LASH} strokeWidth={r * 0.08} />
+    </G>
+  );
+}
+
+function Mouth({ kind }: { kind: PexFaceSpec["mouth"] }) {
+  switch (kind) {
+    case "grin":
+      return (
+        <>
+          <Path d="M49 74 Q60 90 71 74 Z" fill={LASH} />
+          <Path d="M54 80 Q60 84 66 80" stroke={colors.bad} strokeWidth={3} fill="none" strokeLinecap="round" />
+        </>
+      );
+    case "o":
+      return <Ellipse cx={60} cy={79} rx={4.2} ry={5} fill={LASH} stroke={colors.ink} strokeWidth={1.6} />;
+    case "flat":
+      return <Path d="M54 79 L66 79" stroke={colors.ink} strokeWidth={3} strokeLinecap="round" />;
+    case "smirk":
+      return <Path d="M53 79 Q62 83 68 75" stroke={colors.ink} strokeWidth={3} fill="none" strokeLinecap="round" />;
+    case "worried":
+      return <Path d="M53 82 Q60 76 67 82" stroke={colors.ink} strokeWidth={3} fill="none" strokeLinecap="round" />;
     default:
-      return colors.ink;
+      return <Path d="M52 76 Q60 84 68 76" stroke={colors.ink} strokeWidth={3} fill="none" strokeLinecap="round" />;
   }
 }
 
-function renderShape(shape: PexShape, tone: PexTone, key: number) {
-  switch (shape.kind) {
-    case "path":
-      return (
-        <Path
-          key={key}
-          d={shape.d}
-          stroke={resolveColor(shape.stroke, tone)}
-          strokeWidth={shape.strokeWidth}
-          fill={"fill" in shape && shape.fill ? shape.fill : "none"}
-          opacity={"opacity" in shape ? shape.opacity : undefined}
-          strokeLinecap={"linecap" in shape ? shape.linecap : undefined}
-          strokeLinejoin={"linejoin" in shape ? shape.linejoin : undefined}
-        />
-      );
-    case "ellipse":
-      return (
-        <Ellipse
-          key={key}
-          cx={shape.cx}
-          cy={shape.cy}
-          rx={shape.rx}
-          ry={shape.ry}
-          fill={shape.fill ? resolveColor(shape.fill, tone) : "none"}
-          stroke={shape.stroke ? resolveColor(shape.stroke, tone) : undefined}
-          strokeWidth={shape.strokeWidth}
-        />
-      );
-    case "circle":
-      return <Circle key={key} cx={shape.cx} cy={shape.cy} r={shape.r} fill={resolveColor(shape.fill, tone)} />;
-    case "rect":
-      return (
-        <Rect
-          key={key}
-          x={shape.x}
-          y={shape.y}
-          width={shape.width}
-          height={shape.height}
-          rx={shape.rx}
-          fill={resolveColor(shape.fill, tone)}
-        />
-      );
-    case "line":
-      return (
-        <Line
-          key={key}
-          x1={shape.x1}
-          y1={shape.y1}
-          x2={shape.x2}
-          y2={shape.y2}
-          stroke={resolveColor(shape.stroke, tone)}
-          strokeWidth={shape.strokeWidth}
-          strokeLinecap="round"
-          opacity={shape.opacity}
-        />
-      );
-    default:
-      return null;
+function Extra({ kind }: { kind: PexFaceSpec["extra"] }) {
+  if (kind === "zzz") {
+    return (
+      <G>
+        <SvgText x={76} y={38} fontSize={12} fontWeight="800" fill={colors.ink}>z</SvgText>
+        <SvgText x={84} y={30} fontSize={9} fontWeight="800" fill={colors.ink}>z</SvgText>
+      </G>
+    );
   }
+  if (kind === "drop") return <Path d="M85 28 q5 8 0 11 q-5 -3 0 -11z" fill="#5aa9ff" />;
+  if (kind === "sweat") return <Path d="M86 32 q4 7 0 10 q-4 -3 0 -10z" fill={colors.progress} />;
+  return null;
+}
+
+/** Body motion per face, as a translate (px of the 120 box) and a rotation. */
+function useBodyMotion(motion: PexMotion, enabled: boolean) {
+  const ty = useSharedValue(0);
+  const rot = useSharedValue(0);
+  useEffect(() => {
+    ty.value = 0;
+    rot.value = 0;
+    if (!enabled) return;
+    const ease = Easing.inOut(Easing.sin);
+    switch (motion) {
+      case "bounce":
+        ty.value = withRepeat(
+          withSequence(withTiming(-7, { duration: 360, easing: Easing.out(Easing.quad) }), withTiming(0, { duration: 260, easing: Easing.in(Easing.quad) }), withTiming(-2, { duration: 120 }), withTiming(0, { duration: 120 }), withTiming(0, { duration: 500 })),
+          -1,
+        );
+        break;
+      case "shake":
+        rot.value = withRepeat(
+          withSequence(withDelay(1800, withTiming(-5, { duration: 120 })), withTiming(5, { duration: 140 }), withTiming(-3, { duration: 120 }), withTiming(2, { duration: 110 }), withTiming(0, { duration: 110 })),
+          -1,
+        );
+        break;
+      case "droop":
+        ty.value = withRepeat(withSequence(withTiming(3, { duration: 2000, easing: ease }), withTiming(1, { duration: 2000, easing: ease })), -1);
+        break;
+      case "lean":
+        rot.value = withRepeat(withSequence(withTiming(6, { duration: 1200, easing: ease }), withTiming(0, { duration: 1200, easing: ease })), -1);
+        break;
+      default:
+        ty.value = withRepeat(withSequence(withTiming(-2.5, { duration: 1700, easing: ease }), withTiming(0, { duration: 1700, easing: ease })), -1);
+    }
+  }, [motion, enabled, ty, rot]);
+  return { ty, rot };
 }
 
 /**
- * Pure SVG visual for Pex. `pose` drives the face + accessory mark; `state`
- * only adds a motion trail (walking) or a gentle breathing pulse (speaking) on
- * top — see `mascotPoses.ts` for the data tables this renders generically.
+ * Pex: today's ring with a face inside. The ring shows real progress, the
+ * eyes are shaded 3D eyeballs whose lids blink and set the mood, and the body
+ * moves with the expression. Faces come from lib/pex/faces.ts; which face to
+ * show comes from lib/pex/brain.ts.
  */
-export function PexMascot({ pose, state = "waiting", tone = "ready", size = MASCOT_SIZE, reducedMotion = false }: PexMascotProps) {
-  const resolvedPose = pose ?? DEFAULT_POSE_FOR_STATE[state];
-  const spec = PEX_POSES[resolvedPose] ?? PEX_POSES.neutral;
-  const toneColor = TONE_COLOR[tone];
-  const { viewBox, ring, body } = MASCOT_ANATOMY;
+export function PexMascot({ face, pose, state = "waiting", tone = "ready", size = MASCOT_SIZE, reducedMotion = false, progress, spark = false }: PexMascotProps) {
+  const resolvedFace: PexFace = face ?? FACE_FOR_LEGACY_POSE[pose ?? DEFAULT_POSE_FOR_STATE[state]] ?? "ready";
+  const spec = PEX_FACES[resolvedFace];
+  const id = `pex${useId().replace(/[^a-zA-Z0-9]/g, "")}`;
+  const ringColor = RING_COLOR[tone];
+  const p = progress == null ? 1 : Math.max(0, Math.min(1, progress));
+  const r = 48;
+  const len = 2 * Math.PI * r;
+  const tipAngle = ((-90 + p * 360) * Math.PI) / 180;
+  const tipX = 60 + r * Math.cos(tipAngle);
+  const tipY = 60 + r * Math.sin(tipAngle);
 
-  const pulse = useSharedValue(1);
-  useEffect(() => {
-    if (reducedMotion || state !== "speaking") {
-      pulse.value = 1;
-      return;
-    }
-    pulse.value = withRepeat(withSequence(withTiming(1.06, { duration: 220 }), withTiming(1, { duration: 220 })), -1, true);
-  }, [reducedMotion, state, pulse]);
-
-  const bounce = useSharedValue(0);
-  useEffect(() => {
-    if (reducedMotion || (state !== "waiting" && state !== "listening")) {
-      bounce.value = 0;
-      return;
-    }
-    bounce.value = withRepeat(withSequence(withTiming(-4, { duration: 620 }), withTiming(0, { duration: 620 })), -1, true);
-  }, [reducedMotion, state, bounce]);
-
-  const animatedStyle = useAnimatedStyle(() => ({
-    transform: [{ translateY: bounce.value }, { scale: pulse.value }],
-  }));
-
-  // Idle blink: 0 = open, 1 = shut. Runs on a randomized loop so Pex reads as
-  // alive rather than a static sticker; skipped entirely under reduced motion.
+  // Blink: 0 open, 1 shut, on a random gap so Pex never looks mechanical.
   const blink = useSharedValue(0);
   useEffect(() => {
     if (reducedMotion) {
@@ -178,47 +230,71 @@ export function PexMascot({ pose, state = "waiting", tone = "ready", size = MASC
     }
     let cancelled = false;
     let timer: ReturnType<typeof setTimeout>;
-    const scheduleNextBlink = () => {
+    const schedule = () => {
       const gap = BLINK_MIN_GAP_MS + Math.random() * (BLINK_MAX_GAP_MS - BLINK_MIN_GAP_MS);
       timer = setTimeout(() => {
         if (cancelled) return;
         blink.value = withSequence(withTiming(1, { duration: BLINK_CLOSE_MS }), withTiming(0, { duration: BLINK_OPEN_MS }));
-        scheduleNextBlink();
+        schedule();
       }, gap);
     };
-    scheduleNextBlink();
+    schedule();
     return () => {
       cancelled = true;
       clearTimeout(timer);
     };
   }, [reducedMotion, blink]);
 
+  // Glance: relaxed faces look left and right now and then.
+  const glance = useSharedValue(0);
+  useEffect(() => {
+    glance.value = 0;
+    if (reducedMotion || !spec.roam) return;
+    glance.value = withRepeat(
+      withSequence(withDelay(2600, withTiming(1.8, { duration: 260 })), withDelay(1200, withTiming(-1.8, { duration: 320 })), withDelay(1200, withTiming(0, { duration: 260 }))),
+      -1,
+    );
+  }, [reducedMotion, spec.roam, glance]);
+
+  const { ty, rot } = useBodyMotion(spec.motion, !reducedMotion);
+  const speak = useSharedValue(1);
+  useEffect(() => {
+    speak.value = 1;
+    if (reducedMotion || state !== "speaking") return;
+    speak.value = withRepeat(withSequence(withTiming(1.05, { duration: 220 }), withTiming(1, { duration: 220 })), -1, true);
+  }, [reducedMotion, state, speak]);
+
+  const unit = size / 128;
+  const animatedStyle = useAnimatedStyle(() => ({
+    transform: [{ translateY: ty.value * unit }, { rotate: `${rot.value}deg` }, { scale: speak.value }],
+  }));
+
   return (
-    <Animated.View style={[{ width: size, height: size }, animatedStyle]} importantForAccessibility="no-hide-descendants">
-      <Svg width={size} height={size} viewBox={viewBox}>
-        <Circle
-          cx={ring.cx}
-          cy={ring.cy}
-          r={ring.r}
-          fill="none"
-          stroke={toneColor}
-          strokeWidth={ring.strokeWidth}
-          strokeLinecap="round"
-          strokeDasharray={spec.ringDasharray ?? undefined}
-          transform={spec.ringDasharray ? `rotate(-90 ${ring.cx} ${ring.cy})` : undefined}
-        />
-        {state === "walking" ? (
+    <Animated.View style={[{ width: size, height: size }, animatedStyle]} importantForAccessibility="no-hide-descendants" accessibilityElementsHidden>
+      <Svg width={size} height={size} viewBox="-4 -4 128 128">
+        <Circle cx={60} cy={60} r={r} stroke={colors.surfaceInset} strokeWidth={9} fill="none" />
+        {p > 0.001 ? (
+          <G rotation={-90} origin="60, 60">
+            <Circle cx={60} cy={60} r={r} stroke={ringColor} strokeWidth={9} fill="none" strokeLinecap="round" strokeDasharray={p >= 0.999 ? undefined : `${p * len} ${len}`} />
+          </G>
+        ) : null}
+        {resolvedFace === "proud"
+          ? [0, 45, 90, 135, 180, 225, 270, 315].map((deg) => {
+              const t = (deg * Math.PI) / 180;
+              return <Line key={deg} x1={60 + 55 * Math.cos(t)} y1={60 + 55 * Math.sin(t)} x2={60 + 59 * Math.cos(t)} y2={60 + 59 * Math.sin(t)} stroke={colors.energy} strokeWidth={3} strokeLinecap="round" />;
+            })
+          : null}
+        <Circle cx={60} cy={60} r={38} fill={colors.surfaceRaised} stroke={colors.line} strokeWidth={1.5} />
+        <Eye id={`${id}l`} cx={46} cy={54} r={12.5} lid={spec.lidLeft} spec={spec} side="left" blink={blink} glance={glance} />
+        <Eye id={`${id}r`} cx={74} cy={54} r={12.5} lid={spec.lidRight} spec={spec} side="right" blink={blink} glance={glance} />
+        <Mouth kind={spec.mouth} />
+        {spark && p > 0.001 ? (
           <>
-            <Line x1={46} y1={142} x2={30} y2={160} stroke={toneColor} strokeWidth={4} strokeLinecap="round" opacity={0.55} />
-            <Line x1={58} y1={152} x2={46} y2={172} stroke={toneColor} strokeWidth={4} strokeLinecap="round" opacity={0.35} />
+            <Circle cx={tipX} cy={tipY} r={9} fill={colors.energy} opacity={0.25} />
+            <Circle cx={tipX} cy={tipY} r={5.5} fill={colors.energy} />
           </>
         ) : null}
-        <Circle cx={body.cx} cy={body.cy} r={body.r} fill={colors.surfaceRaised} stroke={colors.ink} strokeWidth={body.strokeWidth} />
-        {spec.face.map((shape, i) => renderShape(shape, tone, i))}
-        {spec.eyes.map((eye, i) => (
-          <BlinkingEye key={i} eye={eye} fill={resolveColor(eye.fill ?? "line", tone)} blink={blink} />
-        ))}
-        {spec.accessory.map((shape, i) => renderShape(shape, tone, 100 + i))}
+        <Extra kind={spec.extra} />
       </Svg>
     </Animated.View>
   );
