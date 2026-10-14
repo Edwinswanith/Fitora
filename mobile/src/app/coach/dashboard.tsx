@@ -46,6 +46,9 @@ import {
   type DailyCard,
 } from "../../lib/fitoraData";
 import { sportLabel } from "../../lib/sport";
+import { PexMascot } from "../../components/mascot/PexMascot";
+import type { PexFace } from "../../lib/pex/faces";
+import { prefersReducedMotion } from "../../lib/motion";
 import { coachNeedsOnboarding, hasSeenOnboarding, markOnboardingSeen } from "../../lib/onboarding";
 
 export default function CoachHome() {
@@ -296,7 +299,7 @@ function CoachHomeView({
 
       {joinRequests.length ? (
         <HeroCard
-          icon="person-add-outline"
+          mascot={<CoachPex face="news" />}
           eyebrow="New clients"
           title={joinRequests.length === 1 ? `${joinRequests[0].athlete.name} wants to join` : `${joinRequests.length} people want to join`}
           body="Accept or decline below."
@@ -527,7 +530,7 @@ function CoachHomeHero({
   if (requests.length) {
     return (
       <HeroCard
-        icon="calendar-outline"
+        mascot={<CoachPex face="news" />}
         eyebrow="Waiting on you"
         title={requests.length === 1 ? "1 session request" : `${requests.length} session requests`}
         body="Confirm or decline below."
@@ -538,7 +541,7 @@ function CoachHomeHero({
     const isConfirmed = nextSession.status === "confirmed" || nextSession.status === "rescheduled";
     return (
       <HeroCard
-        icon="videocam-outline"
+        mascot={<CoachPex face="pumped" />}
         eyebrow="Today's session"
         title={`${nextSession.athleteName || "Client"} at ${new Date(nextSession.scheduledStart).toLocaleTimeString(undefined, { hour: "numeric", minute: "2-digit" })}`}
         body={`${titleCase(nextSession.type)}. Opens 10 min before.`}
@@ -551,7 +554,7 @@ function CoachHomeHero({
     const top = attention[0];
     return (
       <HeroCard
-        icon="alert-circle-outline"
+        mascot={<CoachPex face="worried" tone="caution" />}
         eyebrow={attention.length === 1 ? "Needs attention" : `${attention.length} clients need attention`}
         title={top.name || "A client"}
         body={attentionReason(top)}
@@ -563,7 +566,7 @@ function CoachHomeHero({
   return (
     <HeroCard
       calm
-      icon="checkmark-done-outline"
+      mascot={<CoachPex face="calm" />}
       eyebrow="All good"
       title={`All ${data.roster.length} client${data.roster.length === 1 ? "" : "s"} on track`}
       body="No requests or alerts."
@@ -633,15 +636,20 @@ function relativeAge(iso: string): string {
   return `${days} day${days === 1 ? "" : "s"} ago`;
 }
 
+/** Pex on the coach Home card: the face matches the one thing that needs the coach now. */
+function CoachPex({ face, tone = "ready" }: { face: PexFace; tone?: "ready" | "caution" }) {
+  return <PexMascot face={face} tone={tone} size={80} reducedMotion={prefersReducedMotion()} />;
+}
+
 /** A coach with no clients yet has one thing to do; profile setup lives in its own flow. */
 function CoachGettingStartedCard() {
   const router = useRouter();
   return (
     <HeroCard
-      icon="person-add-outline"
+      mascot={<CoachPex face="welcome" />}
       eyebrow="Welcome to Fitora"
       title="Add your first client"
-      body="Create their account, or link someone who already signed up."
+      body="Create their account, or invite someone who already signed up."
       actionLabel="Add Client"
       onAction={() => router.push("/coach/athletes/new" as never)}
     />

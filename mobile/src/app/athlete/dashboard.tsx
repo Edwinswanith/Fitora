@@ -32,12 +32,15 @@ import type { MessageView } from "../../components/MessageCenter";
 import { apiFetch, apiJson } from "../../lib/api";
 import { useAuth } from "../../lib/auth";
 import { PAYMENTS_ENABLED } from "../../lib/features";
-import { celebrate, selectionFeedback, showError } from "../../lib/feedback";
+import { celebrate, selectionFeedback, showError, watchCelebrations } from "../../lib/feedback";
 import { confirmAction } from "../../lib/confirm";
 import { animateNextLayout, prefersReducedMotion, usePop } from "../../lib/motion";
 import { firstStepsState, type FirstStepKey, type FirstStepsState } from "../../lib/firstSteps";
 import { athleteNeedsOnboarding, hasSeenOnboarding } from "../../lib/onboarding";
+import AsyncStorage from "@react-native-async-storage/async-storage";
 import { PexMascot } from "../../components/mascot/PexMascot";
+import { dayProgress, daysSinceLastCheckIn, derivePexReaction, streakMilestoneLine, type PexActionKey } from "../../lib/pex/brain";
+import type { PexFace } from "../../lib/pex/faces";
 import { joinSessionCall } from "../../lib/videoCall";
 import { decideCoachInvite, loadMyCoachInvites, loadMyJoinRequest, type CoachInvite, type JoinRequest } from "../../lib/joinRequests";
 import { checkInStreak } from "../../lib/progressModel";
@@ -403,6 +406,7 @@ function TodayView({
       <TodayHero
         data={data}
         hasCoach={athleteHasCoach(data)}
+        firstSteps={firstSteps}
         onCheckIn={() => router.push("/athlete/check-in" as never)}
         onWorkout={() => goToWorkout()}
         onReview={handleWorkoutReview}
@@ -410,7 +414,8 @@ function TodayView({
         onMeals={() => onNavigate("nutrition")}
         onWater={() => router.push("/athlete/water" as never)}
         onProgress={() => onNavigate("progress")}
-        onFindCoach={() => onNavigate("coach")}
+        onCoach={() => onNavigate("coach")}
+        onSetup={() => router.replace("/athlete/onboarding" as never)}
       />
 
       {firstSteps ? (
@@ -473,10 +478,10 @@ function FirstStepsCard({ state, onStep }: { state: FirstStepsState; onStep: (ke
       ) : (
         <>
           <View style={styles.firstStepsHead}>
-            <PexMascot pose="welcoming" state="entering" size={76} reducedMotion={prefersReducedMotion()} />
+            <IconTile icon="list-outline" size={48} />
             <View style={{ flex: 1 }}>
               <Text style={styles.firstStepsEyebrow}>DAY {state.day}</Text>
-              <Text style={styles.firstStepsTitle}>Let&apos;s set you up</Text>
+              <Text style={styles.firstStepsTitle}>Your first steps</Text>
               <Text style={styles.firstStepsBody}>Three quick steps. Under two minutes.</Text>
             </View>
           </View>
@@ -615,21 +620,16 @@ function StreakChip({ streak }: { streak: number }) {
   );
 }
 
-const NEXT_ACTION_ICONS: Record<string, keyof typeof Ionicons.glyphMap> = {
-  checkin: "clipboard-outline",
-  workout_active: "barbell-outline",
-  workout_upcoming: "barbell-outline",
-  rpe: "speedometer-outline",
-  session: "videocam-outline",
-  meal: "restaurant-outline",
-  hydration: "water-outline",
-  complete: "checkmark-done-outline",
-};
-
-/** Today's one "do this now" card, driven by deriveNextAction (lib/fitoraData.ts). */
+/**
+ * Today's one "do this now" card. deriveNextAction (lib/fitoraData.ts) picks
+ * the task; Pex (lib/pex/brain.ts) words it for where the athlete is and
+ * shows the matching face. Saves and goals make Pex react for a moment, and a
+ * streak milestone gets a short bubble, once.
+ */
 function TodayHero({
   data,
   hasCoach,
+  firstSteps,
   onCheckIn,
   onWorkout,
   onReview,
@@ -637,10 +637,12 @@ function TodayHero({
   onMeals,
   onWater,
   onProgress,
-  onFindCoach,
+  onCoach,
+  onSetup,
 }: {
   data: AthleteDashboardData;
   hasCoach: boolean;
+  firstSteps: FirstStepsState | null;
   onCheckIn: () => void;
   onWorkout: () => void;
   onReview: () => void;
@@ -648,12 +650,40 @@ function TodayHero({
   onMeals: () => void;
   onWater: () => void;
   onProgress: () => void;
-  onFindCoach: () => void;
+  onCoach: () => void;
+  onSetup: () => void;
 }) {
+  const { user } = useAuth();
   const next = deriveNextAction(data);
   // Payment prompts only exist while in-app payments are on.
   const action = next.kind === "payment" && !PAYMENTS_ENABLED ? { ...next, kind: "complete" as const } : next;
-  const handlers: Record<string, (() => void) | undefined> = {
+  const streak = checkInStreak(data.trends, data.date).current;
+  const workout = data.workouts[0] ?? null;
+  const invite = data.coachInvites?.[0] ?? null;
+  const reaction = derivePexReaction({
+    next: action,
+    hour: new Date().getHours(),
+    firstSteps,
+    readinessScore: data.daily?.readinessScore ?? null,
+    daysSinceCheckIn: daysSinceLastCheckIn(data.trends, data.date),
+    streak,
+    dayProgress: dayProgress({
+      checkedIn: data.daily?.readinessScore != null,
+      waterMl: data.water?.totalMl,
+      waterGoalMl: data.water?.goalMl,
+      calories: consumedCalories(data),
+      calorieTarget: data.target?.calories,
+      workout: workout ? { status: workout.status, completedCount: workout.completedCount, exerciseCount: workout.exerciseCount } : null,
+    }),
+    hasCoach,
+    coachName: data.coachProfile?.name || data.coaches[0]?.name || null,
+    pendingRequestCoach: data.joinRequest?.status === "pending" ? data.joinRequest.coach.name : null,
+    inviteCoach: invite?.coach.name ?? null,
+  });
+  const moment = usePexMoment(user?.id ?? null, streak);
+
+  const handlers: Record<PexActionKey, (() => void) | undefined> = {
+    payment: onCoach,
     checkin: onCheckIn,
     workout_active: onWorkout,
     workout_upcoming: onWorkout,
@@ -661,30 +691,79 @@ function TodayHero({
     session: onSession,
     meal: onMeals,
     hydration: onWater,
+    complete: onProgress,
+    onboarding: onSetup,
+    coach: onCoach,
+    messageCoach: onCoach,
+    progress: onProgress,
   };
-  if (action.kind === "complete") {
-    return (
-      <HeroCard
-        calm
-        icon="checkmark-done-outline"
-        eyebrow="All set"
-        title="You're caught up"
-        body={hasCoach ? "Nice work. Rest up for tomorrow." : "Want a plan? A coach can set your workouts and meals."}
-        actionLabel={hasCoach ? "See Progress" : "Find a Coach"}
-        onAction={hasCoach ? onProgress : onFindCoach}
-      />
-    );
-  }
+  const reduced = prefersReducedMotion();
   return (
-    <HeroCard
-      icon={NEXT_ACTION_ICONS[action.kind] ?? "arrow-forward-outline"}
-      eyebrow={action.eyebrow}
-      title={action.title}
-      body={action.body}
-      actionLabel={action.ctaLabel}
-      onAction={handlers[action.kind]}
-    />
+    <View>
+      {moment?.line ? (
+        <View style={styles.pexBubble} accessibilityLiveRegion="polite">
+          <Text style={styles.pexBubbleText}>{moment.line}</Text>
+          <View style={styles.pexBubbleTail} />
+        </View>
+      ) : null}
+      <HeroCard
+        calm={reaction.calm}
+        mascot={
+          <PexMascot
+            face={moment?.face ?? reaction.face}
+            tone={reaction.tone}
+            progress={reaction.progress}
+            spark={reaction.spark}
+            size={84}
+            reducedMotion={reduced}
+          />
+        }
+        eyebrow={reaction.eyebrow}
+        title={reaction.title}
+        body={reaction.body}
+        actionLabel={reaction.ctaLabel || undefined}
+        onAction={reaction.action ? handlers[reaction.action] : undefined}
+      />
+    </View>
   );
+}
+
+/** Pex's short reactions: a face for a few seconds after a save or goal, and a one-time streak bubble. */
+function usePexMoment(userId: string | null, streak: number): { face: PexFace; line?: string } | null {
+  const [moment, setMoment] = useState<{ face: PexFace; line?: string } | null>(null);
+  const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const show = useCallback((next: { face: PexFace; line?: string }, ms: number) => {
+    if (timer.current) clearTimeout(timer.current);
+    if (next.line) animateNextLayout();
+    setMoment(next);
+    timer.current = setTimeout(() => {
+      if (next.line) animateNextLayout();
+      setMoment(null);
+    }, ms);
+  }, []);
+  useEffect(() => () => {
+    if (timer.current) clearTimeout(timer.current);
+  }, []);
+  useEffect(() => watchCelebrations((options) => show({ face: options.big ? "proud" : "calm" }, options.big ? 4000 : 2500)), [show]);
+  useEffect(() => {
+    const line = streakMilestoneLine(streak);
+    if (!line || !userId) return;
+    const key = `fitora.pex.streak.v1:${userId}:${streak}`;
+    let active = true;
+    (async () => {
+      try {
+        if (await AsyncStorage.getItem(key)) return;
+        await AsyncStorage.setItem(key, "1");
+      } catch {
+        return;
+      }
+      if (active) show({ face: "proud", line }, 4000);
+    })();
+    return () => {
+      active = false;
+    };
+  }, [streak, userId, show]);
+  return moment;
 }
 
 function TodayHeader({ name, date }: { name: string; date: string }) {
@@ -4258,6 +4337,27 @@ const styles = StyleSheet.create({
   nutritionPlanTextActionLabel: { color: colors.primary, fontSize: 12.5, lineHeight: 16, fontWeight: "900" },
   nutritionPlanMealRow: { minHeight: 44, flexDirection: "row", alignItems: "center", gap: 9, paddingVertical: 6 },
   nutritionPlanMealIcon: { width: 30, height: 30, borderRadius: 15, alignItems: "center", justifyContent: "center" },
+  pexBubble: {
+    alignSelf: "flex-start",
+    marginLeft: 8,
+    marginBottom: 10,
+    maxWidth: 280,
+    backgroundColor: colors.ink,
+    borderRadius: 14,
+    paddingHorizontal: 14,
+    paddingVertical: 10,
+  },
+  pexBubbleText: { color: colors.onPrimary, fontSize: 14, lineHeight: 19, fontWeight: "800" },
+  pexBubbleTail: {
+    position: "absolute",
+    bottom: -6,
+    left: 34,
+    width: 12,
+    height: 12,
+    backgroundColor: colors.ink,
+    borderRadius: 2,
+    transform: [{ rotate: "45deg" }],
+  },
   streakRow: {
     flexDirection: "row",
     alignItems: "center",

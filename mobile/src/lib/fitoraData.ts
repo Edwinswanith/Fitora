@@ -3,7 +3,7 @@ import AsyncStorage from "@react-native-async-storage/async-storage";
 import { apiJson } from "./api";
 import type { AvatarInfo } from "../components/Avatar";
 import type { SessionSlot } from "./sessions";
-import type { JoinRequest } from "./joinRequests";
+import type { CoachInvite, JoinRequest } from "./joinRequests";
 
 export type Band = "green" | "amber" | "red";
 
@@ -377,6 +377,9 @@ export type AthleteDashboardData = {
   trends: TrendPoint[];
   nutritionWeek: { date: string; loggedMeals: number; calories: number }[];
   coachComments: CoachComment[];
+  /** Open coach invites and a pending join request, for athletes without a coach. Optional: older saved data won't have them. */
+  coachInvites?: CoachInvite[];
+  joinRequest?: JoinRequest | null;
   partialIssues: string[];
 };
 
@@ -983,6 +986,8 @@ export async function loadAthleteDashboardData(): Promise<AthleteDashboardData> 
     commentsResult,
     upcomingResult,
     historyResult,
+    invitesResult,
+    joinRequestResult,
   ] = await Promise.all([
     optional("profile", apiJson<{ athlete: AthleteProfile }>("/api/athlete/me"), issues),
     optional("daily", apiJson<{ card: DailyCard; workoutAssignments?: WorkoutAssignmentSummary[] }>(`/api/athlete/daily?date=${date}`), issues),
@@ -997,6 +1002,8 @@ export async function loadAthleteDashboardData(): Promise<AthleteDashboardData> 
     optional("coach comments", apiJson<{ comments: CoachComment[] }>("/api/athlete/coach-comments?limit=5"), issues),
     optional("upcoming workouts", apiJson<{ assignments: WorkoutAssignmentSummary[] }>(`/api/athlete/workout-assignments?from=${tomorrow}&to=${nextWeek}`), issues),
     optional("recent workouts", apiJson<{ assignments: WorkoutAssignmentSummary[] }>(`/api/athlete/workout-assignments?from=${historyStart}&to=${yesterday}`), issues),
+    optional("coach invites", apiJson<{ invites: CoachInvite[] }>("/api/athlete/coach-invites"), issues),
+    optional("join request", apiJson<{ request: JoinRequest | null }>("/api/athlete/join-request"), issues),
   ]);
 
   const workouts = dailyResult?.workoutAssignments ?? [];
@@ -1065,6 +1072,8 @@ export async function loadAthleteDashboardData(): Promise<AthleteDashboardData> 
     trends: trendsResult?.series ?? [],
     nutritionWeek,
     coachComments: commentsResult?.comments ?? [],
+    coachInvites: invitesResult?.invites ?? [],
+    joinRequest: joinRequestResult?.request ?? null,
     partialIssues: issues,
   };
 }
