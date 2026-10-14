@@ -2,6 +2,7 @@ import mongoose, { Types } from "mongoose";
 import { MongoMemoryServer } from "mongodb-memory-server";
 import request from "supertest";
 import { createApp } from "../src/app";
+import { env } from "../src/config/env";
 import { signAccessToken } from "../src/lib/tokens";
 import { User } from "../src/models/User";
 import { AthleteProfile } from "../src/models/AthleteProfile";
@@ -55,6 +56,20 @@ function tokenFor(id: Types.ObjectId, role: "coach" | "athlete") {
 function decisionsOf(type: string) {
   return NotificationDecision.find({ type }).lean();
 }
+
+// Routes here dispatch with the real clock, so the default 22:00-07:00 quiet
+// hours would hold every notification back when the suite runs at night (UTC).
+// A zero-width default window means "never quiet"; the quiet-hours test below
+// sets its own window explicitly.
+const savedQuietHours = { ...env.notification };
+beforeAll(() => {
+  env.notification.quietHoursDefaultStartMinute = 0;
+  env.notification.quietHoursDefaultEndMinute = 0;
+});
+afterAll(() => {
+  env.notification.quietHoursDefaultStartMinute = savedQuietHours.quietHoursDefaultStartMinute;
+  env.notification.quietHoursDefaultEndMinute = savedQuietHours.quietHoursDefaultEndMinute;
+});
 
 beforeAll(async () => {
   mongo = await MongoMemoryServer.create();
