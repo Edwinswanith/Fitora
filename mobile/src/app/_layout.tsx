@@ -41,6 +41,12 @@ function Gate() {
 
     if (status === "anon" && !inAuthArea) {
       router.replace("/");
+    } else if (status === "authed" && user?.mustChangePassword) {
+      // A coach-issued temporary password: the server refuses everything
+      // else until it is replaced.
+      if (top !== "change-password") router.replace("/change-password" as never);
+    } else if (status === "authed" && top === "change-password" && user) {
+      router.replace((dashboardPathForRole(user.role) ?? "/") as never);
     } else if (status === "authed" && inAuthArea && user) {
       const dest = dashboardPathForRole(user.role) ?? "/";
       router.replace(dest as never);

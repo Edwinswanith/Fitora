@@ -84,10 +84,15 @@ describe("Coach-led athlete onboarding", () => {
     expect(login.status).toBe(200);
     expect(login.body.user.role).toBe("athlete");
 
-    // …and reach their own workspace
+    // …and, once the temporary password is replaced, reach their own workspace
+    const changed = await request(app)
+      .post("/api/auth/change-password")
+      .set("Authorization", `Bearer ${login.body.accessToken}`)
+      .send({ currentPassword: res.body.tempPassword, newPassword: "MyOwnPass123" });
+    expect(changed.status).toBe(200);
     const me = await request(app)
       .get("/api/athlete/me")
-      .set("Authorization", `Bearer ${login.body.accessToken}`);
+      .set("Authorization", `Bearer ${changed.body.accessToken}`);
     expect(me.status).toBe(200);
 
     // …and shows up on the coach's roster
@@ -141,6 +146,14 @@ describe("Coach-led athlete onboarding", () => {
     expect(login.body.user.mustChangePassword).toBe(true);
     const athleteToken = login.body.accessToken as string;
 
+    // Until the temporary password is changed, everything outside /api/auth
+    // is refused: the coach who issued it knows it.
+    const blocked = await request(app).get("/api/athlete/me").set("Authorization", `Bearer ${athleteToken}`);
+    expect(blocked.status).toBe(403);
+    expect(blocked.body.error).toBe("must_change_password");
+    const me = await request(app).get("/api/auth/me").set("Authorization", `Bearer ${athleteToken}`);
+    expect(me.status).toBe(200);
+
     // Wrong current password → 401
     const wrong = await request(app)
       .post("/api/auth/change-password")
@@ -162,6 +175,8 @@ describe("Coach-led athlete onboarding", () => {
       .send({ currentPassword: temp, newPassword: "BrandNewPass1" });
     expect(ok.status).toBe(200);
     expect(ok.body.user.mustChangePassword).toBe(false);
+    const unblocked = await request(app).get("/api/athlete/me").set("Authorization", `Bearer ${ok.body.accessToken}`);
+    expect(unblocked.status).toBe(200);
 
     // Old temp password no longer works; new one does
     const oldLogin = await request(app).post("/api/auth/login").send({ email: "tmp@acme.test", password: temp });
@@ -356,10 +371,15 @@ describe("Academy owner manages coaches", () => {
     expect(login.status).toBe(200);
     expect(login.body.user.isAcademyOwner).toBe(false);
 
-    // …and can immediately onboard their own athlete (the chain works).
+    // …replaces the temporary password, then can onboard their own athlete (the chain works).
+    const changed = await request(app)
+      .post("/api/auth/change-password")
+      .set("Authorization", `Bearer ${login.body.accessToken}`)
+      .send({ currentPassword: temp, newPassword: "MyOwnPass123" });
+    expect(changed.status).toBe(200);
     const athlete = await request(app)
       .post("/api/coach/athletes")
-      .set("Authorization", `Bearer ${login.body.accessToken}`)
+      .set("Authorization", `Bearer ${changed.body.accessToken}`)
       .send({ name: "Their Athlete", email: "their.ath@acme.test", sport: "football" });
     expect(athlete.status).toBe(201);
 
