@@ -235,3 +235,25 @@ export const STREAK_MILESTONES = [3, 7, 14, 30, 60, 100] as const;
 export function streakMilestoneLine(streak: number): string | null {
   return (STREAK_MILESTONES as readonly number[]).includes(streak) ? `${streak} days in a row. That's a streak!` : null;
 }
+
+function timeOfDay(hour: number): string {
+  if (hour < 4 || hour >= 17) return "Good evening";
+  if (hour < 12) return "Good morning";
+  return "Good afternoon";
+}
+
+/**
+ * Pex's line when it lands on the first open of the day: a greeting by name,
+ * then the streak, the welcome back, or the next task from the reaction.
+ */
+export function pexGreeting(input: { reaction: PexReaction; name: string | null; hour: number; streak: number }): string {
+  const name = first(input.name);
+  const hello = name ? `${timeOfDay(input.hour)}, ${name}!` : `${timeOfDay(input.hour)}!`;
+  if (input.reaction.id === "checkin.comeback") return name ? `Hey ${name}, you're back! I missed you.` : "Hey, you're back! I missed you.";
+  if (input.streak >= 3) return `${hello} ${input.streak} days in a row. Let's make it ${input.streak + 1}.`;
+  const title = input.reaction.title.trim();
+  if (!title) return hello;
+  if (/[?!]$/.test(title)) return `${hello} ${title}`;
+  if (input.reaction.action === null || input.reaction.calm) return `${hello} ${title}.`;
+  return `${hello} Next up: ${title}.`;
+}

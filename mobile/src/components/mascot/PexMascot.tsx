@@ -1,4 +1,5 @@
 import { useEffect, useId } from "react";
+import { StyleSheet, View } from "react-native";
 import Svg, { Circle, ClipPath, Defs, Ellipse, G, Line, Path, RadialGradient, Rect, Stop, Text as SvgText } from "react-native-svg";
 import Animated, {
   Easing,
@@ -45,6 +46,8 @@ export type PexMascotProps = {
   progress?: number;
   /** Orange spark at the tip of the ring (a live streak). */
   spark?: boolean;
+  /** A little hand pops out and waves (greetings). */
+  wave?: boolean;
 };
 
 /** One eyeball: shaded white, black iris, two glints, and an eyelid that blinks. */
@@ -209,7 +212,7 @@ function useBodyMotion(motion: PexMotion, enabled: boolean) {
  * moves with the expression. Faces come from lib/pex/faces.ts; which face to
  * show comes from lib/pex/brain.ts.
  */
-export function PexMascot({ face, pose, state = "waiting", tone = "ready", size = MASCOT_SIZE, reducedMotion = false, progress, spark = false }: PexMascotProps) {
+export function PexMascot({ face, pose, state = "waiting", tone = "ready", size = MASCOT_SIZE, reducedMotion = false, progress, spark = false, wave = false }: PexMascotProps) {
   const resolvedFace: PexFace = face ?? FACE_FOR_LEGACY_POSE[pose ?? DEFAULT_POSE_FOR_STATE[state]] ?? "ready";
   const spec = PEX_FACES[resolvedFace];
   const id = `pex${useId().replace(/[^a-zA-Z0-9]/g, "")}`;
@@ -264,6 +267,26 @@ export function PexMascot({ face, pose, state = "waiting", tone = "ready", size 
     speak.value = withRepeat(withSequence(withTiming(1.05, { duration: 220 }), withTiming(1, { duration: 220 })), -1, true);
   }, [reducedMotion, state, speak]);
 
+  // The ring tweens to new progress, so it visibly closes when Pex lands or a log lands.
+  const ringP = useSharedValue(p);
+  useEffect(() => {
+    ringP.value = reducedMotion ? p : withTiming(p, { duration: 750, easing: Easing.out(Easing.cubic) });
+  }, [p, reducedMotion, ringP]);
+  const ringProps = useAnimatedProps(() => ({ strokeDashoffset: len * (1 - ringP.value) }));
+
+  const waveRot = useSharedValue(0);
+  const waveScale = useSharedValue(0);
+  useEffect(() => {
+    if (!wave) {
+      waveScale.value = withTiming(0, { duration: 160 });
+      waveRot.value = 0;
+      return;
+    }
+    waveScale.value = withTiming(1, { duration: 220, easing: Easing.out(Easing.back(2)) });
+    waveRot.value = reducedMotion ? 0 : withDelay(200, withRepeat(withSequence(withTiming(-22, { duration: 210 }), withTiming(20, { duration: 210 })), 4, true));
+  }, [wave, reducedMotion, waveRot, waveScale]);
+  const handStyle = useAnimatedStyle(() => ({ transform: [{ rotate: `${waveRot.value}deg` }, { scale: waveScale.value }] }));
+
   const unit = size / 128;
   const animatedStyle = useAnimatedStyle(() => ({
     transform: [{ translateY: ty.value * unit }, { rotate: `${rot.value}deg` }, { scale: speak.value }],
@@ -273,11 +296,9 @@ export function PexMascot({ face, pose, state = "waiting", tone = "ready", size 
     <Animated.View style={[{ width: size, height: size }, animatedStyle]} importantForAccessibility="no-hide-descendants" accessibilityElementsHidden>
       <Svg width={size} height={size} viewBox="-4 -4 128 128">
         <Circle cx={60} cy={60} r={r} stroke={colors.surfaceInset} strokeWidth={9} fill="none" />
-        {p > 0.001 ? (
-          <G rotation={-90} origin="60, 60">
-            <Circle cx={60} cy={60} r={r} stroke={ringColor} strokeWidth={9} fill="none" strokeLinecap="round" strokeDasharray={p >= 0.999 ? undefined : `${p * len} ${len}`} />
-          </G>
-        ) : null}
+        <G rotation={-90} origin="60, 60">
+          <AnimatedCircle animatedProps={ringProps} cx={60} cy={60} r={r} stroke={ringColor} strokeWidth={9} fill="none" strokeLinecap="round" strokeDasharray={`${len} ${len}`} />
+        </G>
         {resolvedFace === "proud"
           ? [0, 45, 90, 135, 180, 225, 270, 315].map((deg) => {
               const t = (deg * Math.PI) / 180;
@@ -296,6 +317,17 @@ export function PexMascot({ face, pose, state = "waiting", tone = "ready", size 
         ) : null}
         <Extra kind={spec.extra} />
       </Svg>
+      <Animated.View pointerEvents="none" style={[pexHandStyles.hand, { right: -size * 0.04, bottom: size * 0.22, width: size * 0.2, height: size * 0.3 }, handStyle]}>
+        <View style={[pexHandStyles.arm, { width: size * 0.05, height: size * 0.14 }]} />
+        <View style={[pexHandStyles.mitten, { width: size * 0.16, height: size * 0.16, borderRadius: size * 0.08 }]} />
+      </Animated.View>
     </Animated.View>
   );
 }
+
+const pexHandStyles = StyleSheet.create({
+  // Pivot at the bottom so the wave swings from the shoulder.
+  hand: { position: "absolute", alignItems: "center", flexDirection: "column-reverse", transformOrigin: "bottom" },
+  arm: { backgroundColor: colors.surfaceRaised, borderRadius: 4 },
+  mitten: { backgroundColor: colors.primary, borderWidth: 2, borderColor: colors.surface },
+});

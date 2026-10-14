@@ -26,6 +26,7 @@ import { apiJson } from "../lib/api";
 import { prefersReducedMotion, useAnimatedNumber, usePop, useShake } from "../lib/motion";
 import { formatLikeTemplate, parseNumberTemplate } from "../lib/countUp";
 import { selectionFeedback } from "../lib/feedback";
+import { measurePexAnchor } from "../lib/pex/anchors";
 import { useAuth } from "../lib/auth";
 import { ROLE_THEMES, colors, fonts, layout, metricColors, radius, type MetricKey } from "../lib/theme";
 
@@ -139,6 +140,8 @@ export function PrimaryAppBar({
   }, [showNotifications]);
 
   const today = variant === "today";
+  // Pex's daily entrance starts at the profile picture on Today.
+  const avatarRef = useRef<View>(null);
 
   return (
     <View style={[styles.appBar, today ? styles.appBarToday : null]}>
@@ -175,6 +178,7 @@ export function PrimaryAppBar({
           </Pressable>
         ) : null}
         {showAvatar ? (
+          <View ref={avatarRef} onLayout={today ? () => measurePexAnchor(avatarRef.current, "avatar") : undefined} collapsable={false}>
           <Pressable
             onPress={() => router.push("/account" as never)}
             hitSlop={8}
@@ -189,6 +193,7 @@ export function PrimaryAppBar({
               accentStrong={theme.accentStrong}
             />
           </Pressable>
+          </View>
         ) : null}
       </View>
     </View>
