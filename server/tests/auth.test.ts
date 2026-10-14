@@ -13,6 +13,7 @@ import { Notification } from "../src/models/Notification";
 import authRouter, { __resetLoginRateLimit } from "../src/routes/auth";
 import coachRouter from "../src/routes/coach";
 import athleteRouter from "../src/routes/athlete";
+import { athleteJoinRequestsRouter } from "../src/routes/coachJoinRequests";
 import { env } from "../src/config/env";
 import { hashRefreshToken } from "../src/lib/tokens";
 
@@ -24,6 +25,7 @@ function buildApp() {
   app.use("/api/auth", authRouter);
   app.use("/api/coach", coachRouter);
   app.use("/api/athlete", athleteRouter);
+  app.use("/api/athlete", athleteJoinRequestsRouter);
   return app;
 }
 
@@ -304,7 +306,7 @@ describe("POST /api/auth/google self-signup roles", () => {
     expect(await CoachAthleteAssignment.countDocuments({ athleteId: profile!._id })).toBe(0);
   });
 
-  test("brand-new Google coach creates a coach account and can link an existing athlete", async () => {
+  test("brand-new Google coach creates a coach account and can invite an existing athlete", async () => {
     const app = buildApp();
     await request(app)
       .post("/api/auth/register-athlete")
@@ -337,8 +339,19 @@ describe("POST /api/auth/google self-signup roles", () => {
       .set("Authorization", `Bearer ${coachLogin.body.accessToken}`)
       .send({ email: "existing.athlete@test.io" });
 
-    expect(link.status).toBe(201);
-    expect(link.body).toMatchObject({ linkedExisting: true });
+    expect(link.status).toBe(202);
+    expect(link.body).toMatchObject({ invited: true });
+
+    const athleteLogin = await request(app)
+      .post("/api/auth/login")
+      .send({ email: "existing.athlete@test.io", password: "longenough1" });
+    const athleteAuth = `Bearer ${athleteLogin.body.accessToken}`;
+    const invites = await request(app).get("/api/athlete/coach-invites").set("Authorization", athleteAuth);
+    expect(invites.body.invites).toHaveLength(1);
+    const accept = await request(app)
+      .post(`/api/athlete/coach-invites/${invites.body.invites[0].id}/accept`)
+      .set("Authorization", athleteAuth);
+    expect(accept.status).toBe(200);
 
     const roster = await request(app)
       .get("/api/coach/athletes")

@@ -35,6 +35,7 @@ import { ExerciseMedia } from "../models/ExerciseMedia";
 import { WorkoutTemplate } from "../models/WorkoutTemplate";
 import { CoachSwitchIntent } from "../models/CoachSwitchIntent";
 import { CoachJoinRequest } from "../models/CoachJoinRequest";
+import { CoachInvite } from "../models/CoachInvite";
 import { Meal } from "../models/Meal";
 import { MealFood } from "../models/MealFood";
 import { MealScan } from "../models/MealScan";
@@ -120,6 +121,7 @@ async function deleteAthleteData(athleteId: Types.ObjectId): Promise<void> {
     CoachReview.deleteMany({ athleteId }),
     CoachSwitchIntent.deleteMany({ athleteId }),
     CoachJoinRequest.deleteMany({ athleteId }),
+    CoachInvite.deleteMany({ athleteId }),
   ]);
   await AthleteProfile.deleteOne({ _id: athleteId });
 }
@@ -143,6 +145,7 @@ export async function permanentlyDeleteAccount(user: UserDoc): Promise<void> {
     // A pending switch to this coach can never complete now.
     await CoachSwitchIntent.deleteMany({ toCoachId: userId });
     await CoachJoinRequest.deleteMany({ coachId: userId });
+    await CoachInvite.deleteMany({ coachId: userId });
     await Promise.all([
       Announcement.deleteMany({ coachId: userId }),
       CoachAthleteAssignment.deleteMany({

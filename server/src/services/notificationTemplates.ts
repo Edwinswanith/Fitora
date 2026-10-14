@@ -333,3 +333,13 @@ export function buildJoinAccepted(input: { coachName: string }): TemplateResult 
 export function buildJoinDeclined(input: { coachName: string }): TemplateResult {
   return { title: "Request not accepted", body: `${input.coachName} can't take you on right now. You can ask another coach.`, link: "/athlete/coach-discovery" };
 }
+
+// --- Coach invites an athlete by email ---
+
+export function buildCoachInvited(input: { coachName: string }): TemplateResult {
+  return { title: "Coach invite", body: `${input.coachName} invited you to train with them. Accept to share your progress.`, link: "/athlete/dashboard?section=coach" };
+}
+
+export function buildCoachInviteAccepted(input: { athleteName: string }): TemplateResult {
+  return { title: "New client", body: `${input.athleteName} accepted your invite.`, link: "/coach/athletes" };
+}

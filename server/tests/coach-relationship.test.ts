@@ -7,6 +7,7 @@ import { AthleteProfile } from "../src/models/AthleteProfile";
 import { CoachAthleteAssignment } from "../src/models/CoachAthleteAssignment";
 import authRouter, { __resetLoginRateLimit } from "../src/routes/auth";
 import coachRouter from "../src/routes/coach";
+import { athleteJoinRequestsRouter } from "../src/routes/coachJoinRequests";
 import { signAccessToken } from "../src/lib/tokens";
 
 let mongo: MongoMemoryServer;
@@ -16,6 +17,7 @@ function buildApp() {
   app.use(express.json());
   app.use("/api/auth", authRouter);
   app.use("/api/coach", coachRouter);
+  app.use("/api/athlete", athleteJoinRequestsRouter);
   return app;
 }
 
@@ -117,31 +119,41 @@ describe("CoachAthleteAssignment schema — one-primary-coach fields", () => {
   });
 });
 
-describe("POST /api/coach/athletes/link — real concurrency race (not just sequential)", () => {
-  test("two coaches racing to link the SAME athlete at the same instant: exactly one wins", async () => {
+describe("coach invites: real concurrency race on accept (not just sequential)", () => {
+  test("an athlete accepting three coaches' invites at the same instant ends up with exactly one coach", async () => {
     const coachA = await makeCoach("race-a");
     const coachB = await makeCoach("race-b");
     const coachC = await makeCoach("race-c");
     const app = buildApp();
-    await selfRegister(app, "raced@solo.io");
+    const reg = await selfRegister(app, "raced@solo.io");
+    const athleteToken = reg.body.accessToken as string;
 
-    // Fired concurrently via Promise.all — no await between them — so all
-    // three requests' pre-checks can observe "no active coach yet" before any
-    // of their create() calls land. This is the actual TOCTOU race scenario;
-    // sequential awaited calls would never exercise it.
-    const [ra, rb, rc] = await Promise.all([
-      request(app).post("/api/coach/athletes/link").set("Authorization", `Bearer ${coachToken(coachA._id)}`).send({ email: "raced@solo.io" }),
-      request(app).post("/api/coach/athletes/link").set("Authorization", `Bearer ${coachToken(coachB._id)}`).send({ email: "raced@solo.io" }),
-      request(app).post("/api/coach/athletes/link").set("Authorization", `Bearer ${coachToken(coachC._id)}`).send({ email: "raced@solo.io" }),
-    ]);
+    for (const coach of [coachA, coachB, coachC]) {
+      const res = await request(app)
+        .post("/api/coach/athletes/link")
+        .set("Authorization", `Bearer ${coachToken(coach._id)}`)
+        .send({ email: "raced@solo.io" });
+      expect(res.status).toBe(202);
+    }
+    // Inviting alone grants nothing.
+    expect(await CoachAthleteAssignment.countDocuments({})).toBe(0);
 
-    const statuses = [ra.status, rb.status, rc.status].sort();
-    expect(statuses).toEqual([201, 409, 409]);
-    // Whichever request failed should fail with the well-defined conflict
-    // reason, not a raw/unhandled duplicate-key error leaking to the client.
-    for (const res of [ra, rb, rc]) {
-      if (res.status === 409) {
-        expect(res.body.error).toBe("athlete_has_active_coach");
+    const invites = await request(app).get("/api/athlete/coach-invites").set("Authorization", `Bearer ${athleteToken}`);
+    expect(invites.body.invites).toHaveLength(3);
+
+    // Fired concurrently via Promise.all, so every accept's claim can land
+    // before any assignment exists. The one-active-coach index decides.
+    const results = await Promise.all(
+      invites.body.invites.map((inv: { id: string }) =>
+        request(app).post(`/api/athlete/coach-invites/${inv.id}/accept`).set("Authorization", `Bearer ${athleteToken}`)
+      )
+    );
+    const statuses = results.map((r) => r.status);
+    expect(statuses.filter((s) => s === 200)).toHaveLength(1);
+    for (const res of results) {
+      if (res.status !== 200) {
+        expect([404, 409]).toContain(res.status);
+        expect(["already_has_coach", "invite_not_found"]).toContain(res.body.error);
       }
     }
 

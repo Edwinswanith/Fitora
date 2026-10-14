@@ -22,6 +22,7 @@ const ERROR_MESSAGES: Record<string, string> = {
   coach_not_found: "This coach isn't taking requests right now.",
   athlete_has_active_coach: "This athlete already has a coach, so the request was closed.",
   request_not_found: "This request was already answered or withdrawn.",
+  invite_not_found: "This invite has expired or was already answered.",
 };
 
 export function joinRequestErrorMessage(code: string | undefined, fallback = "Something went wrong. Please try again."): string {
@@ -56,6 +57,24 @@ export function sendJoinRequest(coachId: string, message: string) {
 
 export function cancelJoinRequest(requestId: string) {
   return call<{ request: JoinRequest }>(`/api/athlete/join-request/${encodeURIComponent(requestId)}/cancel`, { method: "POST" });
+}
+
+// Coach invites: a coach asked this athlete, by email, to train with them.
+// Nothing is shared with the coach until the athlete accepts.
+export type CoachInvite = {
+  id: string;
+  createdAt: string;
+  expiresAt: string;
+  coach: { id: string; name: string; specializations: string[]; yearsExperience: number | null };
+};
+
+export async function loadMyCoachInvites(): Promise<CoachInvite[]> {
+  const result = await call<{ invites: CoachInvite[] }>("/api/athlete/coach-invites");
+  return result.ok ? result.data.invites : [];
+}
+
+export function decideCoachInvite(inviteId: string, decision: "accept" | "decline") {
+  return call<{ invite: { id: string; status: string } }>(`/api/athlete/coach-invites/${encodeURIComponent(inviteId)}/${decision}`, { method: "POST" });
 }
 
 // ── Coach ──

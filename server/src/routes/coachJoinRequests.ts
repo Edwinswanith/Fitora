@@ -12,9 +12,10 @@ import {
   pendingJoinRequestsForCoach,
   serializeJoinRequests,
 } from "../services/coachJoinRequest";
+import { CoachInviteError, decideInvite, pendingInvitesForAthlete } from "../services/coachInvite";
 
 function sendError(res: Response, err: unknown): void {
-  if (err instanceof JoinRequestError) return void res.status(err.status).json({ error: err.message });
+  if (err instanceof JoinRequestError || err instanceof CoachInviteError) return void res.status(err.status).json({ error: err.message });
   throw err;
 }
 
@@ -64,6 +65,29 @@ athleteJoinRequestsRouter.post(
     }
   }
 );
+
+/** GET /api/athlete/coach-invites: coaches who invited this athlete by email and are waiting. */
+athleteJoinRequestsRouter.get("/coach-invites", async (req: Request, res: Response) => {
+  if (!req.actor) return void res.status(401).json({ error: "unauthenticated" });
+  res.json({ invites: await pendingInvitesForAthlete(req.actor.userId) });
+});
+
+for (const decision of ["accept", "decline"] as const) {
+  /** POST /api/athlete/coach-invites/:inviteId/accept | /decline */
+  athleteJoinRequestsRouter.post(
+    `/coach-invites/:inviteId/${decision}`,
+    writeRateLimit({ windowMs: 60_000, max: 20 }),
+    async (req: Request, res: Response) => {
+      if (!req.actor) return void res.status(401).json({ error: "unauthenticated" });
+      try {
+        const invite = await decideInvite({ athleteUserId: req.actor.userId, inviteId: req.params.inviteId, decision });
+        res.json({ invite: { id: invite._id.toString(), status: invite.status } });
+      } catch (err) {
+        sendError(res, err);
+      }
+    }
+  );
+}
 
 // ── Coach: see who asked, accept or decline ────────────────────────────────
 export const coachJoinRequestsRouter = Router();
