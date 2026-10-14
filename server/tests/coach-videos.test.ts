@@ -4,6 +4,7 @@ import express from "express";
 import request from "supertest";
 import { User } from "../src/models/User";
 import { CoachVideo } from "../src/models/CoachVideo";
+import { CoachAthleteAssignment } from "../src/models/CoachAthleteAssignment";
 import { CoachVideoProgress } from "../src/models/CoachVideoProgress";
 import coachVideosRouter from "../src/routes/coachVideos";
 import { signAccessToken } from "../src/lib/tokens";
@@ -99,6 +100,12 @@ describe("PATCH /coach/videos/:id", () => {
     const token = `Bearer ${tokenFor(coach._id, "coach")}`;
     const clientId = new Types.ObjectId().toString();
 
+    // Someone who isn't this coach's client can't be added (or notified).
+    const stranger = await request(app).patch(`/api/coach/videos/${videoId}`).set("Authorization", token).send({ selectedClientIds: [clientId] });
+    expect(stranger.status).toBe(403);
+    expect(stranger.body.error).toBe("client_not_assigned");
+
+    await CoachAthleteAssignment.create({ coachId: coach._id, athleteId: new Types.ObjectId(clientId), assignedBy: coach._id });
     const res = await request(app).patch(`/api/coach/videos/${videoId}`).set("Authorization", token).send({
       title: "Renamed",
       description: "New desc",

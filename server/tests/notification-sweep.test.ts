@@ -389,7 +389,7 @@ describe("runSweep — note_needs_reply", () => {
     const admin = await User.create({ email: `admin${Date.now()}@t.io`, passwordHash: "x", role: "coach", name: "Admin" });
     const coach = await User.create({ email: `coach${Date.now()}@t.io`, passwordHash: "x", role: "coach", name: "Coach" });
     const { profile } = await seedAthlete();
-    await CoachAthleteAssignment.create({ coachId: coach._id, athleteId: profile._id, assignedBy: admin._id });
+    await CoachAthleteAssignment.create({ coachId: coach._id, athleteId: profile._id, assignedBy: admin._id, assignedAt: new Date(Date.UTC(2025, 0, 1)) });
     await DeviceToken.create({ userId: coach._id, platform: "android", token: `tok-${coach._id}` });
     // Mongoose's `timestamps: true` makes `createdAt` immutable after insert — an
     // updateOne $set on it silently no-ops. Must be set at create() time instead.

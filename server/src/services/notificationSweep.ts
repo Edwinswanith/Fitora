@@ -384,8 +384,11 @@ export async function buildCoachCandidates(
   const todayEnd = new Date(today.getTime() + 24 * 60 * 60 * 1000);
 
   const assignments = await CoachAthleteAssignment.find({ coachId: user._id, endedAt: null })
-    .select("athleteId")
+    .select("athleteId assignedAt createdAt")
     .lean();
+  const startedAt = new Map(
+    assignments.map((a) => [String(a.athleteId), new Date((a.assignedAt ?? a.createdAt) as Date).getTime()])
+  );
   const athleteIds = assignments.map((a) => a.athleteId as Types.ObjectId);
   if (athleteIds.length === 0) return [];
 
@@ -395,14 +398,16 @@ export async function buildCoachCandidates(
   // signal: any CoachComment for that athlete created after the note — there's
   // no direct reply-to-note link in the schema).
   const cutoff = new Date(now.getTime() - env.notification.noteNeedsReplyHours * 60 * 60 * 1000);
-  const staleNotes = await AthleteNote.find({
-    athleteId: { $in: athleteIds },
-    createdAt: { $lte: cutoff },
-  })
-    .select("_id athleteId createdAt")
-    .sort({ createdAt: -1 })
-    .limit(100)
-    .lean();
+  const staleNotes = (
+    await AthleteNote.find({
+      athleteId: { $in: athleteIds },
+      createdAt: { $lte: cutoff },
+    })
+      .select("_id athleteId createdAt")
+      .sort({ createdAt: -1 })
+      .limit(100)
+      .lean()
+  ).filter((n) => new Date(n.createdAt as Date).getTime() >= (startedAt.get(String(n.athleteId)) ?? Infinity));
 
   if (staleNotes.length > 0) {
     const names = await athleteNameMap(athleteIds);

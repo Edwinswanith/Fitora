@@ -43,6 +43,7 @@ import { buildCoachFeedback, buildInjuryAlert } from "../services/notificationTe
 import { notificationPreview } from "../services/notificationCopy";
 import { buildTrendSeries, clampDays } from "../services/trends";
 import { buildActivityFeed, clampLimit } from "../services/activity";
+import { relationshipStarts } from "../services/relationshipWindow";
 import {
   buildWellnessSeries,
   buildAttendanceSeries,
@@ -949,7 +950,9 @@ router.get(
   requireAthleteAccess("athleteId"),
   async (req: Request, res: Response) => {
     const limit = clampLimit(req.query.limit);
-    const items = await buildActivityFeed(new Types.ObjectId(req.params.athleteId), limit);
+    const athleteId = new Types.ObjectId(req.params.athleteId);
+    const since = (await relationshipStarts(req.actor!.userId, [athleteId])).get(String(athleteId)) ?? new Date();
+    const items = await buildActivityFeed(athleteId, limit, { coachId: req.actor!.userId, since });
     res.json({ items });
   }
 );
@@ -1026,7 +1029,7 @@ router.get("/notes-inbox", async (req: Request, res: Response) => {
     return;
   }
   const days = clampDays(req.query.days, 14, 60);
-  res.json({ days, ...(await buildCoachNotesInbox(assignedIdsFor(req), days)) });
+  res.json({ days, ...(await buildCoachNotesInbox(req.actor.userId, assignedIdsFor(req), days)) });
 });
 
 /**
