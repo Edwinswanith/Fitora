@@ -13,6 +13,7 @@ import { todayKey } from "../lib/fitoraData";
 import { classifyPendingReply, coachAgentMemoryKey } from "../lib/coachAgentPending";
 import { ROLE_THEMES, colors } from "../lib/theme";
 import { SESSION_SLOTS } from "../lib/sessions";
+import { sportLabel } from "../lib/sport";
 
 type AgentRow = {
   id: string;
@@ -371,7 +372,7 @@ export function CoachAskAgentOverlay() {
       icon: card.injury?.active ? "medkit-outline" : card.attendance?.status === "absent" ? "close-circle-outline" : "person-outline",
       label: card.name || "Athlete",
       status: card.readinessScore == null ? "-" : String(card.readinessScore),
-      detail: [card.sport, card.position, card.attendance?.status, attentionReason(card)].filter(Boolean).join(" · "),
+      detail: [sportLabel(card.sport), card.position, card.attendance?.status, attentionReason(card)].filter(Boolean).join(" · "),
       tone: card.injury?.active || card.attendance?.status === "absent" ? "bad" : attentionRank(card) < 2 ? "warn" : "ok",
       onPress: () => openCoachAthlete(card.athleteId, card.name),
     }));

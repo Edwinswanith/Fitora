@@ -25,6 +25,7 @@ import { BackHeader } from "../../components/fitora";
 import { Avatar as PhotoAvatar, type AvatarInfo } from "../../components/Avatar";
 import { useTourHighlight, useTourScrollView } from "../../lib/tour/MobileTourProvider";
 import { SpotlightTarget } from "../../lib/tour/SpotlightTarget";
+import { sportLabel } from "../../lib/sport";
 
 const theme = ROLE_THEMES.coach;
 
@@ -70,7 +71,7 @@ type Party = {
 
 function athleteMeta(athlete?: Athlete): string {
   if (!athlete) return "Client";
-  return [athlete.sport, athlete.position].filter(Boolean).join(" / ") || athlete.email || "Client";
+  return [sportLabel(athlete.sport), athlete.position].filter(Boolean).join(" / ") || athlete.email || "Client";
 }
 
 function messageTime(iso?: string): string {
@@ -823,7 +824,7 @@ function MessagesHome({
               <Pressable key={athlete.athleteId} onPress={() => onSelect(athlete.athleteId)} style={styles.starterCard}>
                 <PersonAvatar id={athlete.athleteId} name={athlete.name} avatar={athlete.avatar} size={52} />
                 <Text style={styles.starterName} numberOfLines={1}>{athlete.name || "Client"}</Text>
-                <Text style={styles.starterMeta} numberOfLines={1}>{athlete.position || athlete.sport || "Client"}</Text>
+                <Text style={styles.starterMeta} numberOfLines={1}>{athlete.position || sportLabel(athlete.sport) || "Client"}</Text>
                 <View style={styles.starterChatButton}>
                   <Ionicons name="chatbubble-outline" size={14} color={theme.accent} />
                 </View>

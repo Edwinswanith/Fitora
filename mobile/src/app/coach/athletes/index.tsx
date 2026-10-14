@@ -29,6 +29,7 @@ import {
   type DailyCard,
 } from "../../../lib/fitoraData";
 import { PAYMENTS_ENABLED } from "../../../lib/features";
+import { sportLabel } from "../../../lib/sport";
 
 type Filter = "all" | "attention" | "active" | "membership";
 
@@ -93,7 +94,7 @@ function ClientsView({ data }: { data: CoachHomeData }) {
       .sort((a, b) => a.name.localeCompare(b.name))
       .filter((athlete) => {
         const card = summary[athlete.athleteId];
-        if (q && !`${athlete.name} ${athlete.sport} ${athlete.position ?? ""}`.toLowerCase().includes(q)) return false;
+        if (q && !`${athlete.name} ${sportLabel(athlete.sport) ?? ""} ${athlete.position ?? ""}`.toLowerCase().includes(q)) return false;
         if (filter === "attention") return card ? attentionRank(card) < 2.5 : false;
         if (filter === "active") return hasRecentOrUpcomingSession(sessionsByAthlete.get(athlete.athleteId) ?? []);
         if (filter === "membership") return Boolean(athlete.hasActiveMembership);
@@ -219,7 +220,7 @@ function ClientRow({
           <Text style={styles.clientName} numberOfLines={1}>{athlete.name || "Client"}</Text>
           {statusTone !== "success" ? <StatusChip label={statusLabel} tone={statusTone} /> : null}
         </View>
-        <Text style={styles.goalText} numberOfLines={1}>{athlete.sport || "General Fitness"}</Text>
+        <Text style={styles.goalText} numberOfLines={1}>{sportLabel(athlete.sport) || "General Fitness"}</Text>
         <View style={styles.clientMetrics}>
           <SmallMetric icon={workoutIcon.icon} label="Workout" value={planned ? `${completed} / ${planned}` : "No plan"} color={metricColors.training.ink} />
           {lastSession?.type ? <SmallMetric icon={sessionIcon.icon} label="Session" value={titleCase(lastSession.type)} tone={sessionIcon.tone} /> : null}

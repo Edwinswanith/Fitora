@@ -20,8 +20,6 @@ export default function Register() {
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
-  const [sport, setSport] = useState("");
-  const [position, setPosition] = useState("");
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -32,7 +30,6 @@ export default function Register() {
     if (!EMAIL_RE.test(email.trim())) return "Enter a valid email address.";
     if (!password) return "Password is required.";
     if (password.length < 8) return "Password must be at least 8 characters.";
-    if (!sport.trim()) return "Sport is required.";
     return null;
   }
 
@@ -44,7 +41,7 @@ export default function Register() {
       return;
     }
     setSaving(true);
-    const result = await signUp({ name: name.trim(), email: email.trim(), password, sport: sport.trim(), position: position.trim() || undefined });
+    const result = await signUp({ name: name.trim(), email: email.trim(), password });
     setSaving(false);
     if (!result.ok) {
       // Map every backend error code we can to a specific, actionable
@@ -54,21 +51,20 @@ export default function Register() {
       else if (result.error === "weak_password") setError("Password must be at least 8 characters.");
       else if (result.error === "invalid_email") setError("Enter a valid email address.");
       else if (result.error === "invalid_name") setError("Full name is required.");
-      else if (result.error === "invalid_sport") setError("Sport is required.");
       else if (result.status === 429) setError("Too many attempts. Wait a minute and try again.");
       else if (result.status === 0) setError("Unable to reach the server. Check your connection.");
       else setError("Something went wrong creating your account. Please try again.");
       return;
     }
-    const dest = dashboardPathForRole(result.user.role) ?? "/athlete/dashboard";
-    router.replace(dest as never);
+    // Straight into the one-time setup (goal, body, activity), which ends on the dashboard.
+    router.replace((result.user.role === "athlete" ? "/athlete/onboarding" : dashboardPathForRole(result.user.role) ?? "/") as never);
   }
 
   return (
     <SafeAreaView style={styles.safe}>
       <KeyboardAvoidingView behavior={Platform.OS === "ios" ? "padding" : undefined} style={{ flex: 1 }}>
         <ScrollView contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
-          <BackHeader title="Create your account" subtitle="Join as an athlete. It takes under a minute." />
+          <BackHeader title="Create your account" subtitle="Join as an athlete. Next, a few quick questions to set your targets." />
 
           <Card style={{ gap: 14, marginTop: 12 }}>
             <Field label="Full name" value={name} onChange={setName} placeholder="Jane Doe" />
@@ -79,8 +75,6 @@ export default function Register() {
                 <TextField value={password} onChangeText={setPassword} placeholder="At least 8 characters" isPassword editable={!saving} />
               </View>
             </View>
-            <Field label="Sport" value={sport} onChange={setSport} placeholder="Football" />
-            <Field label="Position (optional)" value={position} onChange={setPosition} placeholder="Striker" />
             {error ? <Banner kind="error">{error}</Banner> : null}
             <PrimaryButton label="Create Account" onPress={submit} loading={saving} accent={theme.accent} accentInk={theme.accentInk} />
           </Card>

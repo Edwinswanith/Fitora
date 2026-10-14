@@ -5,7 +5,7 @@
 
 import { localDayOf, shiftDay } from "./progressWindow";
 
-export type FirstStepKey = "water" | "checkin" | "coach";
+export type FirstStepKey = "target" | "water" | "checkin" | "coach";
 export type FirstStep = { key: FirstStepKey; done: boolean };
 
 /** How many days after joining the card can still show. */
@@ -17,6 +17,8 @@ export type FirstStepsInput = {
   waterMl: number | null | undefined;
   readinessScore: number | null | undefined;
   hasCoach: boolean;
+  /** False while goal, body basics or activity are missing (skipped in onboarding). */
+  hasTarget: boolean;
 };
 
 export type FirstStepsState = {
@@ -36,7 +38,8 @@ export function firstStepsState(input: FirstStepsInput): FirstStepsState | null 
   while (shiftDay(joined, day) <= input.today && day < FIRST_STEPS_DAYS) day += 1;
 
   const steps: FirstStep[] = [
-    { key: "water", done: (input.waterMl ?? 0) > 0 },
+    // Until the athlete has a calorie target, finishing setup matters more than a first glass.
+    input.hasTarget ? { key: "water", done: (input.waterMl ?? 0) > 0 } : { key: "target", done: false },
     { key: "checkin", done: input.readinessScore != null },
     { key: "coach", done: input.hasCoach },
   ];

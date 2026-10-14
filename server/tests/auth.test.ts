@@ -240,12 +240,13 @@ describe("POST /api/auth/register-athlete (self-signup)", () => {
     expect((await AthleteProfile.findOne({ userId: user!._id }).lean())?.timezone).toBe("Europe/London");
   });
 
-  test("missing sport returns 400 invalid_sport", async () => {
+  test("sport is optional: onboarding asks for it later", async () => {
     const res = await request(buildApp())
       .post("/api/auth/register-athlete")
-      .send({ ...body, sport: "" });
-    expect(res.status).toBe(400);
-    expect(res.body).toEqual({ error: "invalid_sport" });
+      .send({ name: body.name, email: body.email, password: body.password });
+    expect(res.status).toBe(201);
+    const user = await User.findOne({ email: body.email }).lean();
+    expect((await AthleteProfile.findOne({ userId: user!._id }).lean())?.sport).toBe("Not set");
   });
 });
 

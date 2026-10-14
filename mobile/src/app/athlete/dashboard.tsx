@@ -36,6 +36,7 @@ import { celebrate, selectionFeedback, showError } from "../../lib/feedback";
 import { confirmAction } from "../../lib/confirm";
 import { animateNextLayout, prefersReducedMotion, usePop } from "../../lib/motion";
 import { firstStepsState, type FirstStepKey, type FirstStepsState } from "../../lib/firstSteps";
+import { athleteNeedsOnboarding, hasSeenOnboarding } from "../../lib/onboarding";
 import { PexMascot } from "../../components/mascot/PexMascot";
 import { joinSessionCall } from "../../lib/videoCall";
 import { loadMyJoinRequest, type JoinRequest } from "../../lib/joinRequests";
@@ -161,6 +162,26 @@ export default function AthleteDashboard() {
   const state = useAsyncData(loadAthleteDashboardData, [], "athlete-dashboard");
   const reloadDashboard = state.reload;
   const hasFocusedOnce = useRef(false);
+  const { user: authUser } = useAuth();
+  const onboardingChecked = useRef(false);
+  const profileForOnboarding = state.data?.profile;
+  const dashboardDate = state.data?.date;
+
+  // New athletes (e.g. a first Google sign-in) go through the one-time setup once.
+  useEffect(() => {
+    if (onboardingChecked.current || !profileForOnboarding || !dashboardDate || !authUser?.id) return;
+    onboardingChecked.current = true;
+    const due = athleteNeedsOnboarding({
+      today: dashboardDate,
+      createdAt: profileForOnboarding.createdAt,
+      fitnessGoal: profileForOnboarding.fitnessGoal,
+      weightKg: profileForOnboarding.weightKg,
+    });
+    if (!due) return;
+    void hasSeenOnboarding(authUser.id).then((seen) => {
+      if (!seen) router.replace("/athlete/onboarding" as never);
+    });
+  }, [profileForOnboarding, dashboardDate, authUser?.id, router]);
 
   useFocusEffect(
     useCallback(() => {
@@ -335,6 +356,7 @@ function TodayView({
     waterMl: data.water?.totalMl,
     readinessScore: data.daily?.readinessScore,
     hasCoach: athleteHasCoach(data),
+    hasTarget: Boolean(data.target),
   });
 
   function goToWorkout(target = workout) {
@@ -395,7 +417,8 @@ function TodayView({
         <FirstStepsCard
           state={firstSteps}
           onStep={(key) => {
-            if (key === "water") router.push("/athlete/water" as never);
+            if (key === "target") router.replace("/athlete/onboarding" as never);
+            else if (key === "water") router.push("/athlete/water" as never);
             else if (key === "checkin") router.push("/athlete/check-in" as never);
             else onNavigate("coach");
           }}
@@ -427,6 +450,7 @@ function TodayView({
 }
 
 const FIRST_STEP_COPY: Record<FirstStepKey, { title: string; sub: string; action: string; icon: keyof typeof Ionicons.glyphMap; color: string; soft: string }> = {
+  target: { title: "Get your calorie target", sub: "Goal, body and activity. One minute.", action: "Start", icon: "calculator-outline", color: metricColors.nutrition.ink, soft: metricColors.nutrition.soft },
   water: { title: "Log your first glass", sub: "One tap. Starts your water streak.", action: "Log", icon: "water", color: metricColors.water.ink, soft: metricColors.water.soft },
   checkin: { title: "Morning check-in", sub: "Sleep, mood, soreness. 30 seconds.", action: "Start", icon: "sunny-outline", color: metricColors.readiness.ink, soft: metricColors.readiness.soft },
   coach: { title: "Find a coach", sub: "Optional. Browse and send a request.", action: "Browse", icon: "person", color: colors.primary, soft: colors.primarySoft },

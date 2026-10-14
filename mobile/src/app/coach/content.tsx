@@ -24,6 +24,7 @@ import { apiFetch } from "../../lib/api";
 import { colors, radius } from "../../lib/theme";
 import { formatDuration, loadCoachContentData, titleCase, todayKey, useAsyncData, type CoachContentData, type CoachVideo } from "../../lib/fitoraData";
 import { VideoPlayerModal } from "../../components/VideoPlayerModal";
+import { sportLabel } from "../../lib/sport";
 
 type Tab = "library" | "assigned" | "analytics";
 /**
@@ -534,7 +535,7 @@ function ContentActionCard({
             multi
             selected={selectedAthleteIds.includes(client.athleteId)}
             title={client.name}
-            subtitle={client.sport || "Client"}
+            subtitle={sportLabel(client.sport) || "Client"}
             onPress={() => toggleAthlete(client.athleteId)}
           />
         )) : <Text style={styles.muted}>Add clients before assigning content.</Text>}

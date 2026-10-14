@@ -5,6 +5,9 @@
 // an assistant action that opens one of these screens is never cut off.
 
 const HIDDEN_ROUTE_PREFIXES = [
+  // One-time setup flows: every screen is a question with its own buttons.
+  "/athlete/onboarding",
+  "/coach/onboarding",
   "/athlete/check-in",
   "/athlete/rpe",
   "/athlete/log-meal",

@@ -39,6 +39,7 @@ import {
   type CoachProfileData,
   type NutritionTarget,
 } from "../lib/fitoraData";
+import { sportLabel } from "../lib/sport";
 
 const FITNESS_GOALS = ["lose_weight", "maintain_weight", "gain_weight"] as const;
 const GOAL_INTENSITIES = ["mild", "moderate", "aggressive"] as const;
@@ -184,7 +185,7 @@ function AthleteProfileContent({ data, onManageGoal }: { data: AthleteDashboardD
           <Avatar avatar={user?.avatar} name={profile?.name || user?.name || "Profile"} size={78} accentSoft={colors.primarySoft} accentStrong={colors.primary} />
           <View style={{ flex: 1, minWidth: 0 }}>
             <Text style={styles.identityName} numberOfLines={1}>{profile?.name || user?.name}</Text>
-            <Text style={styles.identityRole}>{titleCase(profile?.fitnessGoal) || profile?.sport || "Fitness"}</Text>
+            <Text style={styles.identityRole}>{titleCase(profile?.fitnessGoal) || sportLabel(profile?.sport) || "Fitness"}</Text>
             <Text style={styles.muted} numberOfLines={1}>{profile?.email || user?.email}</Text>
             <Pressable onPress={() => setAvatarEditorOpen((value) => !value)} hitSlop={8}>
               <Text style={styles.avatarEditLink}>{avatarEditorOpen ? "Close" : "Change Photo"}</Text>
