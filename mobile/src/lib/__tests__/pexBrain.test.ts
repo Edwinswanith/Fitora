@@ -1,6 +1,6 @@
 import type { NextAction } from "../fitoraData";
 import type { FirstStepsState } from "../firstSteps";
-import { dayProgress, daysSinceLastCheckIn, derivePexReaction, streakMilestoneLine, type PexInput } from "../pex/brain";
+import { dayProgress, daysSinceLastCheckIn, derivePexReaction, pexGreeting, streakMilestoneLine, type PexInput } from "../pex/brain";
 
 const next = (over: Partial<NextAction> & Pick<NextAction, "kind">): NextAction => ({ eyebrow: "Next up", title: "", body: "", ctaLabel: "", ...over });
 
@@ -132,4 +132,19 @@ describe("daysSinceLastCheckIn", () => {
 test("streak milestones", () => {
   expect(streakMilestoneLine(7)).toBe("7 days in a row. That's a streak!");
   expect(streakMilestoneLine(8)).toBeNull();
+});
+
+describe("pexGreeting", () => {
+  const r = (over: Partial<PexInput> = {}) => derivePexReaction(input(over));
+  test("greets by first name with the time of day and the next task", () => {
+    expect(pexGreeting({ reaction: r({ next: next({ kind: "checkin" }), hour: 7 }), name: "Ananya Sharma", hour: 7, streak: 0 })).toBe("Good morning, Ananya! How did you sleep?");
+    expect(pexGreeting({ reaction: r({ next: next({ kind: "hydration", body: "1.2 L to go" }) }), name: "Ananya", hour: 15, streak: 1 })).toBe("Good afternoon, Ananya! Next up: 1.2 L to go.");
+  });
+  test("a streak of 3+ leads, and a comeback is a welcome", () => {
+    expect(pexGreeting({ reaction: r(), name: "Ananya", hour: 19, streak: 7 })).toBe("Good evening, Ananya! 7 days in a row. Let's make it 8.");
+    expect(pexGreeting({ reaction: r({ next: next({ kind: "checkin" }), daysSinceCheckIn: 5 }), name: "Ananya", hour: 9, streak: 0 })).toBe("Hey Ananya, you're back! I missed you.");
+  });
+  test("works without a name", () => {
+    expect(pexGreeting({ reaction: r(), name: null, hour: 10, streak: 0 })).toBe("Good morning! Day done.");
+  });
 });

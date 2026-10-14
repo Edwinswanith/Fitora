@@ -40,7 +40,9 @@ import { athleteNeedsOnboarding, hasSeenOnboarding } from "../../lib/onboarding"
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { centeredStart, dayOfMonth, monthKey, monthLabel, monthRange, monthsAround, stripDates, weekdayShort } from "../../lib/dateStrip";
 import { PexMascot } from "../../components/mascot/PexMascot";
-import { dayProgress, daysSinceLastCheckIn, derivePexReaction, streakMilestoneLine, type PexActionKey } from "../../lib/pex/brain";
+import { dayProgress, daysSinceLastCheckIn, derivePexReaction, pexGreeting, streakMilestoneLine, type PexActionKey } from "../../lib/pex/brain";
+import { getPexAnchor, measurePexAnchor, type PexRect } from "../../lib/pex/anchors";
+import { PexEntrance } from "../../components/mascot/PexEntrance";
 import type { PexFace } from "../../lib/pex/faces";
 import { joinSessionCall } from "../../lib/videoCall";
 import { decideCoachInvite, loadMyCoachInvites, loadMyJoinRequest, type CoachInvite, type JoinRequest } from "../../lib/joinRequests";
@@ -681,7 +683,25 @@ function TodayHero({
     pendingRequestCoach: data.joinRequest?.status === "pending" ? data.joinRequest.coach.name : null,
     inviteCoach: invite?.coach.name ?? null,
   });
-  const moment = usePexMoment(user?.id ?? null, streak);
+  const { moment, show: showMoment } = usePexMoment(user?.id ?? null, streak);
+  const entrance = usePexEntrance(user?.id ?? null, data.date);
+  const slotRef = useRef<View>(null);
+  // Until we know whether Pex flies in today, its spot stays empty (no flash before take-off).
+  const pexAway = entrance.phase === "checking" || entrance.phase === "pending" || entrance.phase === "flying";
+  const greeting = pexGreeting({ reaction, name: data.profile?.name ?? user?.name ?? null, hour: new Date().getHours(), streak });
+  // Kept in a ref so a data refresh mid-flight doesn't restart the animation.
+  const greetingRef = useRef(greeting);
+  useEffect(() => {
+    greetingRef.current = greeting;
+  }, [greeting]);
+  const welcome = useCallback(() => {
+    entrance.finish();
+    showMoment({ face: "proud", line: greetingRef.current, wave: true }, 4200);
+  }, [entrance, showMoment]);
+  useEffect(() => {
+    // Reduce Motion (or nothing to fly between): no flight, just the once-a-day greeting.
+    if (entrance.phase === "greetOnly") welcome();
+  }, [entrance.phase, welcome]);
 
   const handlers: Record<PexActionKey, (() => void) | undefined> = {
     payment: onCoach,
@@ -700,24 +720,35 @@ function TodayHero({
   };
   const reduced = prefersReducedMotion();
   return (
-    <View>
+    <View style={styles.pexHeroWrap}>
       {moment?.line ? (
-        <View style={styles.pexBubble} accessibilityLiveRegion="polite">
+        <View style={styles.pexBubble} accessibilityLiveRegion="polite" pointerEvents="none">
           <Text style={styles.pexBubbleText}>{moment.line}</Text>
           <View style={styles.pexBubbleTail} />
         </View>
       ) : null}
+      {entrance.phase === "flying" && entrance.from && entrance.to ? (
+        <PexEntrance from={entrance.from} to={entrance.to} size={84} face={reaction.face} streak={streak >= 3} onLanded={welcome} />
+      ) : null}
       <HeroCard
         calm={reaction.calm}
         mascot={
-          <PexMascot
-            face={moment?.face ?? reaction.face}
-            tone={reaction.tone}
-            progress={reaction.progress}
-            spark={reaction.spark}
-            size={84}
-            reducedMotion={reduced}
-          />
+          <View
+            ref={slotRef}
+            collapsable={false}
+            onLayout={() => measurePexAnchor(slotRef.current, "slot")}
+            style={{ opacity: pexAway ? 0 : 1 }}
+          >
+            <PexMascot
+              face={moment?.face ?? reaction.face}
+              tone={reaction.tone}
+              progress={pexAway ? 0 : reaction.progress}
+              spark={reaction.spark && !pexAway}
+              wave={Boolean(moment?.wave)}
+              size={84}
+              reducedMotion={reduced}
+            />
+          </View>
         }
         eyebrow={reaction.eyebrow}
         title={reaction.title}
@@ -729,18 +760,16 @@ function TodayHero({
   );
 }
 
+type PexMoment = { face: PexFace; line?: string; wave?: boolean };
+
 /** Pex's short reactions: a face for a few seconds after a save or goal, and a one-time streak bubble. */
-function usePexMoment(userId: string | null, streak: number): { face: PexFace; line?: string } | null {
-  const [moment, setMoment] = useState<{ face: PexFace; line?: string } | null>(null);
+function usePexMoment(userId: string | null, streak: number): { moment: PexMoment | null; show: (next: PexMoment, ms: number) => void } {
+  const [moment, setMoment] = useState<PexMoment | null>(null);
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const show = useCallback((next: { face: PexFace; line?: string }, ms: number) => {
+  const show = useCallback((next: PexMoment, ms: number) => {
     if (timer.current) clearTimeout(timer.current);
-    if (next.line) animateNextLayout();
     setMoment(next);
-    timer.current = setTimeout(() => {
-      if (next.line) animateNextLayout();
-      setMoment(null);
-    }, ms);
+    timer.current = setTimeout(() => setMoment(null), ms);
   }, []);
   useEffect(() => () => {
     if (timer.current) clearTimeout(timer.current);
@@ -764,7 +793,60 @@ function usePexMoment(userId: string | null, streak: number): { face: PexFace; l
       active = false;
     };
   }, [streak, userId, show]);
-  return moment;
+  return { moment, show };
+}
+
+type EntrancePhase = "checking" | "pending" | "flying" | "greetOnly" | "done";
+
+/**
+ * Pex's flight from the profile picture runs on the first Today visit of each
+ * day only. Later visits find Pex already in place. Reduce Motion skips the
+ * flight and keeps the greeting.
+ */
+function usePexEntrance(userId: string | null, date: string) {
+  const [phase, setPhase] = useState<EntrancePhase>("checking");
+  const [rects, setRects] = useState<{ from: PexRect; to: PexRect } | null>(null);
+  useEffect(() => {
+    if (!userId) {
+      setPhase("done");
+      return;
+    }
+    const key = `fitora.pex.entrance.v1:${userId}`;
+    let active = true;
+    let timer: ReturnType<typeof setTimeout> | null = null;
+    (async () => {
+      try {
+        if ((await AsyncStorage.getItem(key)) === date) {
+          if (active) setPhase("done");
+          return;
+        }
+        await AsyncStorage.setItem(key, date);
+      } catch {
+        if (active) setPhase("done");
+        return;
+      }
+      if (!active) return;
+      setPhase("pending");
+      // Give the header and the card a moment to lay out and report where they are.
+      timer = setTimeout(() => {
+        if (!active) return;
+        const from = getPexAnchor("avatar");
+        const to = getPexAnchor("slot");
+        if (prefersReducedMotion() || !from || !to) {
+          setPhase("greetOnly");
+          return;
+        }
+        setRects({ from, to });
+        setPhase("flying");
+      }, 450);
+    })();
+    return () => {
+      active = false;
+      if (timer) clearTimeout(timer);
+    };
+  }, [userId, date]);
+  const finish = useCallback(() => setPhase("done"), []);
+  return useMemo(() => ({ phase, from: rects?.from ?? null, to: rects?.to ?? null, finish }), [phase, rects, finish]);
 }
 
 function TodayHeader({ name, date }: { name: string; date: string }) {
@@ -4416,10 +4498,13 @@ const styles = StyleSheet.create({
   nutritionPlanTextActionLabel: { color: colors.primary, fontSize: 12.5, lineHeight: 16, fontWeight: "900" },
   nutritionPlanMealRow: { minHeight: 44, flexDirection: "row", alignItems: "center", gap: 9, paddingVertical: 6 },
   nutritionPlanMealIcon: { width: 30, height: 30, borderRadius: 15, alignItems: "center", justifyContent: "center" },
+  pexHeroWrap: { zIndex: 5 },
   pexBubble: {
-    alignSelf: "flex-start",
-    marginLeft: 8,
-    marginBottom: 10,
+    position: "absolute",
+    left: 8,
+    bottom: "100%",
+    marginBottom: 8,
+    zIndex: 10,
     maxWidth: 280,
     backgroundColor: colors.ink,
     borderRadius: 14,

@@ -19,6 +19,12 @@ export function successFeedback(): void {
   Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => undefined);
 }
 
+/** A soft physical bump (Pex touching down). */
+export function impactFeedback(): void {
+  if (!enabled) return;
+  Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => undefined);
+}
+
 /** A save failed or needs attention. */
 export function errorFeedback(): void {
   if (!enabled) return;
