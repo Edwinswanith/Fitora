@@ -155,6 +155,20 @@ describe("Versioning — changing the goal must not rewrite history", () => {
 });
 
 describe("Stays in step with the profile (no manual recalculate)", () => {
+  test("a target first set today is today's target (the dashboard asks by date)", async () => {
+    const { user } = await makeAthlete("first-day");
+    const app = buildApp();
+    const token = `Bearer ${tokenFor(user._id)}`;
+    await request(app).patch("/api/athlete/me").set("Authorization", token).send({
+      heightCm: 165, weightKg: 60, dob: "1999-02-01",
+      biologicalSex: "female", activityLevel: "light", fitnessGoal: "maintain_weight", goalIntensity: "moderate",
+    });
+    const today = new Date().toISOString().slice(0, 10);
+    const res = await request(app).get(`/api/athlete/nutrition/target?date=${today}`).set("Authorization", token);
+    expect(res.status).toBe(200);
+    expect(res.body.target?.calories).toBeGreaterThan(0);
+  });
+
   test("a weight change is picked up on the next read: new target, old one closed, breakdown explains it", async () => {
     const { user, profile } = await makeAthlete("auto-refresh");
     const app = buildApp();

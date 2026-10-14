@@ -365,7 +365,8 @@ export type AthleteDashboardData = {
   recentWorkouts: WorkoutAssignmentSummary[];
   target: NutritionTarget | null;
   meals: Meal[];
-  mealTotals: { calories: number; proteinG: number; carbsG: number; fatG: number } | null;
+  /** mealsMissingMacros: meals whose protein, carbs and fat were never entered (counted as 0). */
+  mealTotals: { calories: number; proteinG: number; carbsG: number; fatG: number; mealsMissingMacros?: number } | null;
   plannedMeals: PlannedMeal[];
   water: WaterDay | null;
   coaches: AssignedCoach[];

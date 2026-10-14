@@ -155,6 +155,8 @@ export type ReviewedFoodInput = {
   fatG: number;
   fiberG?: number;
   confidence?: number;
+  /** False when protein, carbs and fat were left blank (stored as 0). */
+  macrosTracked?: boolean;
 };
 
 /**

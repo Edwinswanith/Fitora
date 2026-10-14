@@ -659,6 +659,23 @@ describe("POST /api/athlete/voice/log-meal", () => {
     expect(await MealFood.countDocuments()).toBe(1);
   });
 
+  test("a meal said without protein, carbs or fat is marked, not saved as a real 0 g", async () => {
+    const app = buildApp();
+    const { user, profile } = await makeAthlete("Yusra");
+    const token = tokenFor(user._id as Types.ObjectId, "athlete");
+    const send = (clientActionId: string, extra: Record<string, unknown>) =>
+      request(app)
+        .post("/api/athlete/voice/log-meal")
+        .set("Cookie", [`accessToken=${token}`])
+        .send({ clientActionId, date: TODAY.toISOString().slice(0, 10), mealType: "lunch", foodName: "Rice", calories: 400, ...extra });
+    expect((await send("meal-untracked", {})).status).toBe(201);
+    expect((await send("meal-protein", { proteinG: 30 })).status).toBe(201);
+    const meals = await Meal.find({ athleteId: profile._id }).sort({ loggedAt: 1 }).lean();
+    const foods = await MealFood.find({ mealId: { $in: meals.map((m) => m._id) } }).lean();
+    const byMeal = new Map(foods.map((f) => [String(f.mealId), f.macrosTracked]));
+    expect(meals.map((m) => byMeal.get(String(m._id)))).toEqual([false, true]);
+  });
+
   test("rejects missing calories instead of guessing", async () => {
     const app = buildApp();
     const { user } = await makeAthlete("Wafa");

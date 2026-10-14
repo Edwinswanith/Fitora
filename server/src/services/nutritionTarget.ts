@@ -123,15 +123,24 @@ export async function getCurrentTarget(athleteId: Types.ObjectId): Promise<Nutri
   }
 }
 
-/** Resolves whichever target was active on `date` — for historical analytics. */
+/**
+ * The target for a calendar day (UTC day, like meal logs): the one in effect
+ * at the end of that day, or right now for today. Looking it up at the start
+ * of the day returned nothing for a target first set (or changed) during the
+ * day, so a new athlete saw "no target" on their first day.
+ */
 export async function resolveTargetForDate(
   athleteId: Types.ObjectId,
-  date: Date
+  date: Date,
+  now: Date = new Date()
 ): Promise<NutritionTargetDoc | null> {
+  const dayStart = new Date(Date.UTC(date.getUTCFullYear(), date.getUTCMonth(), date.getUTCDate()));
+  const lastMomentOfDay = new Date(dayStart.getTime() + 24 * 60 * 60 * 1000 - 1);
+  const at = lastMomentOfDay < now ? lastMomentOfDay : now;
   return NutritionTarget.findOne({
     athleteId,
-    effectiveFrom: { $lte: date },
-    $or: [{ effectiveTo: null }, { effectiveTo: { $gt: date } }],
+    effectiveFrom: { $lte: at },
+    $or: [{ effectiveTo: null }, { effectiveTo: { $gt: at } }],
   })
     .sort({ effectiveFrom: -1 })
     .lean();
