@@ -32,7 +32,7 @@ import type { MessageView } from "../../components/MessageCenter";
 import { apiFetch, apiJson } from "../../lib/api";
 import { useAuth } from "../../lib/auth";
 import { PAYMENTS_ENABLED } from "../../lib/features";
-import { celebrate, selectionFeedback, showError, watchCelebrations } from "../../lib/feedback";
+import { celebrate, impactFeedback, selectionFeedback, showError, watchCelebrations } from "../../lib/feedback";
 import { confirmAction } from "../../lib/confirm";
 import { animateNextLayout, prefersReducedMotion, usePop } from "../../lib/motion";
 import { firstStepsState, type FirstStepKey, type FirstStepsState } from "../../lib/firstSteps";
@@ -43,6 +43,8 @@ import { PexMascot } from "../../components/mascot/PexMascot";
 import { dayProgress, daysSinceLastCheckIn, derivePexReaction, pexGreeting, streakMilestoneLine, type PexActionKey } from "../../lib/pex/brain";
 import { getPexAnchor, measurePexAnchor, type PexRect } from "../../lib/pex/anchors";
 import { PexEntrance } from "../../components/mascot/PexEntrance";
+import { PexBurst } from "../../components/mascot/PexBurst";
+import Animated2, { Easing as ReanimatedEasing, useAnimatedStyle, useSharedValue, withDelay, withSequence, withTiming } from "react-native-reanimated";
 import type { PexFace } from "../../lib/pex/faces";
 import { joinSessionCall } from "../../lib/videoCall";
 import { decideCoachInvite, loadMyCoachInvites, loadMyJoinRequest, type CoachInvite, type JoinRequest } from "../../lib/joinRequests";
@@ -719,8 +721,59 @@ function TodayHero({
     progress: onProgress,
   };
   const reduced = prefersReducedMotion();
+
+  // Touchdown: dust rolls out from under Pex (and sparks on a streak).
+  const [dust, setDust] = useState(0);
+  const [sparks, setSparks] = useState(0);
+  const touchdown = useCallback(() => {
+    setDust((n) => n + 1);
+    if (streak >= 3) setSparks((n) => n + 1);
+  }, [streak]);
+
+  // Tap Pex: squish, spin and sparkle.
+  const squish = useSharedValue(0);
+  const spin = useSharedValue(0);
+  const pexTapStyle = useAnimatedStyle(() => ({
+    transform: [{ perspective: 600 }, { rotateY: `${spin.value}deg` }, { scaleX: 1 + 0.15 * squish.value }, { scaleY: 1 - 0.15 * squish.value }],
+  }));
+  function tapPex() {
+    if (pexAway) return;
+    impactFeedback();
+    setSparks((n) => n + 1);
+    showMoment({ face: "proud" }, 1100);
+    if (reduced) return;
+    squish.value = withSequence(withTiming(1, { duration: 120 }), withTiming(0, { duration: 160 }));
+    spin.value = 0;
+    spin.value = withDelay(140, withTiming(360, { duration: 520, easing: ReanimatedEasing.out(ReanimatedEasing.back(1.4)) }));
+  }
+
+  // Pex's eyes follow a finger (or the pointer on web) over the card.
+  const lookX = useSharedValue(0);
+  const lookY = useSharedValue(0);
+  function follow(pageX: number, pageY: number) {
+    const slot = getPexAnchor("slot");
+    if (!slot || pexAway) return;
+    const dx = pageX - (slot.x + slot.width / 2);
+    const dy = pageY - (slot.y + slot.height / 2);
+    const m = Math.hypot(dx, dy) || 1;
+    const k = Math.min(1, m / 120) * 3.2;
+    lookX.value = withTiming((dx / m) * k, { duration: 90 });
+    lookY.value = withTiming((dy / m) * k, { duration: 90 });
+  }
+  function stopFollowing() {
+    lookX.value = withTiming(0, { duration: 250 });
+    lookY.value = withTiming(0, { duration: 250 });
+  }
+
   return (
-    <View style={styles.pexHeroWrap}>
+    <View
+      style={styles.pexHeroWrap}
+      onTouchStart={(e) => follow(e.nativeEvent.pageX, e.nativeEvent.pageY)}
+      onTouchMove={(e) => follow(e.nativeEvent.pageX, e.nativeEvent.pageY)}
+      onTouchEnd={stopFollowing}
+      onPointerMove={(e) => follow(e.nativeEvent.pageX, e.nativeEvent.pageY)}
+      onPointerLeave={stopFollowing}
+    >
       {moment?.line ? (
         <View style={styles.pexBubble} accessibilityLiveRegion="polite" pointerEvents="none">
           <Text style={styles.pexBubbleText}>{moment.line}</Text>
@@ -728,26 +781,38 @@ function TodayHero({
         </View>
       ) : null}
       {entrance.phase === "flying" && entrance.from && entrance.to ? (
-        <PexEntrance from={entrance.from} to={entrance.to} size={84} face={reaction.face} streak={streak >= 3} onLanded={welcome} />
+        <PexEntrance from={entrance.from} to={entrance.to} size={84} face={reaction.face} streak={streak >= 3} onTouchdown={touchdown} onLanded={welcome} />
       ) : null}
       <HeroCard
         calm={reaction.calm}
         mascot={
-          <View
-            ref={slotRef}
-            collapsable={false}
-            onLayout={() => measurePexAnchor(slotRef.current, "slot")}
-            style={{ opacity: pexAway ? 0 : 1 }}
-          >
-            <PexMascot
-              face={moment?.face ?? reaction.face}
-              tone={reaction.tone}
-              progress={pexAway ? 0 : reaction.progress}
-              spark={reaction.spark && !pexAway}
-              wave={Boolean(moment?.wave)}
-              size={84}
-              reducedMotion={reduced}
-            />
+          <View>
+            <Pressable onPress={tapPex} accessibilityRole="button" accessibilityLabel="Pex" accessibilityHint="Tap to say hi">
+              <Animated2.View
+                ref={slotRef}
+                collapsable={false}
+                onLayout={() => measurePexAnchor(slotRef.current, "slot")}
+                style={[{ opacity: pexAway ? 0 : 1 }, pexTapStyle]}
+              >
+                <PexMascot
+                  face={moment?.face ?? reaction.face}
+                  tone={reaction.tone}
+                  progress={pexAway ? 0 : reaction.progress}
+                  spark={reaction.spark && !pexAway}
+                  wave={Boolean(moment?.wave)}
+                  size={84}
+                  reducedMotion={reduced}
+                  lookX={lookX}
+                  lookY={lookY}
+                />
+              </Animated2.View>
+            </Pressable>
+            {!reduced ? (
+              <>
+                <PexBurst x={42} y={80} kind="dust" count={9} play={dust} />
+                <PexBurst x={42} y={42} kind="spark" count={12} play={sparks} />
+              </>
+            ) : null}
           </View>
         }
         eyebrow={reaction.eyebrow}

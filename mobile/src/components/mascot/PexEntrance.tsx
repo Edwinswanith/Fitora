@@ -5,11 +5,11 @@ import Animated, {
   Easing,
   cancelAnimation,
   runOnJS,
-  useAnimatedProps,
   useAnimatedReaction,
   useAnimatedStyle,
   useSharedValue,
   withTiming,
+  type SharedValue,
 } from "react-native-reanimated";
 import { colors } from "../../lib/theme";
 import { impactFeedback } from "../../lib/feedback";
@@ -17,14 +17,13 @@ import type { PexRect } from "../../lib/pex/anchors";
 import type { PexFace } from "../../lib/pex/faces";
 import { PexMascot } from "./PexMascot";
 
-const AnimatedPath = Animated.createAnimatedComponent(Path);
 
 const LAUNCH_MS = 380;
 const FLIGHT_MS = 1300;
 const LAND_MS = 420;
 const TOTAL_MS = LAUNCH_MS + FLIGHT_MS + LAND_MS;
 
-type Route = { xs: number[]; ys: number[]; at: number[]; d: string; length: number };
+type Route = { xs: number[]; ys: number[]; at: number[] };
 
 /** A smooth route out of the profile picture, down the screen, through a loop, and into the slot. */
 function buildRoute(a: { x: number; y: number }, s: { x: number; y: number }, width: number, size: number): Route {
@@ -63,8 +62,7 @@ function buildRoute(a: { x: number; y: number }, s: { x: number; y: number }, wi
   const lens = [0];
   for (let i = 1; i < xs.length; i += 1) lens.push(lens[i - 1] + Math.hypot(xs[i] - xs[i - 1], ys[i] - ys[i - 1]));
   const length = lens[lens.length - 1] || 1;
-  const d = xs.map((x, i) => `${i ? "L" : "M"}${x.toFixed(1)} ${ys[i].toFixed(1)}`).join(" ");
-  return { xs, ys, at: lens.map((l) => l / length), d, length };
+  return { xs, ys, at: lens.map((l) => l / length) };
 }
 
 /**
@@ -73,7 +71,24 @@ function buildRoute(a: { x: number; y: number }, s: { x: number; y: number }, wi
  * Today card. One tap anywhere lands it at once. The parent then shows the
  * welcome (ring closes, wave, greeting).
  */
-export function PexEntrance({ from, to, size, face, streak, onLanded }: { from: PexRect; to: PexRect; size: number; face: PexFace; streak: boolean; onLanded: () => void }) {
+export function PexEntrance({
+  from,
+  to,
+  size,
+  face,
+  streak,
+  onTouchdown,
+  onLanded,
+}: {
+  from: PexRect;
+  to: PexRect;
+  size: number;
+  face: PexFace;
+  streak: boolean;
+  /** The moment Pex touches the card (dust puffs start here). */
+  onTouchdown: () => void;
+  onLanded: () => void;
+}) {
   const { width } = useWindowDimensions();
   const a = { x: from.x + from.width / 2, y: from.y + from.height / 2 };
   const s = { x: to.x + to.width / 2, y: to.y + to.height / 2 };
@@ -92,7 +107,10 @@ export function PexEntrance({ from, to, size, face, streak, onLanded }: { from: 
   useAnimatedReaction(
     () => clock.value >= LAUNCH_MS + FLIGHT_MS,
     (landed, before) => {
-      if (landed && !before) runOnJS(impactFeedback)();
+      if (landed && !before) {
+        runOnJS(impactFeedback)();
+        runOnJS(onTouchdown)();
+      }
     },
   );
 
@@ -170,16 +188,9 @@ export function PexEntrance({ from, to, size, face, streak, onLanded }: { from: 
     return { opacity: fade, transform: [{ scaleX: flip }] };
   });
 
-  const trailProps = useAnimatedProps(() => {
-    const el = clock.value;
-    let u = 0;
-    if (el >= LAUNCH_MS + FLIGHT_MS) u = 1;
-    else if (el > LAUNCH_MS) {
-      const r = (el - LAUNCH_MS) / FLIGHT_MS;
-      u = r < 0.5 ? 4 * r * r * r : 1 - Math.pow(-2 * r + 2, 3) / 2;
-    }
-    const fade = el < LAUNCH_MS + FLIGHT_MS ? 0.7 : Math.max(0, 0.7 * (1 - (el - LAUNCH_MS - FLIGHT_MS) / LAND_MS));
-    return { strokeDashoffset: route.length * (1 - u), strokeOpacity: fade };
+  const pulseStyle = useAnimatedStyle(() => {
+    const u = Math.min(1, clock.value / (LAUNCH_MS * 1.3));
+    return { opacity: 0.7 * (1 - u), transform: [{ scale: 1 + 0.7 * u }] };
   });
 
   const shadowStyle = useAnimatedStyle(() => {
@@ -191,7 +202,7 @@ export function PexEntrance({ from, to, size, face, streak, onLanded }: { from: 
     while (i < at.length - 1 && at[i] < u) i += 1;
     const depth = Math.sin(u * Math.PI);
     return {
-      opacity: 0.2 + 0.35 * (1 - depth),
+      opacity: 0.08 + 0.17 * (1 - depth),
       transform: [{ translateX: xs[i] - 30 }, { translateY: s.y + size * 0.5 + depth * 40 }, { scale: 0.6 + 0.6 * (1 - depth) }],
     };
   });
@@ -204,17 +215,13 @@ export function PexEntrance({ from, to, size, face, streak, onLanded }: { from: 
   return (
     <Modal transparent visible animationType="none" statusBarTranslucent onRequestClose={skip}>
       <Pressable style={StyleSheet.absoluteFill} onPress={skip} accessibilityLabel="Skip Pex's entrance" accessibilityRole="button">
-        <Svg style={StyleSheet.absoluteFill} pointerEvents="none">
-          <AnimatedPath
-            d={route.d}
-            animatedProps={trailProps}
-            stroke={streak ? colors.energy : colors.progress}
-            strokeWidth={3}
-            strokeLinecap="round"
-            fill="none"
-            strokeDasharray={`${route.length} ${route.length}`}
-          />
-        </Svg>
+        <Animated.View
+          pointerEvents="none"
+          style={[styles.pulse, { left: a.x - from.width / 2, top: a.y - from.height / 2, width: from.width, height: from.height, borderRadius: from.width / 2 }, pulseStyle]}
+        />
+        {TRAIL_DOTS.map((i) => (
+          <TrailDot key={i} index={i} clock={clock} xs={xs} ys={ys} at={at} color={streak ? colors.energy : colors.progress} />
+        ))}
         <Animated.View pointerEvents="none" style={[styles.shadow, shadowStyle]} />
         <Animated.View pointerEvents="none" style={[styles.pex, { width: size, height: size }, pexStyle]}>
           <Animated.View style={[StyleSheet.absoluteFill, scarfStyle]}>
@@ -240,7 +247,34 @@ export function PexEntrance({ from, to, size, face, streak, onLanded }: { from: 
   );
 }
 
+/** Where Pex is along the route at `el` ms into the flight, or null outside the flight. */
+function routePoint(el: number, xs: number[], ys: number[], at: number[]): { x: number; y: number } | null {
+  "worklet";
+  if (el < LAUNCH_MS || el > LAUNCH_MS + FLIGHT_MS) return null;
+  const r = (el - LAUNCH_MS) / FLIGHT_MS;
+  const u = r < 0.5 ? 4 * r * r * r : 1 - Math.pow(-2 * r + 2, 3) / 2;
+  let i = 1;
+  while (i < at.length - 1 && at[i] < u) i += 1;
+  const f = (u - at[i - 1]) / Math.max(1e-6, at[i] - at[i - 1]);
+  return { x: xs[i - 1] + (xs[i] - xs[i - 1]) * f, y: ys[i - 1] + (ys[i] - ys[i - 1]) * f };
+}
+
+const TRAIL_DOTS = Array.from({ length: 22 }, (_, i) => i + 1);
+const TRAIL_GAP_MS = 26;
+
+/** One dot of the contrail: where Pex was a moment ago, fading with age. */
+function TrailDot({ index, clock, xs, ys, at, color }: { index: number; clock: SharedValue<number>; xs: number[]; ys: number[]; at: number[]; color: string }) {
+  const style = useAnimatedStyle(() => {
+    const point = routePoint(clock.value - index * TRAIL_GAP_MS, xs, ys, at);
+    if (!point) return { opacity: 0 };
+    return { opacity: 0.85 * (1 - index / (TRAIL_DOTS.length + 2)), transform: [{ translateX: point.x - 2.5 }, { translateY: point.y - 2.5 }] };
+  });
+  return <Animated.View pointerEvents="none" style={[styles.dot, { backgroundColor: color }, style]} />;
+}
+
 const styles = StyleSheet.create({
   pex: { position: "absolute", left: 0, top: 0 },
-  shadow: { position: "absolute", left: 0, top: 0, width: 60, height: 14, borderRadius: 30, backgroundColor: "#000000" },
+  dot: { position: "absolute", left: 0, top: 0, width: 5, height: 5, borderRadius: 3, opacity: 0 },
+  pulse: { position: "absolute", borderWidth: 3, borderColor: colors.primary },
+  shadow: { position: "absolute", left: 0, top: 0, width: 60, height: 10, borderRadius: 30, backgroundColor: "#000000", transform: [{ scaleY: 0.8 }] },
 });

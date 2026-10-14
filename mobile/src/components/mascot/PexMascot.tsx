@@ -48,6 +48,9 @@ export type PexMascotProps = {
   spark?: boolean;
   /** A little hand pops out and waves (greetings). */
   wave?: boolean;
+  /** Extra gaze from outside (eyes following a finger), in tenths of the eye radius. */
+  lookX?: SharedValue<number>;
+  lookY?: SharedValue<number>;
 };
 
 /** One eyeball: shaded white, black iris, two glints, and an eyelid that blinks. */
@@ -61,6 +64,8 @@ function Eye({
   side,
   blink,
   glance,
+  lookX,
+  lookY,
 }: {
   id: string;
   cx: number;
@@ -71,6 +76,8 @@ function Eye({
   side: "left" | "right";
   blink: SharedValue<number>;
   glance: SharedValue<number>;
+  lookX?: SharedValue<number>;
+  lookY?: SharedValue<number>;
 }) {
   const shut = r * 1.95;
   const ir = r * 0.58;
@@ -86,11 +93,11 @@ function Eye({
     const d = (lid + (1 - lid) * blink.value) * shut;
     return { cy: cy - r + d };
   });
-  const lookX = cx + (gx * r) / 10;
-  const lookY = cy + (gy * r) / 10;
-  const iris = useAnimatedProps(() => ({ cx: lookX + (glance.value * r) / 10, cy: lookY }));
-  const glintBig = useAnimatedProps(() => ({ cx: lookX - ir * 0.36 + (glance.value * r) / 10, cy: lookY - ir * 0.4 }));
-  const glintSmall = useAnimatedProps(() => ({ cx: lookX + ir * 0.3 + (glance.value * r) / 10, cy: lookY + ir * 0.3 }));
+  const restX = cx + (gx * r) / 10;
+  const restY = cy + (gy * r) / 10;
+  const iris = useAnimatedProps(() => ({ cx: restX + ((glance.value + (lookX?.value ?? 0)) * r) / 10, cy: restY + ((lookY?.value ?? 0) * r) / 10 }));
+  const glintBig = useAnimatedProps(() => ({ cx: restX - ir * 0.36 + ((glance.value + (lookX?.value ?? 0)) * r) / 10, cy: restY - ir * 0.4 + ((lookY?.value ?? 0) * r) / 10 }));
+  const glintSmall = useAnimatedProps(() => ({ cx: restX + ir * 0.3 + ((glance.value + (lookX?.value ?? 0)) * r) / 10, cy: restY + ir * 0.3 + ((lookY?.value ?? 0) * r) / 10 }));
 
   return (
     <G>
@@ -212,7 +219,7 @@ function useBodyMotion(motion: PexMotion, enabled: boolean) {
  * moves with the expression. Faces come from lib/pex/faces.ts; which face to
  * show comes from lib/pex/brain.ts.
  */
-export function PexMascot({ face, pose, state = "waiting", tone = "ready", size = MASCOT_SIZE, reducedMotion = false, progress, spark = false, wave = false }: PexMascotProps) {
+export function PexMascot({ face, pose, state = "waiting", tone = "ready", size = MASCOT_SIZE, reducedMotion = false, progress, spark = false, wave = false, lookX, lookY }: PexMascotProps) {
   const resolvedFace: PexFace = face ?? FACE_FOR_LEGACY_POSE[pose ?? DEFAULT_POSE_FOR_STATE[state]] ?? "ready";
   const spec = PEX_FACES[resolvedFace];
   const id = `pex${useId().replace(/[^a-zA-Z0-9]/g, "")}`;
@@ -306,8 +313,8 @@ export function PexMascot({ face, pose, state = "waiting", tone = "ready", size 
             })
           : null}
         <Circle cx={60} cy={60} r={38} fill={colors.surfaceRaised} stroke={colors.line} strokeWidth={1.5} />
-        <Eye id={`${id}l`} cx={46} cy={54} r={12.5} lid={spec.lidLeft} spec={spec} side="left" blink={blink} glance={glance} />
-        <Eye id={`${id}r`} cx={74} cy={54} r={12.5} lid={spec.lidRight} spec={spec} side="right" blink={blink} glance={glance} />
+        <Eye id={`${id}l`} cx={46} cy={54} r={12.5} lid={spec.lidLeft} spec={spec} side="left" blink={blink} glance={glance} lookX={lookX} lookY={lookY} />
+        <Eye id={`${id}r`} cx={74} cy={54} r={12.5} lid={spec.lidRight} spec={spec} side="right" blink={blink} glance={glance} lookX={lookX} lookY={lookY} />
         <Mouth kind={spec.mouth} />
         {spark && p > 0.001 ? (
           <>
