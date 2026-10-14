@@ -24,9 +24,9 @@ async function makeAthlete(name: string) {
 }
 const auth = (id: Types.ObjectId) => `Bearer ${signAccessToken({ sub: id.toString(), role: "athlete" })}`;
 
-async function logMeal(athleteId: Types.ObjectId, day: string, calories: number, proteinG: number) {
+async function logMeal(athleteId: Types.ObjectId, day: string, calories: number, proteinG: number, macrosTracked = true) {
   const meal = await Meal.create({ athleteId, date: new Date(`${day}T00:00:00.000Z`), mealType: "lunch", source: "ad_hoc" });
-  await MealFood.create({ mealId: meal._id, name: "Food", quantity: 1, unit: "serving", calories, proteinG, carbsG: 0, fatG: 0 });
+  await MealFood.create({ mealId: meal._id, name: "Food", quantity: 1, unit: "serving", calories, proteinG, carbsG: 0, fatG: 0, macrosTracked });
 }
 
 beforeAll(async () => {
@@ -40,6 +40,36 @@ afterAll(async () => {
 });
 beforeEach(async () => {
   await Promise.all(Object.values(mongoose.connection.collections).map((c) => c.deleteMany({})));
+});
+
+describe("meals whose protein, carbs and fat were never entered", () => {
+  test("are counted, so a 0 g total isn't read as real", async () => {
+    const app = buildApp();
+    const { user, profile } = await makeAthlete("macros-a");
+    await logMeal(profile._id, "2026-09-02", 400, 0, false);
+    await logMeal(profile._id, "2026-09-02", 500, 35);
+
+    const summary = await request(app).get("/api/athlete/nutrition/daily-summary?from=2026-09-02&to=2026-09-02").set("Authorization", auth(user._id));
+    expect(summary.body.days).toEqual([{ date: "2026-09-02", loggedMeals: 2, calories: 900, proteinG: 35, mealsMissingMacros: 1 }]);
+
+    const day = await request(app).get("/api/athlete/nutrition/meals?date=2026-09-02").set("Authorization", auth(user._id));
+    expect(day.body.totals).toMatchObject({ calories: 900, proteinG: 35, mealsMissingMacros: 1 });
+    expect(day.body.meals.map((m: { foods: { macrosTracked: boolean }[] }) => m.foods[0].macrosTracked).sort()).toEqual([false, true]);
+  });
+
+  test("a meal logged with blank macros keeps that flag", async () => {
+    const app = buildApp();
+    const { user, profile } = await makeAthlete("macros-b");
+    const food = { name: "Rice", quantity: 1, unit: "serving", calories: 300, proteinG: 0, carbsG: 0, fatG: 0 };
+    const blank = await request(app).post("/api/athlete/nutrition/meals").set("Authorization", auth(user._id))
+      .send({ date: "2026-09-03", mealType: "lunch", foods: [{ ...food, macrosTracked: false }] });
+    expect(blank.status).toBe(201);
+    const entered = await request(app).post("/api/athlete/nutrition/meals").set("Authorization", auth(user._id))
+      .send({ date: "2026-09-03", mealType: "dinner", foods: [food] });
+    expect(entered.status).toBe(201);
+    const foods = await MealFood.find({ mealId: { $in: (await Meal.find({ athleteId: profile._id })).map((m) => m._id) } }).lean();
+    expect(foods.map((f) => f.macrosTracked).sort()).toEqual([false, true]);
+  });
 });
 
 describe("GET /nutrition/daily-summary", () => {
@@ -56,8 +86,8 @@ describe("GET /nutrition/daily-summary", () => {
     const res = await request(app).get("/api/athlete/nutrition/daily-summary?from=2026-09-01&to=2026-09-10").set("Authorization", auth(user._id));
     expect(res.status).toBe(200);
     expect(res.body.days).toEqual([
-      { date: "2026-09-01", loggedMeals: 2, calories: 800, proteinG: 50 },
-      { date: "2026-09-10", loggedMeals: 1, calories: 700, proteinG: 40 },
+      { date: "2026-09-01", loggedMeals: 2, calories: 800, proteinG: 50, mealsMissingMacros: 0 },
+      { date: "2026-09-10", loggedMeals: 1, calories: 700, proteinG: 40, mealsMissingMacros: 0 },
     ]);
   });
 

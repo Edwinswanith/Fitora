@@ -2444,6 +2444,11 @@ function NutritionSummaryCardV2({
         <MacroTileV2 icon="leaf-outline" label="Carbs" value={data.mealTotals?.carbsG ?? 0} target={target.carbsG} color="#ffc24d" />
         <MacroTileV2 icon="water-outline" label="Fat" value={data.mealTotals?.fatG ?? 0} target={target.fatG} color="#4ade80" />
       </View>
+      {data.mealTotals?.mealsMissingMacros ? (
+        <Text style={styles.macrosMissingNote}>
+          {data.mealTotals.mealsMissingMacros === 1 ? "1 meal today has" : `${data.mealTotals.mealsMissingMacros} meals today have`} no protein, carbs or fat entered, so these totals are low.
+        </Text>
+      ) : null}
 
       <Pressable
         onPress={() => { animateNextLayout(); setExplainOpen((open) => !open); }}
@@ -4151,6 +4156,7 @@ const styles = StyleSheet.create({
   nutritionStatusText: { fontSize: 13, lineHeight: 17, fontWeight: "900" },
   nutritionRemainingText: { color: colors.inkMuted, fontSize: 13, lineHeight: 17, fontWeight: "700" },
   nutritionMacroGrid: { flexDirection: "row", alignItems: "stretch", gap: 8 },
+  macrosMissingNote: { color: colors.inkMuted, fontSize: 13, lineHeight: 18, fontWeight: "600", marginTop: -2 },
   nutritionMacroTile: { flex: 1, minWidth: 0, gap: 5 },
   nutritionMacroIcon: { width: 34, height: 34, borderRadius: 17, alignItems: "center", justifyContent: "center" },
   nutritionMacroProgressRow: { flexDirection: "row", alignItems: "center", gap: 6 },

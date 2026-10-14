@@ -706,6 +706,7 @@ router.post("/log-meal", writeRateLimit({ windowMs: 60_000, max: 60 }), async (r
         proteinG: proteinG ?? 0,
         carbsG: carbsG ?? 0,
         fatG: fatG ?? 0,
+        macrosTracked: proteinG !== undefined || carbsG !== undefined || fatG !== undefined,
       });
       return {
         meal: {

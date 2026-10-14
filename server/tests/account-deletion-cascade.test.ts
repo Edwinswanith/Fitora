@@ -153,8 +153,12 @@ describe("account deletion cascade — athlete", () => {
     await fs.promises.writeFile(path.join(env.upload.dir, scanFile), "scan bytes");
     await fs.promises.writeFile(path.join(env.upload.dir, photoFile), "photo bytes");
     const scan = await MealScan.create({ athleteId, storedFilename: scanFile, originalName: "plate.jpg", mimeType: "image/jpeg", sizeBytes: 10 });
-    await MealScanItem.create({ scanId: scan._id, foodName: "Rice", quantity: 1, unit: "cup", calories: 200, proteinG: 4, carbsG: 44, fatG: 0 });
-    await NutritionTarget.create({ athleteId, goal: "maintain_weight", goalIntensity: "moderate", calories: 2200, proteinG: 120, carbsG: 250, fatG: 70, effectiveFrom: new Date() });
+    await MealScanItem.create({ scanId: scan._id, foodName: "Rice", quantity: 1, unit: "cup", calories: 200, proteinG: 4, carbsG: 44, fatG: 0, foodConfidence: 0.9, quantityConfidence: 0.8 });
+    await NutritionTarget.create({
+      athleteId, goal: "maintain_weight", goalIntensity: "moderate", calories: 2200, proteinG: 120, carbsG: 250, fatG: 70, effectiveFrom: new Date(),
+      calculationVersion: "test",
+      inputSnapshot: { weightKg: 70, heightCm: 175, age: 30, biologicalSex: "male", activityLevel: "moderate", goal: "maintain_weight", goalIntensity: "moderate" },
+    });
     await TrainingSession.create({
       athleteId,
       date: new Date(),

@@ -131,6 +131,7 @@ function serializeMeal(meal: { _id: Types.ObjectId; date: Date; mealType: string
       fatG: f.fatG,
       fiberG: f.fiberG ?? null,
       confidence: f.confidence ?? null,
+      macrosTracked: f.macrosTracked !== false,
     })),
   };
 }
@@ -159,9 +160,16 @@ function validateFoodsInput(raw: unknown): { ok: true; foods: ReviewedFoodInput[
     if (fiberG !== undefined && (!Number.isFinite(fiberG) || fiberG < 0 || fiberG > 200)) {
       return { ok: false, error: "invalid_fiberG" };
     }
-    foods.push({ name, quantity, unit, calories, proteinG, carbsG, fatG, fiberG });
+    const food: ReviewedFoodInput = { name, quantity, unit, calories, proteinG, carbsG, fatG, fiberG };
+    if (r.macrosTracked === false) food.macrosTracked = false;
+    foods.push(food);
   }
   return { ok: true, foods };
+}
+
+/** Meals with at least one food whose protein, carbs and fat were never entered. */
+function countMealsMissingMacros(foods: Array<{ mealId: unknown; macrosTracked?: boolean | null }>): number {
+  return new Set(foods.filter((f) => f.macrosTracked === false).map((f) => String(f.mealId))).size;
 }
 
 /** GET /nutrition/meals?date= */
@@ -188,9 +196,10 @@ router.get("/meals", async (req: Request, res: Response) => {
     }),
     { calories: 0, proteinG: 0, carbsG: 0, fatG: 0 }
   );
+  const mealsMissingMacros = countMealsMissingMacros(foods);
   res.json({
     meals: meals.map((m) => serializeMeal(m as never, foodsByMeal.get(m._id.toString()) ?? [])),
-    totals,
+    totals: { ...totals, mealsMissingMacros },
   });
 });
 
@@ -214,12 +223,12 @@ router.get("/daily-summary", async (req: Request, res: Response) => {
   }
   const meals = await Meal.find({ athleteId: profileId, date: { $gte: start, $lt: end } }).select("date").lean();
   const foods = await MealFood.find({ mealId: { $in: meals.map((m) => m._id) } })
-    .select("mealId calories proteinG")
+    .select("mealId calories proteinG macrosTracked")
     .lean();
   const dayByMeal = new Map(meals.map((m) => [m._id.toString(), (m.date as Date).toISOString().slice(0, 10)]));
-  const days = new Map<string, { date: string; loggedMeals: number; calories: number; proteinG: number }>();
+  const days = new Map<string, { date: string; loggedMeals: number; calories: number; proteinG: number; mealsMissingMacros: number }>();
   for (const day of dayByMeal.values()) {
-    const row = days.get(day) ?? { date: day, loggedMeals: 0, calories: 0, proteinG: 0 };
+    const row = days.get(day) ?? { date: day, loggedMeals: 0, calories: 0, proteinG: 0, mealsMissingMacros: 0 };
     row.loggedMeals += 1;
     days.set(day, row);
   }
@@ -228,6 +237,11 @@ router.get("/daily-summary", async (req: Request, res: Response) => {
     if (!row) continue;
     row.calories += f.calories;
     row.proteinG += f.proteinG;
+  }
+  const missingMealIds = new Set(foods.filter((f) => f.macrosTracked === false).map((f) => (f.mealId as Types.ObjectId).toString()));
+  for (const mealId of missingMealIds) {
+    const row = days.get(dayByMeal.get(mealId) ?? "");
+    if (row) row.mealsMissingMacros += 1;
   }
   res.json({
     days: [...days.values()]

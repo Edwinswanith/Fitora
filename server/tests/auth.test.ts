@@ -848,7 +848,10 @@ describe("POST /api/auth/refresh", () => {
     const app = buildApp();
     const first = await request(app).post("/api/auth/login").send({ email: "coach@test.io", password: "pw", client: "native" });
     for (let i = 0; i < 5; i += 1) {
-      await request(app).post("/api/auth/login").send({ email: "coach@test.io", password: "pw", client: "native" });
+      // Six sign-ins from one address would trip the 5-per-window login limit.
+      __resetLoginRateLimit();
+      const login = await request(app).post("/api/auth/login").send({ email: "coach@test.io", password: "pw", client: "native" });
+      expect(login.status).toBe(200);
     }
     const stored = await User.findById(coach._id).lean();
     expect(stored?.refreshTokenHashes).toHaveLength(5);

@@ -121,6 +121,8 @@ export default function LogMealScreen() {
               proteinG: protein,
               carbsG: carbs,
               fatG: fat,
+              // Left blank is "not entered", not a real 0 g (totals say so).
+              ...(!proteinG.trim() && !carbsG.trim() && !fatG.trim() ? { macrosTracked: false } : {}),
             },
           ],
         }),

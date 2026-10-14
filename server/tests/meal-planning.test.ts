@@ -104,7 +104,7 @@ describe("PlannedMeal vs Meal — strict separation (Scenario F)", () => {
     const { user, profile } = await makeAthlete("skipper");
     await PlannedMeal.create({ athleteId: profile._id, date: new Date(`${TODAY}T00:00:00.000Z`), mealType: "breakfast", foods: CHICKEN_RICE_BOWL });
     const res = await request(buildApp()).get(`/api/athlete/nutrition/meals?date=${TODAY}`).set("Authorization", `Bearer ${tokenFor(user._id)}`);
-    expect(res.body.totals).toEqual({ calories: 0, proteinG: 0, carbsG: 0, fatG: 0 });
+    expect(res.body.totals).toEqual({ calories: 0, proteinG: 0, carbsG: 0, fatG: 0, mealsMissingMacros: 0 });
   });
 
   test("logging a partial quantity of the planned meal is a User choice, not a system assumption", async () => {

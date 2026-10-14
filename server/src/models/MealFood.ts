@@ -19,6 +19,10 @@ const mealFoodSchema = new Schema(
     carbsG: { type: Number, required: true, min: 0, max: 800 },
     fatG: { type: Number, required: true, min: 0, max: 400 },
     fiberG: { type: Number, min: 0, max: 200 },
+    // False when protein, carbs and fat were never entered (e.g. "400 calories
+    // of rice" by voice). They are stored as 0 but must not read as real zeros:
+    // totals report how many meals are missing them.
+    macrosTracked: { type: Boolean, default: true },
     // Only populated when this row traces back to a MealScan — how sure the
     // vision model was about the food identity/quantity, surfaced to the
     // User during review, never hidden.
