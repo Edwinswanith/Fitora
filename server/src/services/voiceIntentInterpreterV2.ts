@@ -464,9 +464,11 @@ export class MockVoiceIntentInterpreterV2 implements VoiceIntentInterpreterV2 {
       return { intent: "update_field", entities: extractEntitiesFor(recent.intent, t, input.transcript), confidence: 0.75 };
     }
 
-    if (/^(open|show|go to)\b/.test(t)) {
+    if (/^(?:open|go to|take me to|navigate to)\b/.test(t) || /^show\s+(?:the\s+)?(?:today|workouts?|nutrition|progress|coach|messages?|water|hydration|goals?|trends?|notifications?)\s+(?:screen|page|tab|section)\b/.test(t)) {
       const screens: Record<string, string> = {
         today: "today",
+        home: "today",
+        dashboard: "today",
         workout: "workouts",
         workouts: "workouts",
         nutrition: "nutrition",
@@ -477,6 +479,7 @@ export class MockVoiceIntentInterpreterV2 implements VoiceIntentInterpreterV2 {
         coach: "coach",
         messages: "messages",
         water: "water",
+        hydration: "water",
         goals: "goals",
         trends: "trends",
         notification: "notifications",
@@ -523,19 +526,20 @@ export class MockVoiceIntentInterpreterV2 implements VoiceIntentInterpreterV2 {
       return { intent: "show_nutrition", entities: {}, confidence: 0.82 };
     }
 
-    if (/\b(?:next|upcoming|booked|scheduled)\b.*\b(?:session|call|appointment)\b/.test(t) || /\bwhen\b.*\b(?:session|call)\b/.test(t)) {
+    if (/\b(?:next|upcoming|booked|scheduled)\b.*\b(?:session|call|appointment|training|workout|practice)\b/.test(t) || /\bwhen\b.*\b(?:session|call|training|workout|practice)\b/.test(t)) {
       return { intent: "show_upcoming_session", entities: {}, confidence: 0.82 };
     }
 
     if (t.includes("readiness") || t.includes("how am i")) return { intent: "show_readiness", entities: {}, confidence: 0.85 };
-    if (t.includes("today") && t.includes("plan")) return { intent: "show_today_plan", entities: {}, confidence: 0.8 };
+    if ((t.includes("today") || t.includes("what's scheduled")) && t.includes("plan")) return { intent: "show_today_plan", entities: {}, confidence: 0.8 };
+    if (t.includes("training plan") || t.includes("workout plan")) return { intent: "show_today_plan", entities: {}, confidence: 0.8 };
     if (t.includes("progress") || t.includes("trend")) return { intent: "show_progress", entities: {}, confidence: 0.8 };
     if (t.includes("coach") && t.includes("feedback")) return { intent: "show_coach_feedback", entities: {}, confidence: 0.8 };
-    if (t.includes("water") && (t.includes("how much") || t.includes("left") || t.includes("remaining"))) {
+    if ((t.includes("water") || t.includes("hydration")) && (t.includes("how much") || t.includes("left") || t.includes("remaining") || t.includes("show") || t.includes("today") || t.includes("total"))) {
       return { intent: "show_hydration", entities: {}, confidence: 0.8 };
     }
 
-    if (/\bset\b.*\bgoal\b/.test(t) && t.includes("water")) {
+    if (/\b(?:set|change|update)\b.*\b(?:goal|target)\b/.test(t) && (t.includes("water") || t.includes("hydration"))) {
       return { intent: "set_water_goal", entities: extractEntitiesFor("set_water_goal", t, input.transcript), confidence: 0.75 };
     }
     if (/\bremind/.test(t) || (/\breminder/.test(t) && (t.includes("off") || t.includes("on") || /\d+\s*minute/.test(t)))) {
@@ -619,11 +623,69 @@ export class MockVoiceIntentInterpreterV2 implements VoiceIntentInterpreterV2 {
   }
 }
 
+const SPOKEN_NUMBER_VALUES: Record<string, number> = {
+  zero: 0,
+  one: 1,
+  two: 2,
+  three: 3,
+  four: 4,
+  five: 5,
+  six: 6,
+  seven: 7,
+  eight: 8,
+  nine: 9,
+  ten: 10,
+  eleven: 11,
+  twelve: 12,
+  thirteen: 13,
+  fourteen: 14,
+  fifteen: 15,
+  sixteen: 16,
+  seventeen: 17,
+  eighteen: 18,
+  nineteen: 19,
+  twenty: 20,
+  thirty: 30,
+  forty: 40,
+  fifty: 50,
+  sixty: 60,
+  seventy: 70,
+  eighty: 80,
+  ninety: 90,
+};
+
+const SPOKEN_NUMBER_WORDS = Object.keys(SPOKEN_NUMBER_VALUES).join("|");
+const NUMBER_LITERAL_PATTERN = `(?:\\d{1,4}(?:\\.\\d+)?|(?:${SPOKEN_NUMBER_WORDS})(?:\\s+(?:hundred|thousand))?(?:\\s+(?:and\\s+)?(?:${SPOKEN_NUMBER_WORDS}))?)`;
+
+function parseSpokenNumber(raw: string): number | undefined {
+  const value = raw.trim().toLowerCase();
+  if (/^-?\d+(?:\.\d+)?$/.test(value)) return Number(value);
+  const words = value.replace(/\band\b/g, " ").split(/\s+/).filter(Boolean);
+  if (words.length === 1) return SPOKEN_NUMBER_VALUES[words[0]];
+  if (words.length === 2 && words[1] === "hundred") return (SPOKEN_NUMBER_VALUES[words[0]] ?? 0) * 100;
+  if (words.length === 2 && words[1] === "thousand") return (SPOKEN_NUMBER_VALUES[words[0]] ?? 0) * 1000;
+  if (words.length === 2 && SPOKEN_NUMBER_VALUES[words[0]] !== undefined && SPOKEN_NUMBER_VALUES[words[1]] !== undefined) {
+    return SPOKEN_NUMBER_VALUES[words[0]] + SPOKEN_NUMBER_VALUES[words[1]];
+  }
+  if (words.length === 3 && words[1] === "hundred" && SPOKEN_NUMBER_VALUES[words[0]] !== undefined && SPOKEN_NUMBER_VALUES[words[2]] !== undefined) {
+    return SPOKEN_NUMBER_VALUES[words[0]] * 100 + SPOKEN_NUMBER_VALUES[words[2]];
+  }
+  return undefined;
+}
+
 function numberNear(text: string, label: string): number | undefined {
-  const after = text.match(new RegExp(`(?:${label})[^0-9]{0,32}(\\d{1,4}(?:\\.\\d+)?)`));
-  if (after) return Number(after[1]);
-  const before = text.match(new RegExp(`(\\d{1,4}(?:\\.\\d+)?)[^a-z0-9]{0,20}(?:${label})`));
-  return before ? Number(before[1]) : undefined;
+  const after = text.match(new RegExp(`(?:${label})[^0-9]{0,32}(${NUMBER_LITERAL_PATTERN})`, "i"));
+  if (after) return parseSpokenNumber(after[1]);
+  const before = text.match(new RegExp(`(${NUMBER_LITERAL_PATTERN})[^a-z0-9]{0,20}(?:${label})`, "i"));
+  return before ? parseSpokenNumber(before[1]) : undefined;
+}
+
+function quantityInMillilitres(text: string): number | undefined {
+  const match = text.match(new RegExp(`((?:${NUMBER_LITERAL_PATTERN})|a|an)\\s*(millilit(?:re|er)s?|ml|lit(?:re|er)s?|l)\\b`, "i"));
+  if (!match) return undefined;
+  const amount = match[1].toLowerCase() === "a" || match[1].toLowerCase() === "an" ? 1 : parseSpokenNumber(match[1]);
+  if (amount === undefined) return undefined;
+  return /^(?:millilit|ml)/i.test(match[2]) ? amount : Math.round(amount * 1000);
 }
 
 function numberForNutritionLabel(text: string, label: string): number | undefined {
@@ -701,12 +763,8 @@ function extractEntitiesFor(intent: VoiceIntentNameV2, t: string, rawTranscript:
   }
 
   if (intent === "add_water") {
-    const ml = t.match(/(\d{1,4})\s*ml\b/);
-    if (ml) entities.amountMl = Number(ml[1]);
-    else {
-      const litre = t.match(/(\d+(?:\.\d+)?)\s*l(?:itre|iter)?s?\b/);
-      if (litre) entities.amountMl = Math.round(Number(litre[1]) * 1000);
-    }
+    const amountMl = quantityInMillilitres(t);
+    if (amountMl !== undefined) entities.amountMl = amountMl;
   }
 
   if (intent === "log_meal") {
@@ -729,12 +787,8 @@ function extractEntitiesFor(intent: VoiceIntentNameV2, t: string, rawTranscript:
   }
 
   if (intent === "set_water_goal") {
-    const litre = t.match(/(\d+(?:\.\d+)?)\s*l(?:itre|iter)?s?\b/);
-    if (litre) entities.goalMl = Math.round(Number(litre[1]) * 1000);
-    else {
-      const ml = t.match(/(\d{2,5})\s*ml\b/);
-      if (ml) entities.goalMl = Number(ml[1]);
-    }
+    const goalMl = quantityInMillilitres(t) ?? numberNear(t, "(?:goal|target)");
+    if (goalMl !== undefined) entities.goalMl = goalMl;
   }
 
   if (intent === "change_hydration_reminder") {

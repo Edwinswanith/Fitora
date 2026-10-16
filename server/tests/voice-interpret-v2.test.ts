@@ -475,6 +475,38 @@ describe("POST /api/athlete/voice/interpret-v2 — expanded fillable fields", ()
     expect(res.body.requiresConfirmation).toBe(false);
   });
 
+  test("the fallback interpreter understands spoken water quantities and common phrasing", async () => {
+    const app = buildApp();
+    const { user } = await makeAthlete("Vani");
+    const token = tokenFor(user._id as Types.ObjectId, "athlete");
+    const goal = await request(app)
+      .post("/api/athlete/voice/interpret-v2")
+      .set("Cookie", [`accessToken=${token}`])
+      .send({ transcript: "set my daily water target to two litres" });
+    expect(goal.body.intent).toBe("set_water_goal");
+    expect(goal.body.entities.goalMl).toBe(2000);
+    expect(goal.body.action).toBe("execute");
+
+    const hydration = await request(app)
+      .post("/api/athlete/voice/interpret-v2")
+      .set("Cookie", [`accessToken=${token}`])
+      .send({ transcript: "show my hydration today" });
+    expect(hydration.body.intent).toBe("show_hydration");
+    expect(hydration.body.action).toBe("answer");
+  });
+
+  test("the fallback interpreter understands the next training question", async () => {
+    const app = buildApp();
+    const { user } = await makeAthlete("Waseem");
+    const token = tokenFor(user._id as Types.ObjectId, "athlete");
+    const res = await request(app)
+      .post("/api/athlete/voice/interpret-v2")
+      .set("Cookie", [`accessToken=${token}`])
+      .send({ transcript: "when is my next training session" });
+    expect(res.body.intent).toBe("show_upcoming_session");
+    expect(res.body.action).toBe("answer");
+  });
+
   test("starting a workout navigates to workouts instead of logging a session", async () => {
     const app = buildApp();
     const { user } = await makeAthlete("Uma");

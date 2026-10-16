@@ -6,6 +6,7 @@ import { speakAgentReply, stopAgentSpeech } from "./agentSpeech";
 import { API_BASE, apiFetch, getAccessToken } from "./api";
 import { normalizeVoiceCommandForAgent } from "./voiceTranslation";
 import { getDeepgramLanguageHint, getVoiceRecognitionLanguage } from "./voiceLanguage";
+import { shouldRetryWithDeepgram } from "./voiceNativeFallback";
 import { isSystemicTranscribeFailure } from "./voiceTranscribeFailure";
 import { startVoiceTurnTimer, type VoiceTurnTimer } from "./voiceTiming";
 import {
@@ -34,10 +35,10 @@ export type VoiceSessionHandlers = {
   /** Normalized 0..1 input level, sampled every ~80-100ms while listening; 0 when silent/not listening. */
   onVolume: (level: number) => void;
   onResult: (transcript: string) => void;
-  onError: () => void;
+  onError: (errorCode?: string) => void;
   onEnd?: () => void;
   /** Permission denied, unsupported browser, or no window (SSR) — caller should fall back to the text input. */
-  onNeedsFallback: () => void;
+  onNeedsFallback: (reason?: string) => void;
 };
 
 export type VoiceSessionHandle = {
@@ -396,10 +397,10 @@ function startSpeechRecognitionVoiceSession(handlers: VoiceSessionHandlers, reco
     cleanup();
     const code = event?.error ?? "";
     if (code === "not-allowed" || code === "permission-denied") {
-      handlers.onNeedsFallback();
+      handlers.onNeedsFallback(code);
       return;
     }
-    handlers.onError();
+    handlers.onError(code);
   };
   recognition.onend = () => {
     if (stopped) return;
@@ -416,7 +417,7 @@ function startSpeechRecognitionVoiceSession(handlers: VoiceSessionHandlers, reco
       }
     }, 300000);
   } catch {
-    handlers.onNeedsFallback();
+    handlers.onNeedsFallback("start-failed");
   }
   return { stop };
 }
@@ -443,10 +444,43 @@ function isNativeSpeechRecognitionAvailable(): boolean {
 }
 
 function startNativeSpeechRecognitionVoiceSession(handlers: VoiceSessionHandlers): VoiceSessionHandle {
+  let fallback: VoiceSessionHandle | null = null;
+  let usingFallback = false;
+
+  function startDeepgramFallback() {
+    if (usingFallback) return;
+    usingFallback = true;
+    fallback = isVoiceStreamingEnabled() ? startDeepgramStreamingVoiceSession(handlers) : startDeepgramVoiceSession(handlers);
+  }
+
+  const nativeHandlers: VoiceSessionHandlers = {
+    ...handlers,
+    onResult: (transcript) => {
+      if (!usingFallback) handlers.onResult(transcript);
+    },
+    onError: () => {
+      startDeepgramFallback();
+    },
+    onEnd: () => {
+      if (!usingFallback) handlers.onEnd?.();
+    },
+    onNeedsFallback: (reason) => {
+      if (!shouldRetryWithDeepgram(reason)) handlers.onNeedsFallback(reason);
+      else startDeepgramFallback();
+    },
+  };
+
   try {
-    return startSpeechRecognitionVoiceSession(handlers, new ExpoWebSpeechRecognition() as unknown as SpeechRecognitionLike);
+    const native = startSpeechRecognitionVoiceSession(nativeHandlers, new ExpoWebSpeechRecognition() as unknown as SpeechRecognitionLike);
+    return {
+      stop: () => {
+        native.stop();
+        fallback?.stop();
+      },
+    };
   } catch {
-    return isVoiceStreamingEnabled() ? startDeepgramStreamingVoiceSession(handlers) : startDeepgramVoiceSession(handlers);
+    startDeepgramFallback();
+    return { stop: () => fallback?.stop() };
   }
 }
 

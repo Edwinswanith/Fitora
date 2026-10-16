@@ -1,4 +1,5 @@
 import { isSystemicTranscribeFailure } from "../voiceTranscribeFailure";
+import { shouldRetryWithDeepgram } from "../voiceNativeFallback";
 
 describe("isSystemicTranscribeFailure", () => {
   it("treats an unconfigured Deepgram key as systemic", () => {
@@ -21,5 +22,18 @@ describe("isSystemicTranscribeFailure", () => {
   it("is not fooled by an unrelated error code on a non-502 status", () => {
     expect(isSystemicTranscribeFailure(400, "deepgram_not_configured")).toBe(true); // error code alone is authoritative
     expect(isSystemicTranscribeFailure(400, undefined)).toBe(false);
+  });
+});
+
+describe("shouldRetryWithDeepgram", () => {
+  it("keeps explicit microphone permission failures on the text fallback", () => {
+    expect(shouldRetryWithDeepgram("not-allowed")).toBe(false);
+    expect(shouldRetryWithDeepgram("permission-denied")).toBe(false);
+  });
+
+  it("retries native service failures through Deepgram", () => {
+    expect(shouldRetryWithDeepgram("network")).toBe(true);
+    expect(shouldRetryWithDeepgram("no-speech")).toBe(true);
+    expect(shouldRetryWithDeepgram("start-failed")).toBe(true);
   });
 });
